@@ -1,0 +1,193 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "cbsp21_patch_manifest_v1",
+  "title": "CBSP21 Patch Manifest v1 (code-analysis-tool)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "patch_id",
+    "title",
+    "intent",
+    "change_type",
+    "behavior_change",
+    "risk_level",
+    "scope",
+    "diff_range",
+    "changed_files_count",
+    "diff_articulation",
+    "verification",
+    "file_context_coverage_percent"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "cbsp21_patch_manifest_v1"
+    },
+    "patch_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "intent": {
+      "type": "string",
+      "minLength": 1
+    },
+    "change_type": {
+      "type": "string",
+      "enum": [
+        "code",
+        "docs",
+        "config",
+        "ci",
+        "refactor",
+        "test",
+        "security"
+      ]
+    },
+    "behavior_change": {
+      "type": "string",
+      "enum": [
+        "compatible",
+        "breaking",
+        "unknown"
+      ]
+    },
+    "risk_level": {
+      "type": "string",
+      "enum": [
+        "low",
+        "medium",
+        "high"
+      ]
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "paths_in_scope",
+        "files_expected_to_change"
+      ],
+      "properties": {
+        "paths_in_scope": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "files_expected_to_change": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "out_of_scope_notes": {
+          "type": "string"
+        }
+      }
+    },
+    "diff_range": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "base",
+        "head"
+      ],
+      "properties": {
+        "base": {
+          "type": "string",
+          "minLength": 1
+        },
+        "head": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "changed_files_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "changed_files_exact": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "diff_articulation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "what_changed",
+        "why_not_redundant"
+      ],
+      "properties": {
+        "what_changed": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "why_not_redundant": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "commands_run"
+      ],
+      "properties": {
+        "commands_run": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "test_results": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "file_context_coverage_percent": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "author": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "reviewers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

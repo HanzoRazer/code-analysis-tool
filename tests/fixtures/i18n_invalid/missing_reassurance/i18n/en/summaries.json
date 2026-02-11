@@ -1,0 +1,11 @@
+{
+  "summaries": {
+    "vibe_status": {
+      "green": "Good news — nothing here looks risky right now. You're safe to keep building.",
+      "yellow": "You're mostly fine, but there's one area to watch.",
+      "red": "There's something important to look at. It's fixable, and we'll walk you through it."
+    },
+    "empty_state": "We scanned your project and everything looks good. Keep building!",
+    "first_scan_celebration": "Your first scan is done! Here's what matters most."
+  }
+}

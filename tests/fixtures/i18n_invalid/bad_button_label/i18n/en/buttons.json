@@ -1,0 +1,59 @@
+{
+  "buttons": {
+    "primary": {
+      "default": {
+        "label": "Do it now",
+        "tooltip": "Takes just a few minutes"
+      },
+      "exceptions": {
+        "label": "Make errors visible",
+        "tooltip": "Takes just a few minutes"
+      },
+      "security": {
+        "label": "Secure this now",
+        "tooltip": "Takes just a few minutes"
+      },
+      "safety": {
+        "label": "Add guardrails",
+        "tooltip": "Takes just a few minutes"
+      }
+    },
+    "secondary": {
+      "default": {
+        "label": "Later",
+        "tooltip": "Totally okay to come back to this"
+      },
+      "optional": {
+        "label": "Not now",
+        "tooltip": "No rush at all"
+      }
+    },
+    "tertiary": {
+      "default": {
+        "label": "I get it",
+        "tooltip": "Thanks — this makes sense now"
+      },
+      "compact": {
+        "label": "Got it",
+        "tooltip": "Thanks — this makes sense now"
+      }
+    },
+    "subtext_by_risk": {
+      "red": {
+        "primary": "Quick win for peace of mind",
+        "secondary": "If this isn't urgent right now",
+        "tertiary": "I understand the risk"
+      },
+      "yellow": {
+        "primary": "Optional improvement",
+        "secondary": "Safe to ignore for now",
+        "tertiary": "I see why this matters"
+      },
+      "green": {
+        "primary": "Optional cleanup",
+        "secondary": "No rush at all",
+        "tertiary": "Okay, that's clear"
+      }
+    }
+  }
+}

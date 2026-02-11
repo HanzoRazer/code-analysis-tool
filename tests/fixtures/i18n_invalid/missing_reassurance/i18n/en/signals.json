@@ -1,0 +1,28 @@
+{
+  "signals": {
+    "exceptions": {
+      "risk_level": "red",
+      "title": "Errors might disappear silently",
+      "summary": "If something goes wrong here, you might never see the error.",
+      "why": "When errors are caught too broadly, bugs can hide instead of telling you what happened.",
+      "action": {
+        "text": "Add logging or re-raise the error so you can see what went wrong.",
+        "urgency": "recommended"
+      },
+      "footer": "This is a small change that gives you a lot more peace of mind.",
+      "footer_icon": "🛠️"
+    },
+    "complexity": {
+      "risk_level": "yellow",
+      "title": "This code is doing a lot at once",
+      "summary": "This is common — you're okay to keep building.",
+      "why": "Big functions can be hard to change later. This is common in AI-generated code.",
+      "action": {
+        "text": "You can leave this for now and revisit if you need to change it.",
+        "urgency": "optional"
+      },
+      "footer": "Totally fine to leave as-is while you're building.",
+      "footer_icon": "✅"
+    }
+  }
+}

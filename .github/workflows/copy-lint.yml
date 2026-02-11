@@ -1,0 +1,45 @@
+name: Copy Lint
+
+on:
+  pull_request:
+    paths:
+      - 'i18n/**'
+      - 'scripts/copy_lint.py'
+      - 'scripts/copy_lint_vibe_saas.py'
+  push:
+    branches: [main]
+    paths:
+      - 'i18n/**'
+      - 'scripts/copy_lint.py'
+      - 'scripts/copy_lint_vibe_saas.py'
+
+jobs:
+  copy-lint:
+    name: Validate i18n copy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Set strictness mode
+        id: mode
+        run: |
+          if [ "${{ github.ref }}" = "refs/heads/main" ] || [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            echo "flag=--strict" >> "$GITHUB_OUTPUT"
+            echo "Using STRICT mode (main / release)"
+          else
+            echo "flag=" >> "$GITHUB_OUTPUT"
+            echo "Using normal mode (feature branch)"
+          fi
+
+      - name: Run prose linter
+        run: python scripts/copy_lint.py lint i18n/ --format text ${{ steps.mode.outputs.flag }}
+
+      - name: Run schema-aware linter
+        run: python scripts/copy_lint_vibe_saas.py lint i18n/en/ --format text ${{ steps.mode.outputs.flag }}
+
+      - name: Check locale parity (i18n key sync)
+        run: python scripts/locale_parity.py i18n/

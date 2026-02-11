@@ -1,0 +1,37 @@
+{
+  "compounds": {
+    "complexity_and_exceptions": {
+      "trigger":     ["complexity", "exceptions"],
+      "risk_level":  "red",
+      "title":       "This section is tangled and fragile",
+      "summary":     "Complex code that hides errors is the #1 source of surprise crashes. This is fixable — untangling one usually makes the other easier too.",
+      "why":         "When logic is hard to follow and errors are silently swallowed, bugs hide in exactly the places you can't see.",
+      "action":      { "text": "Start with the exceptions — making errors visible often simplifies the code naturally.", "urgency": "important" },
+      "footer":      "Fixing one usually helps the other.",
+      "footer_icon": "🔗",
+      "penalty_modifier": 1.5
+    },
+    "global_state_and_exceptions": {
+      "trigger":     ["global_state", "exceptions"],
+      "risk_level":  "red",
+      "title":       "Shared data with hidden error paths",
+      "summary":     "Variables that change during error handling create the sneakiest bugs. This is fixable — a small change makes a big difference.",
+      "why":         "When an exception fires, shared data may be left half-updated. The next function reads stale data — everything looks fine until it doesn't.",
+      "action":      { "text": "Wrap shared-data changes in try/finally blocks, or pass data explicitly.", "urgency": "important" },
+      "footer":      "Small change, big reliability gain. Come back to this when you're ready.",
+      "footer_icon": "🔗",
+      "penalty_modifier": 1.3
+    },
+    "security_and_dead_code": {
+      "trigger":     ["security", "dead_code"],
+      "risk_level":  "yellow",
+      "title":       "Dead code is hiding a security concern",
+      "summary":     "There's a security-related issue in code that isn't being used. This is common — removing the dead code removes the risk entirely.",
+      "why":         "Unused code with security issues is like an unlocked door in a room you forgot about.",
+      "action":      { "text": "Check if the dead code is truly unused, then remove it.", "urgency": "recommended" },
+      "footer":      "Less code = fewer surprises. Totally fine to leave for now.",
+      "footer_icon": "🔗",
+      "penalty_modifier": 1.1
+    }
+  }
+}

@@ -1,0 +1,76 @@
+{
+  "signals": {
+    "complexity": {
+      "risk_level": "yellow",
+      "title": "This code is doing a lot at once",
+      "summary": "It works right now, but it might be hard to change later. This is common with AI-generated code.",
+      "why": "When a function gets big, small changes can accidentally break things. This is very common in AI-generated code — you didn't cause this.",
+      "action": {
+        "text": "If you ever need to change this, consider breaking it into smaller pieces.",
+        "urgency": "optional"
+      },
+      "footer": "Totally fine to leave as-is while you're building.",
+      "footer_icon": "✅"
+    },
+    "exceptions": {
+      "risk_level": "red",
+      "title": "Errors might disappear silently",
+      "summary": "If something breaks here, you might never see the error. This is fixable, and we'll help you.",
+      "why": "When errors are caught too broadly, bugs can hide instead of telling you what happened. That makes problems much harder to track down later.",
+      "action": {
+        "text": "Add logging or re-raise the error so you can see what happened.",
+        "urgency": "recommended"
+      },
+      "footer": "This is a small change that gives you a lot more peace of mind.",
+      "footer_icon": "🛠️"
+    },
+    "security": {
+      "risk_level": "red",
+      "title": "Sensitive info is hard-coded here",
+      "summary": "If this code is shared, someone else could access your account or service. This is fixable — one of the most common beginner mistakes.",
+      "why": "Hard-coded keys can be copied by anyone who sees the code. This is one of the most common beginner mistakes — and very fixable.",
+      "action": {
+        "text": "Move this value to an environment variable.",
+        "urgency": "important"
+      },
+      "footer": "Once this is moved out, the risk is completely gone.",
+      "footer_icon": "🔒"
+    },
+    "safety": {
+      "risk_level": "red",
+      "title": "This code controls something real and needs guardrails",
+      "summary": "This function affects real-world behavior. This is fixable, and we'll help you add the right checks.",
+      "why": "When code controls physical actions or important systems, it's important to be explicit about safety. This isn't about blame — it's about protecting users and yourself.",
+      "action": {
+        "text": "Add the safety annotation or checks so unsafe actions can't happen accidentally.",
+        "urgency": "recommended"
+      },
+      "footer": "You're catching this early — that's a good sign.",
+      "footer_icon": "🧠"
+    },
+    "global_state": {
+      "risk_level": "yellow",
+      "title": "This value can change from different places",
+      "summary": "This can lead to confusing bugs that are hard to track down. This is common — even experienced developers hit this.",
+      "why": "When many parts of the code can change the same value, behavior can feel random. These bugs aren't obvious — even experienced developers hit them.",
+      "action": {
+        "text": "If things start acting strangely, consider passing this value explicitly instead.",
+        "urgency": "optional"
+      },
+      "footer": "If nothing feels flaky right now, totally fine to leave for now.",
+      "footer_icon": "🧪"
+    },
+    "dead_code": {
+      "risk_level": "green",
+      "title": "Some code might not be used anymore",
+      "summary": "This code doesn't appear to be called anywhere.",
+      "why": "Unused code can make projects harder to understand, but it's not risky.",
+      "action": {
+        "text": "You can tidy this up if you're confident — or leave it until later.",
+        "urgency": "optional"
+      },
+      "footer": "Leaving unused code won't break anything. No rush at all.",
+      "footer_icon": "✅"
+    }
+  }
+}

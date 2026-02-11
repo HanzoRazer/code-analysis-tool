@@ -1,0 +1,60 @@
+{
+  "schema_version": "cbsp21_patch_manifest_v1",
+  "patch_id": "CAT-0007",
+  "title": "Add stable finding IDs and JSON export for scan results",
+  "intent": "Make findings diff-friendly for beginners by adding stable IDs and a JSON export mode, enabling baseline/diff UX in the SaaS.",
+  "change_type": "code",
+  "behavior_change": "compatible",
+  "risk_level": "medium",
+  "scope": {
+    "paths_in_scope": [
+      "src/code_audit/",
+      "src/code_audit/outputs/"
+    ],
+    "files_expected_to_change": [
+      "src/code_audit/model/finding.py",
+      "src/code_audit/outputs/json_output.py",
+      "src/code_audit/engine/fingerprints.py"
+    ],
+    "out_of_scope_notes": "No changes to analyzers logic beyond adding IDs at normalization time."
+  },
+  "diff_range": {
+    "base": "main",
+    "head": "feature/stable-finding-ids"
+  },
+  "changed_files_count": 3,
+  "changed_files_exact": [
+    "src/code_audit/model/finding.py",
+    "src/code_audit/outputs/json_output.py",
+    "src/code_audit/engine/fingerprints.py"
+  ],
+  "diff_articulation": {
+    "what_changed": [
+      "Added deterministic finding fingerprint helper (sha256 of rule_id|path|symbol|line|snippet)",
+      "Extended Finding model to include `id` and optional `confidence`",
+      "Added JSON output format that emits RunResult with findings[] and summary counts"
+    ],
+    "why_not_redundant": "Previously the analyzer output was human-readable only and unstable across runs. Stable IDs are required for baselines/diffs and to prevent beginners from being overwhelmed by repeated alerts."
+  },
+  "verification": {
+    "commands_run": [
+      "python -m pytest -q",
+      "python -m code_audit --format json --root ./examples/sample_repo > /tmp/run_result.json",
+      "python scripts/validate_schema.py /tmp/run_result.json schemas/run_result.schema.json"
+    ],
+    "test_results": [
+      "All tests passed",
+      "Schema validation passed"
+    ],
+    "notes": "Verified identical IDs across two consecutive runs on unchanged input."
+  },
+  "file_context_coverage_percent": 100.0,
+  "metadata": {
+    "author": "your-name",
+    "created_at": "2026-02-10T22:22:54Z",
+    "reviewers": [
+      "reviewer-1",
+      "reviewer-2"
+    ]
+  }
+}

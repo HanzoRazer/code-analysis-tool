@@ -1,0 +1,60 @@
+{
+  "feedback": {
+    "fix_now_default": {
+      "icon": "✅",
+      "text": "Nice — you're making this better."
+    },
+    "fix_now_security": {
+      "icon": "🔒",
+      "text": "Good call — that's one less thing to worry about."
+    },
+    "fix_now_exceptions": {
+      "icon": "🛠️",
+      "text": "Solid — your app just got more resilient."
+    },
+    "later_default": {
+      "icon": "👍",
+      "text": "No worries — it'll be here when you're ready."
+    },
+    "later_optional": {
+      "icon": "👍",
+      "text": "Totally fine — this one can wait."
+    },
+    "later_mvp": {
+      "icon": "🚀",
+      "text": "Great call — ship first, polish later."
+    },
+    "i_get_it_default": {
+      "icon": "💡",
+      "text": "Cool — now you know."
+    },
+    "i_get_it_verbose": {
+      "icon": "💡",
+      "text": "Glad it clicked — that's how you grow."
+    },
+    "scan_all_green": {
+      "icon": "🟢",
+      "text": "Everything looks good. You're building something solid."
+    },
+    "scan_mixed": {
+      "icon": "🟡",
+      "text": "A few things to look at — nothing alarming, just ideas to keep things clean."
+    },
+    "scan_critical": {
+      "icon": "🔴",
+      "text": "Some of these are worth fixing now. You've totally got this."
+    },
+    "empty_no_files": {
+      "icon": "📂",
+      "text": "Drop a Python file here, or paste a snippet — we'll take a look."
+    },
+    "empty_loading": {
+      "icon": "⏳",
+      "text": "Scanning your code…"
+    },
+    "empty_error": {
+      "icon": "⚠️",
+      "text": "Something went sideways. Try again — usually works the second time."
+    }
+  }
+}

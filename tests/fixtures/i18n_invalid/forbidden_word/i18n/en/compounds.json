@@ -1,0 +1,14 @@
+{
+  "compounds": {
+    "complexity+exceptions": {
+      "risk_level": "red",
+      "title": "This code is hard to change and hides errors",
+      "summary": "This is fixable — we'll help you start with the safest improvement.",
+      "why": "Big functions plus hidden errors can make debugging frustrating.",
+      "action": {
+        "text": "Start by making errors visible — that alone improves things a lot.",
+        "urgency": "recommended"
+      }
+    }
+  }
+}

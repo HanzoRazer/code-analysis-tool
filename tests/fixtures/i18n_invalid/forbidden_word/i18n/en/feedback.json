@@ -1,0 +1,16 @@
+{
+  "feedback": {
+    "after_fix": {
+      "icon": "✅",
+      "text": "Nice — this is a solid improvement."
+    },
+    "after_later": {
+      "icon": "👍",
+      "text": "Sounds good. You can come back to this anytime."
+    },
+    "after_acknowledge": {
+      "icon": "💡",
+      "text": "Awesome — understanding this already makes you a better coder."
+    }
+  }
+}

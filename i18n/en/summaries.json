@@ -1,0 +1,11 @@
+{
+  "summaries": {
+    "vibe_status": {
+      "green":  "Your code is in great shape. Keep doing what you're doing.",
+      "yellow": "A few things to tidy up — nothing scary, just some polish.",
+      "red":    "A few things worth addressing. Each fix will make a noticeable difference."
+    },
+    "empty_state": "Drop a Python file or paste a snippet to get started. No judgment, just helpful feedback.",
+    "first_scan_celebration": "First scan done — welcome aboard. Let's see what you've built."
+  }
+}

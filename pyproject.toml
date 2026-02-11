@@ -1,0 +1,64 @@
+[project]
+name = "code-analysis-tool"
+version = "0.1.0"
+description = "Confidence engine for beginner Vibe Coders"
+requires-python = ">=3.11"
+
+[tool.setuptools]
+py-modules = []
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=7.0",
+  "jsonschema>=4.0",
+  "ruff>=0.4.0",
+]
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+
+# Where pytest should look for tests
+testpaths = ["tests"]
+
+# Common patterns pytest recognizes as test files/classes/functions
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+
+# Command-line defaults:
+# -ra: show extra summary for skipped/xfail
+# -q: quieter output (good for CI logs)
+# --strict-config/markers: catch typos in config/markers
+# --disable-warnings: reduce noise
+# --maxfail=1: fail fast in CI
+addopts = """
+-ra
+-q
+--strict-config
+--strict-markers
+--disable-warnings
+--maxfail=1
+"""
+
+# Markers (declared up front to catch typos)
+markers = [
+  "unit: fast, isolated tests",
+  "integration: tests that touch filesystem or run scripts",
+  "lint: copy/governance lint tests",
+  "schema: json schema validation tests",
+]
+
+# Directories pytest should ignore during discovery
+norecursedirs = [
+  ".git",
+  ".github",
+  ".venv",
+  "venv",
+  "dist",
+  "build",
+  "node_modules",
+  "__pycache__",
+]
+
+# Make imports predictable — update to ["src"] once src/ layout exists
+pythonpath = ["."]
