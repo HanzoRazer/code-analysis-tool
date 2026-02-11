@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Iterable
 
 from code_audit.model import AnalyzerType, Severity
 from code_audit.model.finding import Finding, Location, make_fingerprint
@@ -11,26 +12,58 @@ from code_audit.model.finding import Finding, Location, make_fingerprint
 _THRESHOLD = 500   # lines
 _HIGH = 800        # severe threshold
 
+# Supported language extensions
+DEFAULT_EXTENSIONS: frozenset[str] = frozenset({
+    # Python
+    ".py",
+    # JavaScript/TypeScript
+    ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs",
+    # Vue
+    ".vue",
+    # Java/JVM
+    ".java", ".kt", ".scala",
+    # C#/.NET
+    ".cs",
+    # Go
+    ".go",
+    # Rust
+    ".rs",
+    # C/C++
+    ".c", ".cpp", ".cc", ".h", ".hpp",
+    # Ruby
+    ".rb",
+    # PHP
+    ".php",
+})
+
 
 class FileSizesAnalyzer:
-    """Finds Python files exceeding line count threshold.
+    """Finds source files exceeding line count threshold.
 
     Large files are harder to maintain, test, and review.
     They often indicate a need for splitting or refactoring.
+
+    Supports: Python, JavaScript, TypeScript, Vue, Java, C#, Go, Rust, C/C++, Ruby, PHP
     """
 
     id: str = "file_sizes"
-    version: str = "1.0.0"
+    version: str = "1.1.0"  # bumped for multi-language support
 
-    def __init__(self, threshold: int = _THRESHOLD, high_threshold: int = _HIGH):
+    def __init__(
+        self,
+        threshold: int = _THRESHOLD,
+        high_threshold: int = _HIGH,
+        extensions: Iterable[str] | None = None,
+    ):
         self.threshold = threshold
         self.high_threshold = high_threshold
+        self.extensions = frozenset(extensions) if extensions else DEFAULT_EXTENSIONS
 
     def run(self, root: Path, files: list[Path]) -> list[Finding]:
         findings: list[Finding] = []
 
         for path in files:
-            if path.suffix != ".py":
+            if path.suffix not in self.extensions:
                 continue
 
             try:
