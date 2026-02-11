@@ -14,7 +14,9 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from code_audit.analyzers.complexity import ComplexityAnalyzer
+from code_audit.analyzers.duplication import DuplicationAnalyzer
 from code_audit.analyzers.exceptions import ExceptionsAnalyzer
+from code_audit.analyzers.file_sizes import FileSizesAnalyzer
 from code_audit.core.runner import run_scan
 from code_audit.model import Severity, AnalyzerType
 
@@ -113,3 +115,45 @@ class TestRunScan:
         result = run_scan(tmp_path, analyzers)
         assert result.confidence_score >= 75
         assert result.vibe_tier.value == "green"
+
+    def test_detects_large_file(self, tmp_path: Path) -> None:
+        """FileSizesAnalyzer must flag a file exceeding the threshold."""
+        large = tmp_path / "bloated.py"
+        large.write_text("x = 1\n" * 600)  # 600 lines
+        analyzers = [FileSizesAnalyzer(threshold=500)]
+        result = run_scan(tmp_path, analyzers)
+
+        fs_findings = [
+            f for f in result.findings if f.metadata.get("rule_id", "").startswith("FS-")
+        ]
+        assert len(fs_findings) == 1
+        assert fs_findings[0].metadata["line_count"] == 600
+
+    def test_file_sizes_in_full_pipeline(self, tmp_path: Path) -> None:
+        """FileSizesAnalyzer works alongside complexity & exceptions."""
+        # Large file that is also complex
+        code = "x = 1\n" * 600
+        code += (
+            "def tangled(a,b,c,d,e,f,g,h,i,j):\n"
+            "    if a:\n"
+            "        if b:\n"
+            "            if c:\n"
+            "                if d:\n"
+            "                    if e:\n"
+            "                        if f:\n"
+            "                            if g:\n"
+            "                                if h:\n"
+            "                                    if i:\n"
+            "                                        if j:\n"
+            "                                            return 1\n"
+            "    return 0\n"
+        )
+        (tmp_path / "big_complex.py").write_text(code)
+
+        analyzers = [ComplexityAnalyzer(), ExceptionsAnalyzer(), FileSizesAnalyzer(threshold=500)]
+        result = run_scan(tmp_path, analyzers)
+
+        rule_ids = [f.metadata.get("rule_id") for f in result.findings]
+        # Should have both file-size and complexity findings
+        assert any(r.startswith("FS-") for r in rule_ids), "Expected file-size finding"
+        assert any(r.startswith("CX-") for r in rule_ids), "Expected complexity finding"

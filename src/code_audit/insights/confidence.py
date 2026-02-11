@@ -1,9 +1,10 @@
 """Confidence scorer — the single number beginner Vibe Coders see first.
 
 Formula:
-    score = clamp(base − risk_penalty − overwhelm_penalty + recovery_bonus, 0, 100)
+    score = clamp(base − risk_penalty − category_cap − overwhelm_penalty + recovery_bonus, 0, 100)
 
 Constants pulled straight from the copilot-instructions spec.
+Per-category caps ported from the seamless tree for additional safety.
 """
 
 from __future__ import annotations
@@ -44,6 +45,17 @@ _BASE = 78
 # ── recovery bonus (no HIGH/CRITICAL) ───────────────────────────────
 _RECOVERY_BONUS = 5
 
+# ── per-category penalty caps (from seamless scoring) ────────────────
+# Prevents any single finding category from dominating the entire score.
+_CATEGORY_PENALTY_CAP: dict[AnalyzerType, int] = {
+    AnalyzerType.COMPLEXITY: 36,    # max -36  (e.g. 6 × 6)
+    AnalyzerType.EXCEPTIONS: 54,    # max -54  (e.g. 3 × 18 for swallowed)
+    AnalyzerType.SECURITY: 50,
+    AnalyzerType.SAFETY: 40,
+    AnalyzerType.GLOBAL_STATE: 30,
+    AnalyzerType.DEAD_CODE: 10,
+}
+
 
 def _clamp(value: float, lo: int, hi: int) -> int:
     return max(lo, min(hi, int(round(value))))
@@ -57,13 +69,21 @@ def compute_confidence(findings: list[Finding]) -> int:
     if not findings:
         return _BASE + _RECOVERY_BONUS  # clean codebase
 
-    # ── risk penalty ─────────────────────────────────────────────
-    risk = 0.0
+    # ── risk penalty (with per-category caps) ────────────────────
+    category_penalty: dict[AnalyzerType, float] = {}
     for f in findings:
         tw = _TYPE_WEIGHT.get(f.type, 1)
         sf = _SEVERITY_FACTOR.get(f.severity, 1.0)
-        risk += tw * sf
-    # cap volume contribution
+        contribution = tw * sf
+        category_penalty[f.type] = category_penalty.get(f.type, 0.0) + contribution
+
+    # Apply per-category caps
+    risk = 0.0
+    for atype, penalty in category_penalty.items():
+        cap = _CATEGORY_PENALTY_CAP.get(atype, 50)
+        risk += min(penalty, cap)
+
+    # Scale by volume ratio
     volume = min(len(findings), _VOLUME_CAP)
     risk_penalty = risk * (volume / _VOLUME_CAP)
 

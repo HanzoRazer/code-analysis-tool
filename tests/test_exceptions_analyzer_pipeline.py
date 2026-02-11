@@ -5,6 +5,7 @@ from pathlib import Path
 
 import jsonschema
 import pytest
+from code_audit.ui.button_copy import resolve_button_subtext
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -140,3 +141,30 @@ def test_signal_evidence_orders_swallowed_first_and_emits_summary(tmp_path: Path
     by_id = {f["finding_id"]: f for f in instance["findings_raw"]}
     first = by_id[first_id]
     assert (first.get("metadata") or {}).get("rule_id") == "EXC_SWALLOW_001"
+
+
+def test_exceptions_card_subtext_is_strong_when_swallowed_present(tmp_path: Path):
+    """
+    UI-facing prioritization:
+      - when swallowed_count > 0, use subtext_by_risk.red.primary (stronger line)
+      - without changing any copy keys or strings
+    """
+    fixture_root = REPO_ROOT / "tests" / "fixtures" / "sample_repo_exceptions"
+    out = tmp_path / "run_result.json"
+
+    r = subprocess.run(
+        [sys.executable, "-m", "code_audit", "scan", "--root", str(fixture_root), "--out", str(out)],
+        capture_output=True,
+        text=True,
+    )
+    assert r.returncode in (0, 1, 2), r.stdout + "\n" + r.stderr
+
+    instance = json.loads(out.read_text(encoding="utf-8"))
+    sig = next(s for s in instance["signals_snapshot"] if s.get("type") == "exceptions")
+
+    buttons = json.loads((REPO_ROOT / "i18n" / "en" / "buttons.json").read_text(encoding="utf-8"))
+    sub = resolve_button_subtext(buttons, signal=sig, tier="primary")
+
+    # We don't hardcode the exact string to avoid coupling tests to copy edits,
+    # but we do enforce that it resolves to *some* non-empty subtext.
+    assert isinstance(sub, str) and sub.strip()

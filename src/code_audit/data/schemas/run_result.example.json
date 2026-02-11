@@ -1,0 +1,109 @@
+{
+  "schema_version": "run_result_v1",
+  "run": {
+    "run_id": "01JEXAMPLE00001",
+    "project_id": "proj_sample_repo",
+    "created_at": "2026-02-10T12:34:56Z",
+    "tool_version": "0.1.0",
+    "engine_version": "engine_v1",
+    "signal_logic_version": "signals_v3",
+    "copy_version": "i18n@a1b2c3d",
+    "config": {
+      "root": ".",
+      "include": ["**/*.py"],
+      "exclude": ["**/.venv/**", "**/node_modules/**"]
+    }
+  },
+  "summary": {
+    "vibe_tier": "yellow",
+    "confidence_score": 71,
+    "counts": {
+      "findings_total": 12,
+      "by_severity": { "low": 7, "medium": 4, "high": 1 },
+      "by_type": { "exceptions": 2, "complexity": 6, "dead_code": 4 }
+    }
+  },
+  "signals_snapshot": [
+    {
+      "signal_id": "sig_8f3c0001",
+      "type": "exceptions",
+      "risk_level": "red",
+      "urgency": "recommended",
+      "title_key": "signals.exceptions.title",
+      "summary_key": "signals.exceptions.summary",
+      "why_key": "signals.exceptions.why",
+      "action": {
+        "text_key": "signals.exceptions.action.text",
+        "urgency": "recommended"
+      },
+      "footer_key": "signals.exceptions.footer",
+      "footer_icon_key": "signals.exceptions.footer_icon",
+      "button_context": "exceptions",
+      "evidence": {
+        "finding_ids": ["f_12a00001", "f_77b00002"],
+        "summary": { "swallowed_count": 1, "logged_count": 0 },
+        "primary_location": { "path": "src/app.py", "line_start": 41, "line_end": 68 }
+      }
+    },
+    {
+      "signal_id": "sig_8f3c0002",
+      "type": "complexity",
+      "risk_level": "yellow",
+      "urgency": "optional",
+      "title_key": "signals.complexity.title",
+      "summary_key": "signals.complexity.summary",
+      "why_key": "signals.complexity.why",
+      "action": {
+        "text_key": "signals.complexity.action.text",
+        "urgency": "optional"
+      },
+      "footer_key": "signals.complexity.footer",
+      "footer_icon_key": "signals.complexity.footer_icon",
+      "button_context": "default",
+      "evidence": {
+        "finding_ids": ["f_88b00003"],
+        "summary": { "swallowed_count": 0, "logged_count": 0 },
+        "primary_location": { "path": "src/utils.py", "line_start": 12, "line_end": 95 }
+      }
+    }
+  ],
+  "findings_raw": [
+    {
+      "finding_id": "f_12a00001",
+      "type": "exceptions",
+      "severity": "high",
+      "confidence": 0.9,
+      "message": "Broad except may hide errors",
+      "location": { "path": "src/app.py", "line_start": 52, "line_end": 59 },
+      "fingerprint": "sha256:a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+      "snippet": "try:\n    process_data()\nexcept Exception:\n    pass",
+      "metadata": { "rule_id": "EXC_BROAD_001" }
+    },
+    {
+      "finding_id": "f_77b00002",
+      "type": "exceptions",
+      "severity": "medium",
+      "confidence": 0.85,
+      "message": "Caught exception is silently ignored",
+      "location": { "path": "src/app.py", "line_start": 62, "line_end": 68 },
+      "fingerprint": "sha256:b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3",
+      "snippet": "except ValueError:\n    pass",
+      "metadata": { "rule_id": "EXC_SILENT_002" }
+    },
+    {
+      "finding_id": "f_88b00003",
+      "type": "complexity",
+      "severity": "medium",
+      "confidence": 0.75,
+      "message": "Function has cyclomatic complexity of 14",
+      "location": { "path": "src/utils.py", "line_start": 12, "line_end": 95 },
+      "fingerprint": "sha256:c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4",
+      "snippet": "def process_all(items):\n    for item in items:\n        if item.type == ...",
+      "metadata": { "rule_id": "CX_HIGH_001" }
+    }
+  ],
+  "artifacts": {
+    "redactions_applied": false,
+    "snippet_policy": "truncated"
+  }
+}

@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
 from .analyzers.exceptions import analyze_exceptions
+from .contracts.load import validate_instance
 
 Severity = Literal["info", "low", "medium", "high", "critical"]
 RiskLevel = Literal["green", "yellow", "red"]
@@ -226,6 +227,9 @@ def build_run_result(
     engine_version: str = "engine_v1",
     signal_logic_version: str = "signals_v1",
     copy_version: str = "i18n@dev",
+    # Testing hooks for golden-fixture determinism
+    _run_id: str | None = None,
+    _created_at: str | None = None,
 ) -> Dict[str, Any]:
     """Build a complete run-result dict that validates against the schema.
 
@@ -258,9 +262,9 @@ def build_run_result(
     run: Dict[str, Any] = {
         "schema_version": "run_result_v1",
         "run": {
-            "run_id": str(uuid.uuid4()),
+            "run_id": _run_id or str(uuid.uuid4()),
             "project_id": project_id,
-            "created_at": datetime.now(timezone.utc).isoformat(),
+            "created_at": _created_at or datetime.now(timezone.utc).isoformat(),
             "tool_version": tool_version,
             "engine_version": engine_version,
             "signal_logic_version": signal_logic_version,
@@ -278,5 +282,8 @@ def build_run_result(
             "note": "MVP: exceptions analyzer wired; more analyzers will be added incrementally.",
         },
     }
+
+    # Runtime schema validation
+    validate_instance(run, "run_result.schema.json")
 
     return run

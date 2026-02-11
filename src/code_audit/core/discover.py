@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Iterator
 
 # Default exclusion prefixes (relative to scan root).
 _DEFAULT_EXCLUDES = frozenset(
@@ -21,6 +23,56 @@ _DEFAULT_EXCLUDES = frozenset(
         ".ruff_cache",
     }
 )
+
+_DEFAULT_IGNORE_FILES = frozenset({".DS_Store"})
+
+
+@dataclass(frozen=True)
+class DiscoverConfig:
+    """Configuration for file discovery, ported from the seamless tree.
+
+    All parameters are optional and have sensible defaults.
+    """
+
+    root: Path = field(default_factory=lambda: Path("."))
+    include_exts: tuple[str, ...] = (".py",)
+    ignore_dirs: frozenset[str] = _DEFAULT_EXCLUDES
+    ignore_files: frozenset[str] = _DEFAULT_IGNORE_FILES
+    follow_symlinks: bool = False
+    max_file_bytes: int = 2_000_000  # 2 MB safety limit
+
+
+def iter_source_files(cfg: DiscoverConfig) -> Iterator[Path]:
+    """Yield source files under *cfg.root* respecting all exclusion rules.
+
+    This is the iterator-based API matching the seamless tree.
+    """
+    root = cfg.root
+    if not root.exists():
+        return
+    for p in root.rglob("*"):
+        try:
+            if p.is_symlink() and not cfg.follow_symlinks:
+                continue
+            if p.is_dir():
+                continue
+            if not p.is_file():
+                continue
+            if p.name in cfg.ignore_files:
+                continue
+            if p.suffix.lower() not in cfg.include_exts:
+                continue
+            # skip if any parent is in ignore_dirs
+            if any(part in cfg.ignore_dirs for part in p.relative_to(root).parts):
+                continue
+            try:
+                if p.stat().st_size > cfg.max_file_bytes:
+                    continue
+            except OSError:
+                continue
+            yield p.resolve()
+        except OSError:
+            continue
 
 
 def discover_py_files(

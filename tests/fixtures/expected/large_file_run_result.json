@@ -1,0 +1,86 @@
+{
+  "artifacts": {
+    "redactions_applied": false,
+    "snippet_policy": "truncated"
+  },
+  "findings_raw": [
+    {
+      "confidence": 1.0,
+      "finding_id": "fs_0e4e6f22_0000",
+      "fingerprint": "sha256:0e4e6f2298b8b8888018750871f80c704329c3e7d00e710203b292f13cf79e14",
+      "location": {
+        "line_end": 514,
+        "line_start": 1,
+        "path": "src\\app.py"
+      },
+      "message": "File has 514 lines (threshold: 500, over by: 14)",
+      "metadata": {
+        "line_count": 514,
+        "over_by": 14,
+        "rule_id": "FS-MOD-001",
+        "threshold": 500
+      },
+      "severity": "medium",
+      "snippet": "src\\app.py: 514 lines (+14 over threshold)",
+      "type": "complexity"
+    }
+  ],
+  "run": {
+    "config": {
+      "exclude": [],
+      "include": [
+        "**/*.py"
+      ]
+    },
+    "copy_version": "i18n@dev",
+    "created_at": "2026-02-11T00:00:00+00:00",
+    "engine_version": "engine_v1",
+    "project_id": "",
+    "run_id": "00000000-0000-0000-0000-000000000000",
+    "signal_logic_version": "signals_v1",
+    "tool_version": "0.1.0"
+  },
+  "schema_version": "run_result_v1",
+  "signals_snapshot": [
+    {
+      "action": {
+        "text_key": "signal.complexity.FS-MOD-001.action",
+        "urgency": "recommended"
+      },
+      "evidence": {
+        "finding_ids": [
+          "fs_0e4e6f22_0000"
+        ],
+        "primary_location": {
+          "line_end": 514,
+          "line_start": 1,
+          "path": "src\\app.py"
+        },
+        "summary": {
+          "logged_count": 0,
+          "swallowed_count": 0
+        }
+      },
+      "risk_level": "yellow",
+      "signal_id": "sig_sha256:0e4e6f229",
+      "summary_key": "signal.complexity.FS-MOD-001.summary",
+      "title_key": "signal.complexity.FS-MOD-001.title",
+      "type": "complexity",
+      "urgency": "recommended",
+      "why_key": "signal.complexity.FS-MOD-001.why"
+    }
+  ],
+  "summary": {
+    "confidence_score": 83,
+    "counts": {
+      "by_severity": {
+        "medium": 1
+      },
+      "by_type": {
+        "complexity": 1
+      },
+      "findings_total": 1
+    },
+    "vibe_tier": "green"
+  }
+}

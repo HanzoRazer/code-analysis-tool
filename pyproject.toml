@@ -8,10 +8,13 @@ requires-python = ">=3.11"
 code-audit = "code_audit.__main__:main"
 
 [tool.setuptools]
-py-modules = []
+package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+code_audit = ["data/**/*"]
 
 [project.optional-dependencies]
 dev = [
@@ -68,3 +71,14 @@ norecursedirs = [
 
 # Make imports predictable — src layout
 pythonpath = [".", "src"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
+force-sort-within-sections = true

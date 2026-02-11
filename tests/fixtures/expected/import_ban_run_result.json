@@ -1,0 +1,84 @@
+{
+  "artifacts": {
+    "redactions_applied": false,
+    "snippet_policy": "truncated"
+  },
+  "findings_raw": [
+    {
+      "confidence": 0.99,
+      "finding_id": "ib_38d31713_0000",
+      "fingerprint": "sha256:38d31713c1590587334a201d4b005e095d2baf7d3d3455734cd4d04bcb6b0f70",
+      "location": {
+        "line_end": 7,
+        "line_start": 7,
+        "path": "banned_imports.py"
+      },
+      "message": "Banned import 'app._experimental.ai_core' \u2014 migrate to the canonical path",
+      "metadata": {
+        "banned_module": "app._experimental.ai_core",
+        "rule_id": "GOV-IMPORT-BAN"
+      },
+      "severity": "high",
+      "snippet": "from app._experimental.ai_core import ModelRunner",
+      "type": "security"
+    }
+  ],
+  "run": {
+    "config": {
+      "exclude": [],
+      "include": [
+        "**/*.py"
+      ]
+    },
+    "copy_version": "i18n@dev",
+    "created_at": "2026-02-11T00:00:00+00:00",
+    "engine_version": "engine_v1",
+    "project_id": "",
+    "run_id": "00000000-0000-0000-0000-000000000000",
+    "signal_logic_version": "signals_v1",
+    "tool_version": "0.1.0"
+  },
+  "schema_version": "run_result_v1",
+  "signals_snapshot": [
+    {
+      "action": {
+        "text_key": "signal.security.GOV-IMPORT-BAN.action",
+        "urgency": "important"
+      },
+      "evidence": {
+        "finding_ids": [
+          "ib_38d31713_0000"
+        ],
+        "primary_location": {
+          "line_end": 7,
+          "line_start": 7,
+          "path": "banned_imports.py"
+        },
+        "summary": {
+          "logged_count": 0,
+          "swallowed_count": 0
+        }
+      },
+      "risk_level": "red",
+      "signal_id": "sig_sha256:38d31713c",
+      "summary_key": "signal.security.GOV-IMPORT-BAN.summary",
+      "title_key": "signal.security.GOV-IMPORT-BAN.title",
+      "type": "security",
+      "urgency": "important",
+      "why_key": "signal.security.GOV-IMPORT-BAN.why"
+    }
+  ],
+  "summary": {
+    "confidence_score": 77,
+    "counts": {
+      "by_severity": {
+        "high": 1
+      },
+      "by_type": {
+        "security": 1
+      },
+      "findings_total": 1
+    },
+    "vibe_tier": "red"
+  }
+}

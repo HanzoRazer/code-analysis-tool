@@ -1,0 +1,83 @@
+{
+  "artifacts": {
+    "redactions_applied": false,
+    "snippet_policy": "truncated"
+  },
+  "findings_raw": [
+    {
+      "confidence": 0.85,
+      "finding_id": "exc_cefc9fa1_0000",
+      "fingerprint": "sha256:cefc9fa1ccba22624a8f7b9f77c443a86e26415ae66d768a69d477209441d1da",
+      "location": {
+        "line_end": 27,
+        "line_start": 26,
+        "path": "src\\app.py"
+      },
+      "message": "Exception is caught and silently ignored",
+      "metadata": {
+        "rule_id": "EXC-SWALLOW-001"
+      },
+      "severity": "high",
+      "snippet": "except Exception:\n    pass",
+      "type": "exceptions"
+    }
+  ],
+  "run": {
+    "config": {
+      "exclude": [],
+      "include": [
+        "**/*.py"
+      ]
+    },
+    "copy_version": "i18n@dev",
+    "created_at": "2026-02-11T00:00:00+00:00",
+    "engine_version": "engine_v1",
+    "project_id": "",
+    "run_id": "00000000-0000-0000-0000-000000000000",
+    "signal_logic_version": "signals_v1",
+    "tool_version": "0.1.0"
+  },
+  "schema_version": "run_result_v1",
+  "signals_snapshot": [
+    {
+      "action": {
+        "text_key": "signal.exceptions.EXC-SWALLOW-001.action",
+        "urgency": "important"
+      },
+      "evidence": {
+        "finding_ids": [
+          "exc_cefc9fa1_0000"
+        ],
+        "primary_location": {
+          "line_end": 27,
+          "line_start": 26,
+          "path": "src\\app.py"
+        },
+        "summary": {
+          "logged_count": 0,
+          "swallowed_count": 0
+        }
+      },
+      "risk_level": "red",
+      "signal_id": "sig_sha256:cefc9fa1c",
+      "summary_key": "signal.exceptions.EXC-SWALLOW-001.summary",
+      "title_key": "signal.exceptions.EXC-SWALLOW-001.title",
+      "type": "exceptions",
+      "urgency": "important",
+      "why_key": "signal.exceptions.EXC-SWALLOW-001.why"
+    }
+  ],
+  "summary": {
+    "confidence_score": 77,
+    "counts": {
+      "by_severity": {
+        "high": 1
+      },
+      "by_type": {
+        "exceptions": 1
+      },
+      "findings_total": 1
+    },
+    "vibe_tier": "red"
+  }
+}
