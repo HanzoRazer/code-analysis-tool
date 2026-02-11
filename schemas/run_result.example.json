@@ -41,6 +41,7 @@
       "button_context": "exceptions",
       "evidence": {
         "finding_ids": ["f_12a00001", "f_77b00002"],
+        "summary": { "swallowed_count": 1, "logged_count": 0 },
         "primary_location": { "path": "src/app.py", "line_start": 41, "line_end": 68 }
       }
     },
@@ -61,6 +62,7 @@
       "button_context": "default",
       "evidence": {
         "finding_ids": ["f_88b00003"],
+        "summary": { "swallowed_count": 0, "logged_count": 0 },
         "primary_location": { "path": "src/utils.py", "line_start": 12, "line_end": 95 }
       }
     }

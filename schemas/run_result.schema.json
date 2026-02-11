@@ -89,12 +89,21 @@
         "evidence": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["finding_ids"],
+          "required": ["finding_ids", "summary"],
           "properties": {
             "finding_ids": {
               "type": "array",
               "minItems": 1,
               "items": { "type": "string" }
+            },
+            "summary": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["swallowed_count", "logged_count"],
+              "properties": {
+                "swallowed_count": { "type": "integer", "minimum": 0 },
+                "logged_count": { "type": "integer", "minimum": 0 }
+              }
             },
             "primary_location": {
               "type": "object",
