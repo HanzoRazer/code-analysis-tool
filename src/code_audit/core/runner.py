@@ -13,6 +13,13 @@ from code_audit.insights.translator import findings_to_signals
 from code_audit.model import RiskLevel
 from code_audit.model.finding import Finding
 from code_audit.model.run_result import RunResult
+from code_audit.utils.determinism import (
+    is_ci_mode,
+    deterministic_timestamp,
+    deterministic_run_id,
+    sort_findings,
+    sort_signals,
+)
 
 if TYPE_CHECKING:
     from code_audit.analyzers.base import Analyzer
@@ -26,6 +33,7 @@ def run_scan(
     config: dict | None = None,
     out_dir: Path | None = None,
     emit_signals_path: str | None = None,
+    ci_mode: bool = False,
     # Testing hooks for golden-fixture determinism
     _run_id: str | None = None,
     _created_at: str | None = None,
@@ -83,11 +91,16 @@ def run_scan(
         findings=all_findings,
         signals_snapshot=signals,
     )
-    # Inject deterministic values for golden-fixture testing
+    # Inject deterministic values for golden-fixture testing or CI mode
+    effective_ci = ci_mode or is_ci_mode()
     if _run_id is not None:
         object.__setattr__(result, "run_id", _run_id)
+    elif effective_ci:
+        object.__setattr__(result, "run_id", deterministic_run_id(root, ci_mode=True))
     if _created_at is not None:
         object.__setattr__(result, "created_at", _created_at)
+    elif effective_ci:
+        object.__setattr__(result, "created_at", deterministic_timestamp(ci_mode=True))
 
     # ── 5. validate output against schema ─────────────────────────────
     result_dict = result.to_dict()

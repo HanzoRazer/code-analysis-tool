@@ -1,0 +1,30 @@
+{
+  "schema_version": "signals_latest_v1",
+  "run_id": "01JEXAMPLE00001",
+  "computed_at": "2026-02-10T14:00:00Z",
+  "signal_logic_version": "signals_v4",
+  "copy_version": "i18n@d4e5f6g",
+  "experiment": {
+    "id": "exp_signal_rank_02",
+    "variant": "B"
+  },
+  "signals": [
+    {
+      "signal_id": "sig_latest_0001",
+      "type": "complexity+exceptions",
+      "risk_level": "red",
+      "urgency": "recommended",
+      "copy": {
+        "title_key": "compounds.complexity+exceptions.title",
+        "summary_key": "compounds.complexity+exceptions.summary",
+        "why_key": "compounds.complexity+exceptions.why",
+        "action_text_key": "compounds.complexity+exceptions.action.text"
+      },
+      "evidence": {
+        "finding_ids": ["f_12a00001", "f_88b00003"],
+        "summary": { "swallowed_count": 1, "logged_count": 0 },
+        "primary_location": { "path": "src/app.py", "line_start": 41, "line_end": 68 }
+      }
+    }
+  ]
+}

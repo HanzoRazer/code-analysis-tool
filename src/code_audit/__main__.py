@@ -135,6 +135,13 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--max-file-lines", type=int, default=400)
     p.add_argument("--max-func-lines", type=int, default=60)
+    p.add_argument(
+        "--ci", "--deterministic",
+        dest="ci_mode",
+        action="store_true",
+        default=False,
+        help="Enable deterministic output for CI reproducibility (fixed timestamps, stable IDs, sorted output).",
+    )
 
     # ── scan subcommand (functional pipeline) ───────────────────────
     scan_p = sub.add_parser(
@@ -457,8 +464,23 @@ def _build_parser() -> argparse.ArgumentParser:
     debt_snap_p.add_argument("debt_path", type=Path, help="Root directory to scan.")
     debt_snap_p.add_argument(
         "--name",
-        required=True,
-        help="Snapshot name (e.g. 'baseline', 'sprint-42').",
+        required=False,
+        default=None,
+        help="Snapshot name. Required unless --out is used.",
+    )
+    debt_snap_p.add_argument(
+        "--out",
+        dest="snapshot_out",
+        type=Path,
+        default=None,
+        help="Write snapshot to FILE (CI-friendly, bypasses registry).",
+    )
+    debt_snap_p.add_argument(
+        "--ci",
+        dest="ci_mode",
+        action="store_true",
+        default=False,
+        help="Deterministic mode: fixed timestamps, sorted output.",
     )
     debt_snap_p.add_argument(
         "--registry-dir",
@@ -477,7 +499,21 @@ def _build_parser() -> argparse.ArgumentParser:
     debt_cmp_p.add_argument(
         "--baseline",
         required=True,
-        help="Name of the baseline snapshot to compare against.",
+        help="Baseline: snapshot name or path to JSON file.",
+    )
+    debt_cmp_p.add_argument(
+        "--current",
+        dest="current_file",
+        type=Path,
+        default=None,
+        help="Current snapshot file. If omitted, scans debt_path live.",
+    )
+    debt_cmp_p.add_argument(
+        "--ci",
+        dest="ci_mode",
+        action="store_true",
+        default=False,
+        help="Deterministic mode: stable output ordering.",
     )
     debt_cmp_p.add_argument(
         "--registry-dir",
@@ -1211,8 +1247,33 @@ def _handle_debt(args: argparse.Namespace) -> int:
 
     if args.debt_command == "snapshot":
         from code_audit.strangler.debt_registry import DebtRegistry
+        from code_audit.utils.determinism import deterministic_timestamp, sort_debt_items
+
+        # Validate: need either --name or --out
+        if not args.name and not getattr(args, "snapshot_out", None):
+            print("error: --name or --out required for snapshot", file=sys.stderr)
+            return 2
 
         debt_items = detector.detect(target, files)
+        # Sort for determinism
+        debt_items = sort_debt_items(debt_items)
+
+        # --out mode: write directly to file (CI-friendly)
+        if getattr(args, "snapshot_out", None):
+            out_path: Path = args.snapshot_out
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            ts = deterministic_timestamp(ci_mode=getattr(args, "ci_mode", False))
+            data = {
+                "schema_version": "debt_snapshot_v1",
+                "created_at": ts,
+                "debt_count": len(debt_items),
+                "items": [d.to_dict() for d in debt_items],
+            }
+            out_path.write_text(json.dumps(data, indent=2, default=str) + "\n", encoding="utf-8")
+            print(f"Snapshot written ({len(debt_items)} items) → {out_path}", file=sys.stderr)
+            return 0
+
+        # Registry mode (original behavior)
         reg_dir = args.registry_dir or (target / ".debt_snapshots")
         registry = DebtRegistry(reg_dir)
         path = registry.save_snapshot(args.name, debt_items)
@@ -1224,18 +1285,57 @@ def _handle_debt(args: argparse.Namespace) -> int:
 
     if args.debt_command == "compare":
         from code_audit.strangler.debt_registry import DebtRegistry
+        from code_audit.model.debt_instance import DebtInstance, DebtType, make_debt_fingerprint
 
-        debt_items = detector.detect(target, files)
-        reg_dir = args.registry_dir or (target / ".debt_snapshots")
-        registry = DebtRegistry(reg_dir)
-        try:
-            baseline_items = registry.load_snapshot(args.baseline)
-        except FileNotFoundError:
-            print(
-                f"error: baseline snapshot '{args.baseline}' not found in {reg_dir}",
-                file=sys.stderr,
-            )
-            return 2
+        # Load baseline (file path or registry name)
+        baseline_path = Path(args.baseline)
+        if baseline_path.exists() and baseline_path.is_file():
+            # Load from file directly
+            data = json.loads(baseline_path.read_text(encoding="utf-8"))
+            baseline_items = [
+                DebtInstance(
+                    debt_type=DebtType(raw["debt_type"]),
+                    path=raw["path"],
+                    symbol=raw["symbol"],
+                    line_start=raw["line_start"],
+                    line_end=raw["line_end"],
+                    metrics=raw.get("metrics", {}),
+                    strategy=raw.get("strategy", ""),
+                    fingerprint=raw.get("fingerprint", make_debt_fingerprint(raw["debt_type"], raw["path"], raw["symbol"])),
+                )
+                for raw in data.get("items", [])
+            ]
+        else:
+            # Load from registry
+            reg_dir = args.registry_dir or (target / ".debt_snapshots")
+            registry = DebtRegistry(reg_dir)
+            try:
+                baseline_items = registry.load_snapshot(args.baseline)
+            except FileNotFoundError:
+                print(
+                    f"error: baseline snapshot '{args.baseline}' not found",
+                    file=sys.stderr,
+                )
+                return 2
+
+        # Load current (file or live scan)
+        if getattr(args, "current_file", None):
+            data = json.loads(args.current_file.read_text(encoding="utf-8"))
+            debt_items = [
+                DebtInstance(
+                    debt_type=DebtType(raw["debt_type"]),
+                    path=raw["path"],
+                    symbol=raw["symbol"],
+                    line_start=raw["line_start"],
+                    line_end=raw["line_end"],
+                    metrics=raw.get("metrics", {}),
+                    strategy=raw.get("strategy", ""),
+                    fingerprint=raw.get("fingerprint", make_debt_fingerprint(raw["debt_type"], raw["path"], raw["symbol"])),
+                )
+                for raw in data.get("items", [])
+            ]
+        else:
+            debt_items = detector.detect(target, files)
 
         diff = DebtRegistry.compare(baseline_items, debt_items)
 
@@ -1281,6 +1381,12 @@ def _handle_debt(args: argparse.Namespace) -> int:
 def main(argv: list[str] | None = None) -> int:
     """Entry-point — returns an exit code (0 = green, 1 = yellow, 2 = red)."""
     args = _build_parser().parse_args(argv)
+
+    # ── Enable deterministic mode if requested ──────────────────────────
+    if getattr(args, 'ci_mode', False):
+        from code_audit.utils.determinism import set_ci_mode, seed_random
+        set_ci_mode(True)
+        seed_random(ci_mode=True)
 
     # ── validate subcommand ─────────────────────────────────────────
     if args.command == "validate":
@@ -1409,6 +1515,7 @@ def main(argv: list[str] | None = None) -> int:
         root=target if target.is_dir() else target.parent,
         analyzers=analyzers,
         project_id=args.project_id or "",
+        ci_mode=getattr(args, 'ci_mode', False),
     )
 
     result_dict = result.to_dict()
