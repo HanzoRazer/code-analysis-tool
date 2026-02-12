@@ -1356,6 +1356,17 @@ def main(argv: list[str] | None = None) -> int:
 
         # Optionally emit signals_latest.json alongside
         if args.emit_signals:
+
+            emit_rel = Path(args.emit_signals)
+            if emit_rel.is_absolute():
+                print("error: --emit-signals must be a relative path under --out", file=sys.stderr)
+                return 2
+            # Prevent path traversal (keep companion artifacts co-located)
+            resolved = (out_path.parent / emit_rel).resolve()
+            out_root = out_path.parent.resolve()
+            if out_root not in resolved.parents and resolved != out_root:
+                print("error: --emit-signals must stay within the --out directory", file=sys.stderr)
+                return 2
             from datetime import datetime, timezone
 
             signals_latest = {
@@ -1373,8 +1384,8 @@ def main(argv: list[str] | None = None) -> int:
             )
 
         _print_human(result_dict)
-        score = result_dict.get("summary", {}).get("confidence_score", 0)
-        return _exit_code_from_score(score)
+        tier = result_dict.get("summary", {}).get("vibe_tier", "red")
+        return {"green": 0, "yellow": 1, "red": 2}.get(str(tier), 2)
 
     # ── default positional-path mode (class-based pipeline) ─────────
     if args.path is None:
