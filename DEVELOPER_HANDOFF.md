@@ -2,7 +2,7 @@
 
 **Date:** 2026-02-11  
 **Package:** `code_audit` (formerly `code_analysis_tool`)  
-**Status:** All 348 tests passing on Python 3.13
+**Status:** All 379 tests passing on Python 3.13
 
 ---
 
@@ -46,9 +46,10 @@ The expanded tool is a **continuous code health platform**:
 | Trend analysis | No | **Historical sparklines, direction detection (improving / worsening / stable)** |
 | ML-based prediction | No | **Heuristic bug predictor, structural code clustering (stdlib k-means)** |
 | CLI subcommands | 1 (`scan`) | **14 top-level subcommands (21 distinct operations)** |
-| Test coverage | ~30 tests | **348 tests across 17 test files** |
+| Test coverage | ~30 tests | **379 tests across 29 test files** |
 
 | UI-facing prioritization | No | **Button subtext risk-level softening based on signal evidence** |
+| CI determinism | No | **--ci flag on debt snapshot/compare: fixed timestamps, sorted output, ratchet CI workflow** |
 
 The key shift: **from a read-only scorer to a platform that tracks state, enforces policy, predicts risk, and drives UI decisions.**
 
@@ -207,11 +208,11 @@ code_analysis_tool/
 └── signals/engine.py         # signal translation
 ```
 
-### 4.2 Current Package (12 subpackages, 30+ modules)
+### 4.2 Current Package (13 subpackages, 48 modules)
 
 ```
 code_audit/
-├── __main__.py               # 1420-line CLI with 14 subcommands (21 operations)
+├── __main__.py               # 1570-line CLI with 14 subcommands (21 operations)
 │
 ├── model/                    # ★ NEW — formal domain model
 │   ├── finding.py, run_result.py, debt_instance.py, fence.py
@@ -264,6 +265,9 @@ code_audit/
 │   └── button_copy.py        # subtext risk-level softening
 │
 └── utils/                    # ★ NEW — shared utilities
+    ├── __init__.py           # re-exports parse_truth_map, ExitCode, stable_json_*
+    ├── exit_codes.py         # ExitCode enum (SUCCESS=0, VIOLATION=1, ERROR=2)
+    ├── json_norm.py          # stable_json_dumps / stable_json_dump (canonical serializer)
     └── parse_truth_map.py    # ENDPOINT_TRUTH_MAP.md parser
 ```
 
@@ -315,7 +319,7 @@ code-analysis-tool scan --root <dir> --out <dir>
 | `test_cbsp21_schema.py` | 2 | CBSP21 patch input schema validation |
 | `test_copy_lint_smoke.py` | 1 | i18n copy lint smoke |
 | `test_copy_lint_vibe_saas.py` | 4 | Copy lint Vibe SaaS rules |
-| `test_data_model_schemas.py` | 17 | Schema validation for all JSON schemas |
+| `test_data_model_schemas.py` | 20 | Schema validation for all JSON schemas (incl. debt_snapshot) |
 | `test_golden_fixtures.py` | 14 | Golden output regression |
 | `test_run_result_schema.py` | 2 | RunResult schema compliance |
 | `test_exceptions_analyzer_pipeline.py` | 4 | Exception analyzer integration + UI subtext |
@@ -329,9 +333,20 @@ code-analysis-tool scan --root <dir> --out <dir>
 | `test_supporting_modules.py` | 57 | Feature hunt, SDK boundary, truth map tests |
 | `test_phase7.py` | 81 | Trend, exporters, dashboard, ML modules, CLI |
 | `test_ui_button_subtext_prioritization.py` | 2 | UI subtext risk-level softening |
-| **Total** | **348** | |
+| `test_debt_snapshot_ci.py` | 2 | Deterministic debt snapshot + file-vs-file compare |
+| `test_cli_deterministic_snapshot_subprocess.py` | 1 | Byte-identical --ci snapshot via subprocess |
+| `test_exit_code_contract.py` | 5 | CLI exit code contract via subprocess (validate + debt compare) |
+| `test_exit_codes_contract.py` | 8 | CLI exit code contract (0/1/2 semantics) |
+| `test_json_norm.py` | 4 | Canonical JSON serialization layer |
+| `test_no_direct_json_dump_in_supported_paths.py` | 1 | Guardrail: no raw json.dump in supported paths |
+| `test_debt_snapshot_schema_version_enforcement.py` | 3 | schema_version enforcement on debt compare load paths |
+| `test_cli_ratchet_compare_violation_subprocess.py` | 1 | End-to-end ratchet violation via subprocess |
+| `test_cli_scan_deterministic_subprocess.py` | 1 | Byte-identical scan --ci output via subprocess |
+| `test_cli_default_positional_deterministic_subprocess.py` | 1 | Byte-identical default path --ci --json output via subprocess |
+| `test_cli_requires_ci_flag_under_ci_env.py` | 1 | CI-guard enforcement: exact stderr message assertion for debt snapshot under CI=true |
+| **Total** | **379** | |
 
-Original test count: ~30. Current: **348** (11.6x increase).
+Original test count: ~30. Current: **379** (12.6x increase).
 
 Note: `test_exceptions_analyzer_pipeline.py` was expanded from 3 → 4 tests to include a UI integration test verifying that button subtext resolves correctly for exception signals with swallowed errors.
 
@@ -396,6 +411,141 @@ This makes it safe to change presentation logic without risk of breaking analysi
 
 The package was renamed from `code_analysis_tool` to `code_audit` during the port. The entry point changed from `code-analysis-tool` to `code-audit`. The `pyproject.toml` `[project.scripts]` reflects this.
 
+### 7.7 CI Ratchet & Determinism
+
+The `debt snapshot` and `debt compare` subcommands support a `--ci` flag for **deterministic output** suitable for CI ratchet gates:
+
+| Concern | Non-CI | --ci Mode |
+|---|---|---|
+| Timestamps | `datetime.now(UTC).isoformat()` | `"2000-01-01T00:00:00+00:00"` |
+| Output order | Insertion order | Sorted by `(path, line_start, symbol, fingerprint)` |
+| JSON keys | Insertion order | `sort_keys=True` |
+| Paths | POSIX-normalized (`.as_posix()` in all analyzers) | Same |
+
+**Ratchet workflow** (`.github/workflows/ratchet.yml`):
+1. Fail-fast: baseline file must exist (actionable error message if missing)
+2. `code-audit validate baselines/main.json debt_snapshot.schema.json` (fail-fast)
+3. `code-audit debt snapshot . --ci --out artifacts/current.json`
+4. `code-audit validate artifacts/current.json debt_snapshot.schema.json` (fail-fast)
+5. `code-audit debt compare . --baseline ... --current ... --ci --json > artifacts/compare.json`
+6. Exit 1 if new debt introduced → PR blocked
+7. **Sticky PR comment** summarizing ratchet outcome (new/resolved/unchanged + Top 5 new debt items + Top 3 resolved debt + run-locally hint on failure)
+
+**Debt snapshot schema** (`schemas/debt_snapshot.schema.json`): Formalizes the debt snapshot format with `schema_version`, `created_at`, `debt_count`, and `items[]` (each requiring `debt_type`, `path`, `symbol`, `line_start`, `line_end`, `metrics`, `strategy`, `fingerprint`).
+
+**Baseline** lives at `baselines/main.json` (committed, owned by `@HanzoRazer` via CODEOWNERS).
+
+**Path normalization**: All analyzers use `path.relative_to(root).as_posix()` for cross-platform consistency. `make_fingerprint()` also normalizes backslashes as a safety net. Golden fixtures are therefore identical on Windows, macOS, and Linux.
+
+### 7.8 Exit Code Contract
+
+All CLI commands use a centralized `ExitCode` enum (`src/code_audit/utils/exit_codes.py`):
+
+| Code | Constant | Meaning |
+|:---:|---|---|
+| 0 | `ExitCode.SUCCESS` | No violations detected |
+| 1 | `ExitCode.VIOLATION` | Policy / contract failure (debt found, fence tripped, etc.) |
+| 2 | `ExitCode.ERROR` | Usage error, missing file, runtime failure |
+
+Zero bare `return 0/1/2` literals remain in `__main__.py` — every return site references the enum, preventing accidental drift.
+
+### 7.9 Canonical JSON Serialization
+
+All JSON output flows through `stable_json_dumps()` / `stable_json_dump()` in `src/code_audit/utils/json_norm.py`:
+
+- **Sorted keys** (`sort_keys=True`) — deterministic key order
+- **Trailing newline** — POSIX-compliant file endings
+- **Path normalization** — `Path` objects → `.as_posix()` automatically
+- **Dataclass conversion** — `@dataclass` → `dict` via `dataclasses.asdict()`
+- **CI float rounding** — optional 4-digit rounding in `ci_mode=True`
+- **No `default=str`** — explicit type conversion prevents silent serialization bugs
+
+Wired into: `__main__.py` (all 12 JSON emit sites), `runner.py`, `debt_registry.py`, `exporters.py`, `trend_analysis.py`.
+
+A guardrail test (`test_no_direct_json_dump_in_supported_paths.py`) scans supported command files for raw `json.dump`/`json.dumps` calls and fails if any are found — preventing silent format drift.
+
+### 7.10 Path Traversal Guards
+
+In CI environments (`GITHUB_ACTIONS=true` or `CI=true`), all `--out` and `--emit-signals` paths are validated by `_reject_unsafe_out_path()`:
+
+- **Absolute paths** → rejected
+- **`..` traversal** → rejected
+- **Containment check** → resolved path must stay within `base_dir` (typically `artifacts/`)
+
+This prevents CI jobs from writing outside their expected output directory. The guards are active only when `--ci` is also set, so local development is unaffected.
+
+Sites guarded: `debt snapshot --out`, `scan --out`, `scan --emit-signals`.
+
+### 7.11 Debt Snapshot Schema Version Enforcement
+
+When `debt compare` loads `--baseline` or `--current` from a JSON file, it **requires** `schema_version == "debt_snapshot_v1"`. If the key is missing or wrong, the command exits with code 2 (runtime error) and a clear message. This prevents the ratchet from silently comparing incompatible snapshot formats.
+
+The `validate` command also pre-checks `schema_version` when validating `debt_snapshot.schema.json` instances, surfacing a readable error before the generic jsonschema traceback.
+
+`baselines/main.json` is protected by CODEOWNERS (`@HanzoRazer` review required).
+
+### 7.12 Full-Surface CI Determinism
+
+All three CLI scan surfaces now support `--ci` for deterministic output:
+
+| Surface | Flag | Effect |
+|---|---|---|
+| `code-audit <path> --ci --json` | `--ci` on default parser | Stable `run_id` (content-hash), fixed `created_at`, sorted keys |
+| `code-audit scan --root . --out F --ci` | `--ci` on scan parser | Same — deterministic snapshot artifact |
+| `code-audit debt snapshot . --ci --out F` | `--ci` on debt parser | Same — already existed |
+
+The default positional mode uses a **separate parser** (`_build_default_parser()`) to avoid argparse subparser conflicts where `<path>` is mistaken for a command name.
+
+Deterministic `run_id` is computed as `"ci-" + sha256(sorted_file_paths + sizes)[:12]`, ensuring byte-identical runs if the file tree hasn't changed.
+
+### 7.13 CBSP21 Governance Protocol
+
+Every code upload (drop folder, inline patch, diff) is processed under the **CBSP21 patch manifest protocol** (`cbsp21/patch_input.schema.json`). This prevents under-scanning by requiring:
+
+| Requirement | Enforcement |
+|---|---|
+| **Full file-level diff** | Every file in the upload is read and compared line-by-line against the repo — no filename-only matching |
+| **`diff_articulation.what_changed`** | Itemized list of every discrete change, no matter how small |
+| **`diff_articulation.why_not_redundant`** | Explicit justification; if something already exists, cite the exact location |
+| **`file_context_coverage_percent`** | Must be 100% for code uploads; partial coverage requires documented `out_of_scope_notes` |
+| **`verification.commands_run`** | Actual commands executed, not planned; test results recorded |
+| **Manifest emitted** | A `cbsp21/patch_input.json` conforming to the schema is produced for each upload batch |
+
+**Workflow for every upload:**
+
+1. Receive upload (drop folder, inline patch, or diff)
+2. Read every file in the upload — do not skip or abbreviate
+3. Diff each file against its repo counterpart at the line level
+4. Classify each difference: net-new code, structural pattern, already-applied, or older version
+5. For "already exists" claims — cite the exact file, function, and line where it lives in the repo
+6. Apply all net-new changes
+7. Run full test suite, record results
+8. Emit `cbsp21/patch_input.json` with 100% coverage declaration
+9. Validate manifest against schema
+
+The protocol lives in `cbsp21/` with schema, template, and example.
+
+### 7.14 CI-Guard Enforcement
+
+When the environment signals CI mode (`CI=true/1/yes/on` or `CODE_AUDIT_DETERMINISTIC=1`), supported commands **must** be invoked with `--ci`/`--deterministic` or they exit with code 2 and an actionable error message.
+
+Two helpers in `__main__.py`:
+
+- `_env_requires_ci_mode()` — checks `CODE_AUDIT_DETERMINISTIC` and `CI` env vars
+- `_require_ci_flag(ci_mode, what=...)` — emits error + returns `ExitCode.ERROR` if guard trips
+
+**Guarded surfaces:**
+
+| Surface | Guard location |
+|---|---|
+| `code-audit <path>` | Default positional handler, before path resolution |
+| `code-audit scan --root ...` | Scan subcommand handler, first statement |
+| `code-audit debt scan/snapshot/compare` | Centralized at debt dispatch (`_SUPPORTED_DEBT` set) |
+
+Not guarded: `debt plan` (experimental), `validate`, `fence`, `governance` (read-only / no timestamped output).
+
+This ensures CI pipelines never accidentally produce non-deterministic artifacts.
+
 ---
 
 ## 8. Known Limitations & Future Work
@@ -419,7 +569,7 @@ The package was renamed from `code_analysis_tool` to `code_audit` during the por
 ### Running Tests
 
 ```bash
-python -m pytest tests/ -v          # all 348 tests
+python -m pytest tests/ -v          # all 379 tests
 python -m pytest tests/ -k "phase7" # just Phase 7
 ```
 
@@ -458,4 +608,83 @@ python -m pytest tests/ -k "phase7" # just Phase 7
 | P6 — Supporting Modules | 11-12 | feature_hunt, sdk_boundary, parse_truth_map | 57 |
 | P7 — Reports & ML | 13-14 | trend_analysis, exporters, dashboard, feature_extraction, bug_predictor, code_clustering | 81 |
 | UI Layer | — | ui/button_copy (subtext risk-level softening) | 3 |
-| **Total** | | **30+ modules, 13 subpackages, 14 CLI subcommands (21 ops)** | **348** |
+| CI Ratchet | — | ratchet.yml workflow, baselines/main.json, debt snapshot CI flags, POSIX path normalization | 2 |
+| Exit Code Contract | — | ExitCode enum, magic-int elimination, contract tests | 7 |
+| JSON Normalization | — | stable_json_dumps/dump, wired into all CLI/artifact emitters | 4 |
+| Path Traversal Guards | — | _reject_unsafe_out_path, CI --out containment, subprocess determinism test | 2 |
+| JSON Dump Guardrail | — | Regression test: no raw json.dump in supported paths | 1 |
+| Schema Version Enforcement | — | _require_debt_snapshot_v1, validate_file pre-check, CODEOWNERS baseline guard, ratchet violation test | 5 |
+| CI Determinism (full surface) | — | --ci on default + scan parsers, _build_default_parser, ratchet PR comment, Top 5 new debt, fail-fast | 2 |
+| CI-Guard Enforcement | — | _env_requires_ci_mode, _require_ci_flag, --ci required under CI env for debt/scan/default, Top 5 line numbers | 5→1 |
+| **Total** | | **50 modules, 13 subpackages, 14 CLI subcommands (21 ops)** | **379** |
+
+---
+
+## 11. Independent Evaluation (2026-02-13)
+
+**Evaluator:** Claude Code
+**Overall Score:** 8.4/10
+
+### 11.1 Scoring Summary
+
+| Category | Score | Assessment |
+|----------|-------|------------|
+| **Architecture** | 8.7/10 | Clean layers, Protocol-based analyzers, proper model/core/api separation |
+| **Code Quality** | 8.2/10 | Type hints excellent (96.6%), some functions too large |
+| **Test Coverage** | 8.0/10 | Good ratio (0.62), could add ML module tests |
+| **API/CLI Parity** | 8.5/10 | Mostly delegates to API, governance/report could be APIs |
+| **Design Patterns** | 8.5/10 | Protocol, Registry, frozen dataclasses used well |
+| **Technical Debt** | 8.5/10 | Clean codebase, no TODOs/FIXMEs, deprecated code tracked |
+| **CI/CD** | 9.5/10 | Sophisticated ratchet, determinism handled perfectly |
+| **Type Safety** | 9.2/10 | 96.6% coverage, frozen dataclasses everywhere |
+
+### 11.2 Key Strengths
+
+1. **Immutable Data Structures** — All model objects use `frozen=True, slots=True` → memory-safe, prevents bugs
+2. **Protocol-Based Architecture** — Analyzer protocol enables clean plugin system
+3. **Deterministic CI** — Ratchet workflow with fixed timestamps, sorted output, stable IDs
+4. **Schema Validation** — Every output validated against JSON schema
+5. **Type Coverage** — 96.6% of functions have return type hints
+6. **No Technical Debt Markers** — No TODOs/FIXMEs—clean codebase
+7. **Comprehensive Testing** — 379 tests, unit + integration + schema validation
+
+### 11.3 Issues Found
+
+#### CRITICAL — CLI Monolith
+
+| File | Lines | Issue |
+|------|-------|-------|
+| `__main__.py` | 1,715 | Should be <500 lines |
+| `_build_parser()` | 580 | Single function, hard to test |
+| `_handle_debt()` | 226 | Contains business logic |
+
+#### MEDIUM — API Surface Incomplete
+
+Governance, reports, and inventory call analyzers directly instead of through `api.py`. Third-party tools cannot use these programmatically.
+
+#### LOW — Deprecated Code Path
+
+`run_result.py` (306 lines) marked deprecated but still present alongside `api.py`.
+
+### 11.4 Recommendations (Prioritized)
+
+| Priority | Task | Effort | Impact |
+|----------|------|--------|--------|
+| **HIGH** | Extract CLI into `cli/commands/` submodules | 1-2 days | CLI → 300 lines |
+| **HIGH** | Add `api.governance_audit()`, `api.generate_report()` | 2-3 days | Doubles API surface |
+| **MEDIUM** | Remove deprecated `run_result.py` | 1 day | Eliminates dual paths |
+| **LOW** | Add 8 missing type hints in utils/ | 15 min | 100% coverage |
+| **LOW** | Add ML module tests | 2-3 days | Test ratio 0.62 → 0.68 |
+
+### 11.5 API/CLI Parity Verdict
+
+The **default positional branch is clean** — properly delegates to `_api_scan_project()`. The concern areas are `_handle_governance`, `_handle_inventory`, and `_handle_report` which contain business logic that should be extracted to `api.py`.
+
+### 11.6 Progress Tracking
+
+| Date | Action | Score Change |
+|------|--------|--------------|
+| 2026-02-13 | Initial evaluation | 8.4/10 |
+| | | |
+
+*Update this table as improvements are made.*
