@@ -51,11 +51,12 @@ def test_scan_subcommand_ci_never_calls_tier_label(monkeypatch, tmp_path):
         ),
     )
 
-    # CLI requires --out to be a relative path; chdir to tmp_path first
+    # CLI requires --out to be a relative path within artifacts/ in CI mode
     monkeypatch.chdir(tmp_path)
+    (tmp_path / "artifacts").mkdir(exist_ok=True)
     rc = _mod.main([
         "scan", "--root", ".",
-        "--out", "out.json",
+        "--out", "artifacts/out.json",
         "--ci",
     ])
     assert rc == 0
