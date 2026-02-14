@@ -1,3 +1,7 @@
+> **⚠ HISTORICAL ARTIFACT — Do not treat as current.**
+> Generated against `repo/src` which no longer exists in the current layout.
+> Archived on 2026-02-14. See `src/code_audit/` for the live codebase.
+
 # Rescue Plan
 
 Generated: 2026-02-14T00:19:17.183669
