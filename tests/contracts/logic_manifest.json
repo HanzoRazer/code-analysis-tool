@@ -8,7 +8,7 @@
     },
     {
       "class_name": "DeadCodeAnalyzer",
-      "logic_hash": "sha256:e2b51f7ad1d5e9b1e797d1b7f6e99f0a93a5664768c0255def15f783044d1ccb",
+      "logic_hash": "sha256:a93fe0c72188f4aa8babb5a40a1e09eac1ffdf3dc9f21ac19417edc81d1c8f72",
       "module": "code_audit.analyzers.dead_code",
       "version": "1.0.0"
     },
@@ -32,7 +32,7 @@
     },
     {
       "class_name": "GlobalStateAnalyzer",
-      "logic_hash": "sha256:50c60b686d29e342aef857c8a08888920f80e5b183951fffb83d8ee2a752de83",
+      "logic_hash": "sha256:7e3f085ee8f649b72e91a896c404dffe15b9315c28b6532b5fe7d8918e80b059",
       "module": "code_audit.analyzers.global_state",
       "version": "1.0.0"
     },
@@ -44,7 +44,7 @@
     },
     {
       "class_name": "SecurityAnalyzer",
-      "logic_hash": "sha256:9b67594f208a2e0bf0ab16d840d091d183613a410a83e792607c31ab7ed143dc",
+      "logic_hash": "sha256:22afa25c4c2cd1a186ed0d6d61a5b9a8d443fb53eebb0b6e65945a2ced9873e7",
       "module": "code_audit.analyzers.security",
       "version": "1.0.0"
     }
