@@ -13,6 +13,14 @@ from typing import Optional
 
 from code_audit.model import AnalyzerType, Severity
 from code_audit.model.finding import Finding, Location, make_fingerprint
+from code_audit.rules import (
+    SEC_HARDCODED_SECRET_001,
+    SEC_EVAL_001,
+    SEC_SUBPROCESS_SHELL_001,
+    SEC_SQL_INJECTION_001,
+    SEC_PICKLE_LOAD_001,
+    SEC_YAML_UNSAFE_001,
+)
 
 
 # ── Secret detection patterns ───────────────────────────────────────────
@@ -215,10 +223,10 @@ class SecurityAnalyzer:
             confidence=0.85,
             message=f"Hardcoded secret in variable '{var_name}' — use environment variables",
             location=Location(path=rel, line_start=line_start, line_end=line_end),
-            fingerprint=make_fingerprint("SEC_HARDCODED_SECRET_001", rel, symbol, var_name),
+            fingerprint=make_fingerprint(SEC_HARDCODED_SECRET_001, rel, symbol, var_name),
             snippet=snippet,
             metadata={
-                "rule_id": "SEC_HARDCODED_SECRET_001",
+                "rule_id": SEC_HARDCODED_SECRET_001,
                 "variable_name": var_name,
                 "context": symbol,
             },
@@ -254,10 +262,10 @@ class SecurityAnalyzer:
                     confidence=0.95,
                     message=f"'{func_name}()' can execute arbitrary code — avoid if possible",
                     location=Location(path=rel, line_start=line_start, line_end=line_end),
-                    fingerprint=make_fingerprint("SEC_EVAL_001", rel, symbol, snippet),
+                    fingerprint=make_fingerprint(SEC_EVAL_001, rel, symbol, snippet),
                     snippet=snippet,
                     metadata={
-                        "rule_id": "SEC_EVAL_001",
+                        "rule_id": SEC_EVAL_001,
                         "function": func_name,
                         "context": symbol,
                     },
@@ -310,10 +318,10 @@ class SecurityAnalyzer:
                     confidence=0.90,
                     message=f"'{func_name}' executes commands through the shell — vulnerable to injection",
                     location=Location(path=rel, line_start=line_start, line_end=line_end),
-                    fingerprint=make_fingerprint("SEC_SUBPROCESS_SHELL_001", rel, symbol, snippet),
+                    fingerprint=make_fingerprint(SEC_SUBPROCESS_SHELL_001, rel, symbol, snippet),
                     snippet=snippet,
                     metadata={
-                        "rule_id": "SEC_SUBPROCESS_SHELL_001",
+                        "rule_id": SEC_SUBPROCESS_SHELL_001,
                         "function": func_name,
                         "context": symbol,
                     },
@@ -345,10 +353,10 @@ class SecurityAnalyzer:
                     confidence=0.90,
                     message=f"'{func_name}' with shell=True is vulnerable to command injection",
                     location=Location(path=rel, line_start=line_start, line_end=line_end),
-                    fingerprint=make_fingerprint("SEC_SUBPROCESS_SHELL_001", rel, symbol, snippet),
+                    fingerprint=make_fingerprint(SEC_SUBPROCESS_SHELL_001, rel, symbol, snippet),
                     snippet=snippet,
                     metadata={
-                        "rule_id": "SEC_SUBPROCESS_SHELL_001",
+                        "rule_id": SEC_SUBPROCESS_SHELL_001,
                         "function": func_name,
                         "context": symbol,
                     },
@@ -426,10 +434,10 @@ class SecurityAnalyzer:
                     confidence=0.80,
                     message="SQL query built with string formatting — use parameterized queries",
                     location=Location(path=rel, line_start=line_start, line_end=line_end),
-                    fingerprint=make_fingerprint("SEC_SQL_INJECTION_001", rel, symbol, snippet),
+                    fingerprint=make_fingerprint(SEC_SQL_INJECTION_001, rel, symbol, snippet),
                     snippet=snippet,
                     metadata={
-                        "rule_id": "SEC_SQL_INJECTION_001",
+                        "rule_id": SEC_SQL_INJECTION_001,
                         "context": symbol,
                     },
                 ))
@@ -470,10 +478,10 @@ class SecurityAnalyzer:
                     confidence=0.85,
                     message=f"'{func_name}' can execute arbitrary code — ensure data is trusted",
                     location=Location(path=rel, line_start=line_start, line_end=line_end),
-                    fingerprint=make_fingerprint("SEC_PICKLE_LOAD_001", rel, symbol, snippet),
+                    fingerprint=make_fingerprint(SEC_PICKLE_LOAD_001, rel, symbol, snippet),
                     snippet=snippet,
                     metadata={
-                        "rule_id": "SEC_PICKLE_LOAD_001",
+                        "rule_id": SEC_PICKLE_LOAD_001,
                         "function": func_name,
                         "context": symbol,
                     },
@@ -520,10 +528,10 @@ class SecurityAnalyzer:
                     confidence=0.95,
                     message="'yaml.unsafe_load()' can execute arbitrary code — use yaml.safe_load()",
                     location=Location(path=rel, line_start=line_start, line_end=line_end),
-                    fingerprint=make_fingerprint("SEC_YAML_UNSAFE_001", rel, symbol, snippet),
+                    fingerprint=make_fingerprint(SEC_YAML_UNSAFE_001, rel, symbol, snippet),
                     snippet=snippet,
                     metadata={
-                        "rule_id": "SEC_YAML_UNSAFE_001",
+                        "rule_id": SEC_YAML_UNSAFE_001,
                         "function": "yaml.unsafe_load",
                         "context": symbol,
                     },
@@ -570,10 +578,10 @@ class SecurityAnalyzer:
                     confidence=0.90,
                     message="'yaml.load()' without Loader can execute arbitrary code — use yaml.safe_load() or Loader=SafeLoader",
                     location=Location(path=rel, line_start=line_start, line_end=line_end),
-                    fingerprint=make_fingerprint("SEC_YAML_UNSAFE_001", rel, symbol, snippet),
+                    fingerprint=make_fingerprint(SEC_YAML_UNSAFE_001, rel, symbol, snippet),
                     snippet=snippet,
                     metadata={
-                        "rule_id": "SEC_YAML_UNSAFE_001",
+                        "rule_id": SEC_YAML_UNSAFE_001,
                         "function": "yaml.load",
                         "context": symbol,
                     },

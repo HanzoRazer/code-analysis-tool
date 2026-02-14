@@ -17,6 +17,11 @@ from pathlib import Path
 
 from code_audit.model import AnalyzerType, Severity
 from code_audit.model.finding import Finding, Location, make_fingerprint
+from code_audit.rules import (
+    GST_MUTABLE_DEFAULT_001,
+    GST_MUTABLE_MODULE_001,
+    GST_GLOBAL_KEYWORD_001,
+)
 
 # ── mutable detection helpers ────────────────────────────────────────
 
@@ -112,7 +117,7 @@ class GlobalStateAnalyzer:
         findings: list[Finding],
     ) -> None:
         end = end_line or line
-        rule_id = "GST_MUTABLE_MODULE_001"
+        rule_id = GST_MUTABLE_MODULE_001
         findings.append(
             Finding(
                 finding_id="",
@@ -150,7 +155,7 @@ class GlobalStateAnalyzer:
                 if default is not None and _is_mutable_value(default):
                     end_line = getattr(default, "end_lineno", default.lineno) or default.lineno
                     snippet = f"def {func_name}(...={_value_repr(default)})"
-                    rule_id = "GST_MUTABLE_DEFAULT_001"
+                    rule_id = GST_MUTABLE_DEFAULT_001
                     findings.append(
                         Finding(
                             finding_id="",
@@ -178,7 +183,7 @@ class GlobalStateAnalyzer:
                     end_line = getattr(child, "end_lineno", child.lineno) or child.lineno
                     names_str = ", ".join(child.names)
                     snippet = f"global {names_str}"
-                    rule_id = "GST_GLOBAL_KEYWORD_001"
+                    rule_id = GST_GLOBAL_KEYWORD_001
                     findings.append(
                         Finding(
                             finding_id="",

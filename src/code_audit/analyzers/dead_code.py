@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional
 
 from code_audit.model import AnalyzerType, Severity
 from code_audit.model.finding import Finding, Location, make_fingerprint
+from code_audit.rules import DC_UNREACHABLE_001, DC_IF_FALSE_001, DC_ASSERT_FALSE_001
 
 
 # ── AST helpers ─────────────────────────────────────────────────────────
@@ -245,11 +246,11 @@ class DeadCodeAnalyzer:
                             path=rel, line_start=line_start, line_end=line_end
                         ),
                         fingerprint=make_fingerprint(
-                            "DC_UNREACHABLE_001", rel, symbol, snippet
+                            DC_UNREACHABLE_001, rel, symbol, snippet
                         ),
                         snippet=snippet,
                         metadata={
-                            "rule_id": "DC_UNREACHABLE_001",
+                            "rule_id": DC_UNREACHABLE_001,
                             "terminator": terminator,
                             "unreachable_count": count,
                             "context": symbol,
@@ -287,11 +288,11 @@ class DeadCodeAnalyzer:
                             path=rel, line_start=line_start, line_end=line_end
                         ),
                         fingerprint=make_fingerprint(
-                            "DC_IF_FALSE_001", rel, symbol, snippet
+                            DC_IF_FALSE_001, rel, symbol, snippet
                         ),
                         snippet=snippet,
                         metadata={
-                            "rule_id": "DC_IF_FALSE_001",
+                            "rule_id": DC_IF_FALSE_001,
                             "block_type": "if",
                             "dead_statement_count": body_count,
                             "context": symbol,
@@ -318,11 +319,11 @@ class DeadCodeAnalyzer:
                             path=rel, line_start=line_start, line_end=line_end
                         ),
                         fingerprint=make_fingerprint(
-                            "DC_IF_FALSE_001", rel, symbol, snippet
+                            DC_IF_FALSE_001, rel, symbol, snippet
                         ),
                         snippet=snippet,
                         metadata={
-                            "rule_id": "DC_IF_FALSE_001",
+                            "rule_id": DC_IF_FALSE_001,
                             "block_type": "while",
                             "dead_statement_count": body_count,
                             "context": symbol,
@@ -357,11 +358,11 @@ class DeadCodeAnalyzer:
                             path=rel, line_start=line_start, line_end=line_end
                         ),
                         fingerprint=make_fingerprint(
-                            "DC_ASSERT_FALSE_001", rel, symbol, snippet
+                            DC_ASSERT_FALSE_001, rel, symbol, snippet
                         ),
                         snippet=snippet,
                         metadata={
-                            "rule_id": "DC_ASSERT_FALSE_001",
+                            "rule_id": DC_ASSERT_FALSE_001,
                             "context": symbol,
                         },
                     )
@@ -444,7 +445,7 @@ def analyze_dead_code(path: Path, *, root: Path) -> List[Dict[str, Any]]:
     for node in ast.walk(tree):
         if isinstance(node, ast.If) and _is_if_false(node):
             _emit(
-                "DC_IF_FALSE_001",
+                DC_IF_FALSE_001,
                 node,
                 severity="high",
                 confidence=0.95,
@@ -452,7 +453,7 @@ def analyze_dead_code(path: Path, *, root: Path) -> List[Dict[str, Any]]:
             )
         elif isinstance(node, ast.While) and _is_while_false(node):
             _emit(
-                "DC_IF_FALSE_001",
+                DC_IF_FALSE_001,
                 node,
                 severity="high",
                 confidence=0.95,
@@ -490,7 +491,7 @@ def analyze_dead_code(path: Path, *, root: Path) -> List[Dict[str, Any]]:
     for node in ast.walk(tree):
         if isinstance(node, ast.Assert) and _is_assert_false(node):
             _emit(
-                "DC_ASSERT_FALSE_001",
+                DC_ASSERT_FALSE_001,
                 node,
                 severity="medium",
                 confidence=0.90,
@@ -542,7 +543,7 @@ def _scan_body_functional(
                     "fingerprint": "sha256:" + fp_hex,
                     "snippet": snippet,
                     "metadata": {
-                        "rule_id": "DC_UNREACHABLE_001",
+                        "rule_id": DC_UNREACHABLE_001,
                         "terminator": _terminator_name(stmt),
                         "unreachable_count": count,
                     },

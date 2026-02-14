@@ -16,6 +16,21 @@ from operator import attrgetter
 
 from code_audit.model import RiskLevel, Severity, AnalyzerType
 from code_audit.model.finding import Finding
+from code_audit.rules import (
+    DC_UNREACHABLE_001,
+    DC_IF_FALSE_001,
+    DC_ASSERT_FALSE_001,
+    GST_MUTABLE_DEFAULT_001,
+    GST_MUTABLE_MODULE_001,
+    GST_GLOBAL_KEYWORD_001,
+    SEC_HARDCODED_SECRET_001,
+    SEC_EVAL_001,
+    SEC_SUBPROCESS_SHELL_001,
+    SEC_SQL_INJECTION_001,
+    SEC_PICKLE_LOAD_001,
+    SEC_YAML_UNSAFE_001,
+)
+
 
 # ── copy-key contract (schema-adjacent, must be stable) ────────────────
 # These constants make copy-key construction a policy lever even if code
@@ -102,24 +117,24 @@ def _group_key(f: Finding) -> str:
 
 # ── rule ordering for global_state evidence ─────────────────────────
 _GST_RULE_ORDER: dict[str, int] = {
-    "GST_MUTABLE_DEFAULT_001": 0,
-    "GST_MUTABLE_MODULE_001": 1,
-    "GST_GLOBAL_KEYWORD_001": 2,
+    GST_MUTABLE_DEFAULT_001: 0,
+    GST_MUTABLE_MODULE_001: 1,
+    GST_GLOBAL_KEYWORD_001: 2,
 }
 # ── rule ordering for dead_code evidence ─────────────────────────────
 _DC_RULE_ORDER: dict[str, int] = {
-    "DC_UNREACHABLE_001": 0,
-    "DC_IF_FALSE_001": 1,
-    "DC_ASSERT_FALSE_001": 2,
+    DC_UNREACHABLE_001: 0,
+    DC_IF_FALSE_001: 1,
+    DC_ASSERT_FALSE_001: 2,
 }
 # ── rule ordering for security evidence ──────────────────────────────
 _SEC_RULE_ORDER: dict[str, int] = {
-    "SEC_HARDCODED_SECRET_001": 0,
-    "SEC_EVAL_001": 1,
-    "SEC_SUBPROCESS_SHELL_001": 2,
-    "SEC_SQL_INJECTION_001": 3,
-    "SEC_PICKLE_LOAD_001": 4,
-    "SEC_YAML_UNSAFE_001": 5,
+    SEC_HARDCODED_SECRET_001: 0,
+    SEC_EVAL_001: 1,
+    SEC_SUBPROCESS_SHELL_001: 2,
+    SEC_SQL_INJECTION_001: 3,
+    SEC_PICKLE_LOAD_001: 4,
+    SEC_YAML_UNSAFE_001: 5,
 }
 
 
