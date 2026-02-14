@@ -29,49 +29,143 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import json
+import os
 import sys
 from pathlib import Path
 
 from code_audit import __version__
-from code_audit.analyzers.complexity import ComplexityAnalyzer
-from code_audit.analyzers.duplication import DuplicationAnalyzer
-from code_audit.analyzers.exceptions import ExceptionsAnalyzer
-from code_audit.analyzers.file_sizes import FileSizesAnalyzer
-from code_audit.contracts.load import validate_file
-from code_audit.core.runner import run_scan
-from code_audit.run_result import build_run_result
+from code_audit.utils.exit_codes import ExitCode
+from code_audit.utils.json_norm import stable_json_dump, stable_json_dumps
+from code_audit.policy.thresholds import (
+    exit_code_from_score as _exit_code_from_score,
+    tier_from_score,
+)
+
+
+def _env_requires_ci_mode() -> bool:
+    """Return True when the environment signals deterministic mode is required."""
+    if os.getenv("CODE_AUDIT_DETERMINISTIC") == "1":
+        return True
+    ci = os.getenv("CI", "")
+    return ci.lower() in ("1", "true", "yes", "on")
+
+
+def _require_ci_flag(ci_mode: bool, *, what: str) -> int | None:
+    """If CI env is active but --ci was not passed, emit an error and return ExitCode.ERROR."""
+    if _env_requires_ci_mode() and not ci_mode:
+        print(
+            f"error: CI environment requires deterministic mode for {what}. "
+            f"Re-run with --ci/--deterministic.",
+            file=sys.stderr,
+        )
+        return ExitCode.ERROR
+    return None
+from code_audit.api import (
+    compare_debt as _api_compare_debt,
+    scan_project as _api_scan_project,
+    snapshot_debt as _api_snapshot_debt,
+    validate_instance as _api_validate_instance,
+)
+
+
+# ── CI helpers ───────────────────────────────────────────────────────
+
+
+def _is_running_in_ci() -> bool:
+    """Best-effort detection for hosted CI environments."""
+    return os.getenv("GITHUB_ACTIONS") == "true" or os.getenv("CI") == "true"
+
+
+def _reject_unsafe_out_path(
+    candidate: Path, *, flag: str, base_dir: Path | None = None
+) -> Path | None:
+    """Reject absolute paths and path traversal.
+
+    If base_dir is provided, require the resolved path to remain within base_dir.
+    Returns a resolved safe path (within base_dir if given), or None if unsafe.
+    """
+    if candidate.is_absolute():
+        print(f"error: {flag} must be a relative path", file=sys.stderr)
+        return None
+
+    # Block traversal and sneaky segments.
+    if any(part in ("..", "") for part in candidate.parts):
+        print(f"error: {flag} must not contain '..' path traversal", file=sys.stderr)
+        return None
+
+    if base_dir is None:
+        return candidate
+
+    resolved = (base_dir / candidate).resolve()
+    base_resolved = base_dir.resolve()
+    try:
+        if not resolved.is_relative_to(base_resolved):
+            print(
+                f"error: {flag} must stay within {base_dir.as_posix()}",
+                file=sys.stderr,
+            )
+            return None
+    except AttributeError:
+        # Py<3.9 fallback (should not happen for 3.11+, but keep safe)
+        if base_resolved not in resolved.parents and resolved != base_resolved:
+            print(
+                f"error: {flag} must stay within {base_dir.as_posix()}",
+                file=sys.stderr,
+            )
+            return None
+
+    return resolved
 
 
 # ── Vibe tier thresholds ─────────────────────────────────────────────
-_GREEN = 75
-_YELLOW = 55
-
 _TIER_EMOJI = {"green": "🟢", "yellow": "🟡", "red": "🔴"}
 
 
 def _tier_label(score: int) -> str:
-    if score >= _GREEN:
-        return "green"
-    if score >= _YELLOW:
-        return "yellow"
-    return "red"
+    return tier_from_score(score).value
 
 
-def _exit_code_from_score(score: int) -> int:
-    """0 = green (≥75), 1 = yellow (55-74), 2 = red (<55)."""
-    if score >= _GREEN:
-        return 0
-    if score >= _YELLOW:
-        return 1
-    return 2
+def _ci_required_keys_check(result_dict: dict) -> int | None:
+    """
+    Minimal structural assertion for scan result in CI mode.
+    Fails fast if API output is malformed.
+    """
+    run = result_dict.get("run")
+    summary = result_dict.get("summary")
+
+    if not isinstance(run, dict):
+        print("error: API returned malformed result (missing 'run' object).", file=sys.stderr)
+        return ExitCode.ERROR
+
+    if not isinstance(summary, dict):
+        print("error: API returned malformed result (missing 'summary' object).", file=sys.stderr)
+        return ExitCode.ERROR
+
+    required_run = ("run_id", "created_at")
+    for key in required_run:
+        if key not in run:
+            print(f"error: API result missing required field run.{key}.", file=sys.stderr)
+            return ExitCode.ERROR
+
+    required_summary = ("confidence_score", "vibe_tier", "counts")
+    for key in required_summary:
+        if key not in summary:
+            print(f"error: API result missing required field summary.{key}.", file=sys.stderr)
+            return ExitCode.ERROR
+
+    counts = summary.get("counts", {})
+    if not isinstance(counts, dict) or "findings_total" not in counts:
+        print("error: API result missing required field summary.counts.findings_total.", file=sys.stderr)
+        return ExitCode.ERROR
+
+    return None
 
 
 def _print_human(result_dict: dict) -> None:
     """Pretty-print a human-readable summary to stderr."""
     summary = result_dict.get("summary", {})
     score = summary.get("confidence_score", 0)
-    tier = summary.get("vibe_tier", _tier_label(score))
+    tier = summary.get("vibe_tier") or _tier_label(score)
     emoji = _TIER_EMOJI.get(tier, "⚪")
     total = summary.get("counts", {}).get("findings_total", 0)
 
@@ -133,15 +227,16 @@ def _build_parser() -> argparse.ArgumentParser:
         action="version",
         version=f"%(prog)s {__version__}",
     )
-    p.add_argument("--max-file-lines", type=int, default=400)
-    p.add_argument("--max-func-lines", type=int, default=60)
     p.add_argument(
-        "--ci", "--deterministic",
+        "--ci",
+        "--deterministic",
         dest="ci_mode",
         action="store_true",
         default=False,
-        help="Enable deterministic output for CI reproducibility (fixed timestamps, stable IDs, sorted output).",
+        help="Enable deterministic output (stable IDs, timestamps, ordering).",
     )
+    p.add_argument("--max-file-lines", type=int, default=400)
+    p.add_argument("--max-func-lines", type=int, default=60)
 
     # ── scan subcommand (functional pipeline) ───────────────────────
     scan_p = sub.add_parser(
@@ -172,6 +267,14 @@ def _build_parser() -> argparse.ArgumentParser:
         metavar="REL_PATH",
         default=None,
         help="Also emit signals_latest.json at this relative path inside --out dir.",
+    )
+    scan_p.add_argument(
+        "--ci",
+        "--deterministic",
+        dest="ci_mode",
+        action="store_true",
+        default=False,
+        help="Enable deterministic output (stable IDs, timestamps, ordering).",
     )
     scan_p.add_argument("--max-file-lines", type=int, default=400)
     scan_p.add_argument("--max-func-lines", type=int, default=60)
@@ -437,6 +540,14 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         default=False,
     )
+    debt_scan_p.add_argument(
+        "--ci",
+        "--deterministic",
+        dest="ci_mode",
+        action="store_true",
+        default=False,
+        help="Deterministic mode: stable output ordering.",
+    )
 
     # debt plan
     debt_plan_p = debt_sub.add_parser(
@@ -674,13 +785,13 @@ def _handle_fence(args: argparse.Namespace) -> int:
         for fence in registry.list():
             status = "ON" if fence.enabled else "OFF"
             print(f"[{status}]  {fence.fence_id:16s}  {fence.name}  ({fence.level.value})")
-        return 0
+        return ExitCode.SUCCESS
 
     if args.fence_command == "check":
         target: Path = args.path.resolve()
         if not target.exists():
             print(f"error: path does not exist: {target}", file=sys.stderr)
-            return 2
+            return ExitCode.ERROR
 
         analyzer = SafetyFenceAnalyzer(
             safety_patterns=args.patterns,
@@ -689,13 +800,10 @@ def _handle_fence(args: argparse.Namespace) -> int:
         findings = analyzer.run(target, files)
 
         if getattr(args, "json_out", False):
-            json.dump(
+            stable_json_dump(
                 [f.to_dict() for f in findings],
                 sys.stdout,
-                indent=2,
-                default=str,
             )
-            print()
         else:
             if not findings:
                 print("No fence violations found.", file=sys.stderr)
@@ -711,11 +819,11 @@ def _handle_fence(args: argparse.Namespace) -> int:
                 print("", file=sys.stderr)
 
         # Exit code: 0 = clean, 1 = violations found
-        return 1 if findings else 0
+        return ExitCode.VIOLATION if findings else ExitCode.SUCCESS
 
     # No subcommand given
     print("error: use 'fence check' or 'fence list'.", file=sys.stderr)
-    return 2
+    return ExitCode.ERROR
 
 
 def _handle_governance(args: argparse.Namespace) -> int:
@@ -728,7 +836,7 @@ def _handle_governance(args: argparse.Namespace) -> int:
         target: Path = args.gov_path.resolve()
         if not target.exists():
             print(f"error: path does not exist: {target}", file=sys.stderr)
-            return 2
+            return ExitCode.ERROR
 
         analyzer = DeprecationAnalyzer(
             registry_path=args.registry,
@@ -744,7 +852,7 @@ def _handle_governance(args: argparse.Namespace) -> int:
         target = args.gov_path.resolve()
         if not target.exists():
             print(f"error: path does not exist: {target}", file=sys.stderr)
-            return 2
+            return ExitCode.ERROR
 
         analyzer = ImportBanAnalyzer(banned_patterns=args.patterns)
         files = discover_py_files(target)
@@ -756,7 +864,7 @@ def _handle_governance(args: argparse.Namespace) -> int:
         target = args.gov_path.resolve()
         if not target.exists():
             print(f"error: path does not exist: {target}", file=sys.stderr)
-            return 2
+            return ExitCode.ERROR
 
         analyzer = LegacyUsageAnalyzer(
             legacy_routes=args.routes,
@@ -774,17 +882,14 @@ def _handle_governance(args: argparse.Namespace) -> int:
             "or 'governance legacy-usage'.",
             file=sys.stderr,
         )
-        return 2
+        return ExitCode.ERROR
 
     # Output
     if getattr(args, "json_out", False):
-        json.dump(
+        stable_json_dump(
             [f.to_dict() for f in findings],
             sys.stdout,
-            indent=2,
-            default=str,
         )
-        print()
     else:
         if not findings:
             print("No governance violations found.", file=sys.stderr)
@@ -799,7 +904,7 @@ def _handle_governance(args: argparse.Namespace) -> int:
                 print(f"    [{sev}]  {loc}  {f.message}", file=sys.stderr)
             print("", file=sys.stderr)
 
-    return 1 if findings else 0
+    return ExitCode.VIOLATION if findings else ExitCode.SUCCESS
 
 
 def _handle_report(args: argparse.Namespace) -> int:
@@ -809,7 +914,7 @@ def _handle_report(args: argparse.Namespace) -> int:
     target: Path = args.report_path.resolve()
     if not target.exists():
         print(f"error: path does not exist: {target}", file=sys.stderr)
-        return 2
+        return ExitCode.ERROR
 
     report = generate_debt_report(
         target,
@@ -826,7 +931,7 @@ def _handle_report(args: argparse.Namespace) -> int:
     else:
         print(report)
 
-    return 0
+    return ExitCode.SUCCESS
 
 
 def _handle_inventory(args: argparse.Namespace) -> int:
@@ -837,7 +942,7 @@ def _handle_inventory(args: argparse.Namespace) -> int:
     target: Path = args.inv_path.resolve()
     if not target.exists():
         print(f"error: path does not exist: {target}", file=sys.stderr)
-        return 2
+        return ExitCode.ERROR
 
     # Parse extra patterns from CLI if provided
     extra: list[tuple[str, str]] | None = None
@@ -859,13 +964,10 @@ def _handle_inventory(args: argparse.Namespace) -> int:
     findings = analyzer.run(target, all_files)
 
     if getattr(args, "json_out", False):
-        json.dump(
+        stable_json_dump(
             [f.to_dict() for f in findings],
             sys.stdout,
-            indent=2,
-            default=str,
         )
-        print()
     else:
         if not findings:
             print("No feature flag references found.", file=sys.stderr)
@@ -880,7 +982,7 @@ def _handle_inventory(args: argparse.Namespace) -> int:
                 print(f"    [{label}]  {loc}  {f.message}", file=sys.stderr)
             print("", file=sys.stderr)
 
-    return 1 if findings else 0
+    return ExitCode.VIOLATION if findings else ExitCode.SUCCESS
 
 
 def _handle_sdk_boundary(args: argparse.Namespace) -> int:
@@ -890,7 +992,7 @@ def _handle_sdk_boundary(args: argparse.Namespace) -> int:
     target: Path = args.sdk_path.resolve()
     if not target.exists():
         print(f"error: path does not exist: {target}", file=sys.stderr)
-        return 2
+        return ExitCode.ERROR
 
     analyzer = SdkBoundaryAnalyzer(
         api_prefixes=args.api_prefixes,
@@ -904,13 +1006,10 @@ def _handle_sdk_boundary(args: argparse.Namespace) -> int:
     findings = analyzer.run(target, all_files)
 
     if getattr(args, "json_out", False):
-        json.dump(
+        stable_json_dump(
             [f.to_dict() for f in findings],
             sys.stdout,
-            indent=2,
-            default=str,
         )
-        print()
     else:
         if not findings:
             print("No SDK boundary violations found.", file=sys.stderr)
@@ -925,7 +1024,7 @@ def _handle_sdk_boundary(args: argparse.Namespace) -> int:
                 print(f"    [{sev}]  {loc}  {f.message}", file=sys.stderr)
             print("", file=sys.stderr)
 
-    return 1 if findings else 0
+    return ExitCode.VIOLATION if findings else ExitCode.SUCCESS
 
 
 def _handle_truth_map(args: argparse.Namespace) -> int:
@@ -935,21 +1034,19 @@ def _handle_truth_map(args: argparse.Namespace) -> int:
     target: Path = args.truth_map_file.resolve()
     if not target.exists():
         print(f"error: file does not exist: {target}", file=sys.stderr)
-        return 2
+        return ExitCode.ERROR
 
     try:
         entries = parse_truth_map(target)
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
-        return 2
+        return ExitCode.ERROR
 
     if getattr(args, "json_out", False):
-        json.dump(
+        stable_json_dump(
             [e.to_dict() for e in entries],
             sys.stdout,
-            indent=2,
         )
-        print()
     else:
         if not entries:
             print("No endpoints found in truth map.", file=sys.stderr)
@@ -966,7 +1063,7 @@ def _handle_truth_map(args: argparse.Namespace) -> int:
                 )
             print("", file=sys.stderr)
 
-    return 0
+    return ExitCode.SUCCESS
 
 
 def _handle_trend(args: argparse.Namespace) -> int:
@@ -981,7 +1078,7 @@ def _handle_trend(args: argparse.Namespace) -> int:
     reg_dir = args.trend_registry_dir or Path(".debt_snapshots")
     if not reg_dir.exists():
         print(f"error: registry directory does not exist: {reg_dir}", file=sys.stderr)
-        return 2
+        return ExitCode.ERROR
 
     summaries = load_trend_data(reg_dir)
     trend = compute_trend(summaries)
@@ -999,7 +1096,7 @@ def _handle_trend(args: argparse.Namespace) -> int:
     else:
         print(output)
 
-    return 0
+    return ExitCode.SUCCESS
 
 
 def _handle_export(args: argparse.Namespace) -> int:
@@ -1009,19 +1106,11 @@ def _handle_export(args: argparse.Namespace) -> int:
     target: Path = args.export_path.resolve()
     if not target.exists():
         print(f"error: path does not exist: {target}", file=sys.stderr)
-        return 2
+        return ExitCode.ERROR
 
-    # Run a scan to get RunResult
-    analyzers = [
-        ComplexityAnalyzer(),
-        DuplicationAnalyzer(),
-        ExceptionsAnalyzer(),
-        FileSizesAnalyzer(),
-    ]
-    result = run_scan(
+    # Run a scan via canonical API
+    result, _ = _api_scan_project(
         root=target if target.is_dir() else target.parent,
-        analyzers=analyzers,
-        project_id="",
     )
 
     output = export_result(result, fmt=args.export_format, top_n=args.export_top)
@@ -1034,7 +1123,7 @@ def _handle_export(args: argparse.Namespace) -> int:
     else:
         print(output)
 
-    return 0
+    return ExitCode.SUCCESS
 
 
 def _handle_dashboard(args: argparse.Namespace) -> int:
@@ -1045,19 +1134,11 @@ def _handle_dashboard(args: argparse.Namespace) -> int:
     target: Path = args.dash_path.resolve()
     if not target.exists():
         print(f"error: path does not exist: {target}", file=sys.stderr)
-        return 2
+        return ExitCode.ERROR
 
-    # Run scan
-    analyzers = [
-        ComplexityAnalyzer(),
-        DuplicationAnalyzer(),
-        ExceptionsAnalyzer(),
-        FileSizesAnalyzer(),
-    ]
-    result = run_scan(
+    # Run scan via canonical API
+    result, _ = _api_scan_project(
         root=target if target.is_dir() else target.parent,
-        analyzers=analyzers,
-        project_id="",
     )
 
     # Optionally load trend data
@@ -1077,7 +1158,7 @@ def _handle_dashboard(args: argparse.Namespace) -> int:
         width=args.dash_width,
     )
     print(dashboard)
-    return 0
+    return ExitCode.SUCCESS
 
 
 def _handle_predict(args: argparse.Namespace) -> int:
@@ -1088,7 +1169,7 @@ def _handle_predict(args: argparse.Namespace) -> int:
     target: Path = args.predict_path.resolve()
     if not target.exists():
         print(f"error: path does not exist: {target}", file=sys.stderr)
-        return 2
+        return ExitCode.ERROR
 
     files = discover_py_files(target)
     predictor = BugPredictor()
@@ -1099,7 +1180,7 @@ def _handle_predict(args: argparse.Namespace) -> int:
     shown = predictions[:top_n]
 
     if getattr(args, "json_out", False):
-        json.dump(
+        stable_json_dump(
             [
                 {
                     "path": str(p.path),
@@ -1109,9 +1190,7 @@ def _handle_predict(args: argparse.Namespace) -> int:
                 for p in shown
             ],
             sys.stdout,
-            indent=2,
         )
-        print()
     else:
         if not shown:
             print("No files to predict on.", file=sys.stderr)
@@ -1129,7 +1208,7 @@ def _handle_predict(args: argparse.Namespace) -> int:
                 )
             print("", file=sys.stderr)
 
-    return 0
+    return ExitCode.SUCCESS
 
 
 def _handle_cluster(args: argparse.Namespace) -> int:
@@ -1140,7 +1219,7 @@ def _handle_cluster(args: argparse.Namespace) -> int:
     target: Path = args.cluster_path.resolve()
     if not target.exists():
         print(f"error: path does not exist: {target}", file=sys.stderr)
-        return 2
+        return ExitCode.ERROR
 
     # Parse k
     k_arg = args.cluster_k
@@ -1151,14 +1230,14 @@ def _handle_cluster(args: argparse.Namespace) -> int:
             n_clusters = int(k_arg)
         except ValueError:
             print(f"error: --k must be an integer or 'auto', got '{k_arg}'", file=sys.stderr)
-            return 2
+            return ExitCode.ERROR
 
     files = discover_py_files(target)
     clusterer = CodeClusterer(n_clusters=n_clusters)
     result = clusterer.cluster(target, files)
 
     if getattr(args, "json_out", False):
-        json.dump(
+        stable_json_dump(
             {
                 "clusters": [
                     {
@@ -1173,13 +1252,11 @@ def _handle_cluster(args: argparse.Namespace) -> int:
                 "inertia": round(result.inertia, 4),
             },
             sys.stdout,
-            indent=2,
         )
-        print()
     else:
         print(result.summary())
 
-    return 0
+    return ExitCode.SUCCESS
 
 
 def _handle_debt(args: argparse.Namespace) -> int:
@@ -1191,28 +1268,39 @@ def _handle_debt(args: argparse.Namespace) -> int:
         target: Path = args.debt_path.resolve()
         if not target.exists():
             print(f"error: path does not exist: {target}", file=sys.stderr)
-            return 2
+            return ExitCode.ERROR
+
+        # CI-guard: supported debt commands require --ci under CI envs.
+        _SUPPORTED_DEBT = {"scan", "snapshot", "compare"}
+        if args.debt_command in _SUPPORTED_DEBT:
+            rc = _require_ci_flag(
+                bool(getattr(args, "ci_mode", False)),
+                what=f"debt {args.debt_command}",
+            )
+            if rc is not None:
+                return rc
     else:
         print(
             "error: use 'debt scan', 'debt plan', 'debt snapshot', "
             "or 'debt compare'.",
             file=sys.stderr,
         )
-        return 2
+        return ExitCode.ERROR
 
-    detector = DebtDetector()
-    files = discover_py_files(target)
+    detector = None
+    files = None
+
+    if args.debt_command in {"scan", "plan"}:
+        detector = DebtDetector()
+        files = discover_py_files(target)
 
     if args.debt_command == "scan":
         findings = detector.run(target, files)
         if getattr(args, "json_out", False):
-            json.dump(
+            stable_json_dump(
                 [f.to_dict() for f in findings],
                 sys.stdout,
-                indent=2,
-                default=str,
             )
-            print()
         else:
             if not findings:
                 print("No structural debt detected.", file=sys.stderr)
@@ -1226,7 +1314,7 @@ def _handle_debt(args: argparse.Namespace) -> int:
                     loc = f"{f.location.path}:{f.location.line_start}"
                     print(f"    [{sev}]  {loc}  {f.message}", file=sys.stderr)
                 print("", file=sys.stderr)
-        return 1 if findings else 0
+        return ExitCode.VIOLATION if findings else ExitCode.SUCCESS
 
     if args.debt_command == "plan":
         from code_audit.strangler.plan_generator import generate_plan
@@ -1243,160 +1331,257 @@ def _handle_debt(args: argparse.Namespace) -> int:
             print(f"Plan written to {out}", file=sys.stderr)
         else:
             print(plan)
-        return 0
+        return ExitCode.SUCCESS
 
     if args.debt_command == "snapshot":
         from code_audit.strangler.debt_registry import DebtRegistry
-        from code_audit.utils.determinism import deterministic_timestamp, sort_debt_items
 
-        # Validate: need either --name or --out
-        if not args.name and not getattr(args, "snapshot_out", None):
+        # Validate: need either --name (registry) or --out (file)
+        if not getattr(args, "name", None) and not getattr(args, "snapshot_out", None):
             print("error: --name or --out required for snapshot", file=sys.stderr)
-            return 2
+            return ExitCode.ERROR
 
-        debt_items = detector.detect(target, files)
-        # Sort for determinism
-        debt_items = sort_debt_items(debt_items)
+        ci_mode = bool(getattr(args, "ci_mode", False))
+        snap_dict = _api_snapshot_debt(target, ci_mode=ci_mode)
 
         # --out mode: write directly to file (CI-friendly)
         if getattr(args, "snapshot_out", None):
-            out_path: Path = args.snapshot_out
+            # In CI, prevent writes escaping ./artifacts.
+            if _is_running_in_ci() and ci_mode:
+                requested_out: Path = Path(args.snapshot_out)
+                out_path = _reject_unsafe_out_path(
+                    requested_out,
+                    flag="--out",
+                    base_dir=target,
+                )
+                if out_path is None:
+                    return ExitCode.ERROR
+                allowed = (target / "artifacts").resolve()
+                if not out_path.is_relative_to(allowed):
+                    print(
+                        "error: --out must be within artifacts/ when running in CI",
+                        file=sys.stderr,
+                    )
+                    return ExitCode.ERROR
+            else:
+                out_path = Path(args.snapshot_out)
             out_path.parent.mkdir(parents=True, exist_ok=True)
-            ts = deterministic_timestamp(ci_mode=getattr(args, "ci_mode", False))
-            data = {
-                "schema_version": "debt_snapshot_v1",
-                "created_at": ts,
-                "debt_count": len(debt_items),
-                "items": [d.to_dict() for d in debt_items],
-            }
-            out_path.write_text(json.dumps(data, indent=2, default=str) + "\n", encoding="utf-8")
-            print(f"Snapshot written ({len(debt_items)} items) → {out_path}", file=sys.stderr)
-            return 0
 
-        # Registry mode (original behavior)
-        reg_dir = args.registry_dir or (target / ".debt_snapshots")
+            out_path.write_text(
+                stable_json_dumps(snap_dict, indent=2, ci_mode=ci_mode),
+                encoding="utf-8",
+            )
+            print(
+                f"Snapshot written ({snap_dict['debt_count']} items) → {out_path}",
+                file=sys.stderr,
+            )
+            return ExitCode.SUCCESS
+
+        # Registry mode (original behavior) — needs DebtInstance objects
+        from code_audit.strangler.debt_registry import DebtRegistry as _DR
+        debt_items = _DR._items_from_snapshot_dict(snap_dict)
+        reg_dir = getattr(args, "registry_dir", None) or (target / ".debt_snapshots")
         registry = DebtRegistry(reg_dir)
         path = registry.save_snapshot(args.name, debt_items)
         print(
-            f"Snapshot '{args.name}' saved ({len(debt_items)} items) → {path}",
+            f"Snapshot '{args.name}' saved ({snap_dict['debt_count']} items) → {path}",
             file=sys.stderr,
         )
-        return 0
+        return ExitCode.SUCCESS
+
 
     if args.debt_command == "compare":
         from code_audit.strangler.debt_registry import DebtRegistry
-        from code_audit.model.debt_instance import DebtInstance, DebtType, make_debt_fingerprint
 
-        # Load baseline (file path or registry name)
+        ci_mode = bool(getattr(args, "ci_mode", False))
+
+        # Resolve baseline input (file path OR registry name)
         baseline_path = Path(args.baseline)
         if baseline_path.exists() and baseline_path.is_file():
-            # Load from file directly
-            data = json.loads(baseline_path.read_text(encoding="utf-8"))
-            baseline_items = [
-                DebtInstance(
-                    debt_type=DebtType(raw["debt_type"]),
-                    path=raw["path"],
-                    symbol=raw["symbol"],
-                    line_start=raw["line_start"],
-                    line_end=raw["line_end"],
-                    metrics=raw.get("metrics", {}),
-                    strategy=raw.get("strategy", ""),
-                    fingerprint=raw.get("fingerprint", make_debt_fingerprint(raw["debt_type"], raw["path"], raw["symbol"])),
-                )
-                for raw in data.get("items", [])
-            ]
+            baseline_input: dict | Path = baseline_path
         else:
-            # Load from registry
-            reg_dir = args.registry_dir or (target / ".debt_snapshots")
+            reg_dir = getattr(args, "registry_dir", None) or (target / ".debt_snapshots")
             registry = DebtRegistry(reg_dir)
             try:
-                baseline_items = registry.load_snapshot(args.baseline)
+                _baseline_items = registry.load_snapshot(args.baseline)
             except FileNotFoundError:
                 print(
                     f"error: baseline snapshot '{args.baseline}' not found",
                     file=sys.stderr,
                 )
-                return 2
+                return ExitCode.ERROR
+            # Convert to dict for API
+            baseline_input = {
+                "schema_version": "debt_snapshot_v1",
+                "created_at": "2000-01-01T00:00:00+00:00",
+                "debt_count": len(_baseline_items),
+                "items": [d.to_dict() for d in _baseline_items],
+            }
 
-        # Load current (file or live scan)
+        # Resolve current input
+        current_input: dict | Path | None = None
+        root_for_live: Path | None = None
         if getattr(args, "current_file", None):
-            data = json.loads(args.current_file.read_text(encoding="utf-8"))
-            debt_items = [
-                DebtInstance(
-                    debt_type=DebtType(raw["debt_type"]),
-                    path=raw["path"],
-                    symbol=raw["symbol"],
-                    line_start=raw["line_start"],
-                    line_end=raw["line_end"],
-                    metrics=raw.get("metrics", {}),
-                    strategy=raw.get("strategy", ""),
-                    fingerprint=raw.get("fingerprint", make_debt_fingerprint(raw["debt_type"], raw["path"], raw["symbol"])),
-                )
-                for raw in data.get("items", [])
-            ]
+            current_input = Path(args.current_file)
         else:
-            debt_items = detector.detect(target, files)
+            root_for_live = target
 
-        diff = DebtRegistry.compare(baseline_items, debt_items)
+        try:
+            diff_result = _api_compare_debt(
+                baseline=baseline_input,
+                current=current_input,
+                root=root_for_live,
+                ci_mode=ci_mode,
+            )
+        except (ValueError, FileNotFoundError) as e:
+            print(f"error: {e}", file=sys.stderr)
+            return ExitCode.ERROR
 
         if getattr(args, "json_out", False):
-            json.dump(
+            # Match existing output shape: new/resolved/unchanged (no schema_version wrapper)
+            stable_json_dump(
                 {
-                    "new": [d.to_dict() for d in diff.new_items],
-                    "resolved": [d.to_dict() for d in diff.resolved_items],
-                    "unchanged": len(diff.unchanged_items),
+                    "new": diff_result["new"],
+                    "resolved": diff_result["resolved"],
+                    "unchanged": diff_result["unchanged"],
                 },
                 sys.stdout,
+                ci_mode=ci_mode,
                 indent=2,
-                default=str,
             )
-            print()
         else:
-            print(f"\n  Debt comparison vs '{args.baseline}':", file=sys.stderr)
-            print(f"    {diff.summary()}", file=sys.stderr)
-            if diff.new_items:
-                print("\n  New debt:", file=sys.stderr)
-                for d in diff.new_items:
+            new_items = diff_result["new"]
+            resolved_items = diff_result["resolved"]
+            unchanged_count = diff_result["unchanged"]
+            has_new = diff_result["has_new_debt"]
+
+            total = len(new_items) + len(resolved_items) + unchanged_count
+            print(f"\nDebt comparison vs '{args.baseline}':", file=sys.stderr)
+            print(
+                f"    {total} total: {len(new_items)} new, "
+                f"{len(resolved_items)} resolved, {unchanged_count} unchanged",
+                file=sys.stderr,
+            )
+            if new_items:
+                print("\nNew debt:", file=sys.stderr)
+                for d in new_items:
                     print(
-                        f"    + [{d.debt_type.value}] {d.path}:{d.line_start} "
-                        f"{d.symbol}",
+                        f"    + [{d['debt_type']}] {d['path']}:{d['line_start']} {d['symbol']}",
                         file=sys.stderr,
                     )
-            if diff.resolved_items:
-                print("\n  Resolved debt:", file=sys.stderr)
-                for d in diff.resolved_items:
+            if resolved_items:
+                print("\nResolved debt:", file=sys.stderr)
+                for d in resolved_items:
                     print(
-                        f"    - [{d.debt_type.value}] {d.path}:{d.line_start} "
-                        f"{d.symbol}",
+                        f"    - [{d['debt_type']}] {d['path']}:{d['line_start']} {d['symbol']}",
                         file=sys.stderr,
                     )
             print("", file=sys.stderr)
 
         # Ratchet: exit 1 if new debt introduced
-        return 1 if diff.has_new_debt else 0
+        return ExitCode.VIOLATION if diff_result["has_new_debt"] else ExitCode.SUCCESS
 
-    return 2
+
+    return ExitCode.ERROR
+
+
+def _build_default_parser() -> argparse.ArgumentParser:
+    """Parser for default positional mode.
+
+    Argparse subparsers greedily consume the first positional token, which can
+    make ``code-audit <path> --ci --json`` fail by treating ``<path>`` as a
+    command.  This parser is used when the first positional token is *not* a
+    known subcommand.
+    """
+    p = argparse.ArgumentParser(
+        prog="code-audit",
+        description="Confidence engine for beginner Vibe Coders.",
+    )
+    p.add_argument(
+        "path",
+        type=Path,
+        help="Root directory (or single .py file) to scan.",
+    )
+    p.add_argument(
+        "--json",
+        dest="json_out",
+        action="store_true",
+        default=False,
+        help="Print the full RunResult JSON to stdout.",
+    )
+    p.add_argument(
+        "--project-id",
+        dest="project_id",
+        default="",
+        help="Attach a project identifier to the run.",
+    )
+    p.add_argument(
+        "--ci",
+        "--deterministic",
+        dest="ci_mode",
+        action="store_true",
+        default=False,
+        help="Enable deterministic output (stable IDs, timestamps, ordering).",
+    )
+    p.set_defaults(command=None)
+    return p
 
 
 def main(argv: list[str] | None = None) -> int:
     """Entry-point — returns an exit code (0 = green, 1 = yellow, 2 = red)."""
-    args = _build_parser().parse_args(argv)
+    effective_argv = list(argv) if argv is not None else sys.argv[1:]
 
-    # ── Enable deterministic mode if requested ──────────────────────────
-    if getattr(args, 'ci_mode', False):
-        from code_audit.utils.determinism import set_ci_mode, seed_random
-        set_ci_mode(True)
-        seed_random(ci_mode=True)
+    # Determine whether this is default positional mode or a subcommand.
+    # If the first positional token is not a known command, parse using the
+    # default-mode parser so `code-audit <path> --ci --json` works.
+    known_commands = {
+        "scan",
+        "validate",
+        "fence",
+        "governance",
+        "report",
+        "inventory",
+        "sdk-boundary",
+        "truth-map",
+        "debt",
+        "trend",
+        "export",
+        "dashboard",
+        "predict",
+        "cluster",
+    }
+    first_positional = next(
+        (a for a in effective_argv if not a.startswith("-")), None
+    )
+    if first_positional and first_positional not in known_commands:
+        args = _build_default_parser().parse_args(effective_argv)
+    else:
+        args = _build_parser().parse_args(effective_argv)
 
     # ── validate subcommand ─────────────────────────────────────────
     if args.command == "validate":
+        import json as _json
         try:
-            validate_file(args.instance, args.schema_name)
+            instance_dict = _json.loads(
+                Path(args.instance).read_text(encoding="utf-8")
+            )
+            _api_validate_instance(instance_dict, args.schema_name)
         except Exception as e:
-            print(f"FAIL: {e}", file=sys.stderr)
-            return 1
+            # Exit code contract:
+            #   1 = schema violation
+            #   2 = runtime / schema not found / unexpected error
+            try:
+                import jsonschema
+                if isinstance(e, jsonschema.exceptions.ValidationError):
+                    print(f"FAIL: {e}", file=sys.stderr)
+                    return ExitCode.VIOLATION
+            except Exception:
+                # If jsonschema isn't importable or API shifts, treat as runtime error.
+                pass
+            print(f"ERROR: {e}", file=sys.stderr)
+            return ExitCode.ERROR
         print("OK")
-        return 0
+        return ExitCode.SUCCESS
 
     # ── fence subcommand ─────────────────────────────────────────────
     if args.command == "fence":
@@ -1446,35 +1631,56 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "cluster":
         return _handle_cluster(args)
 
-    # ── scan subcommand (functional pipeline) ───────────────────────
+    # ── scan subcommand ──────────────────────────────────────────────
     if args.command == "scan":
-        result_dict = build_run_result(
-            root=args.root,
-            tool_version=__version__,
-            project_id=args.project_id or "",
+        rc = _require_ci_flag(
+            bool(getattr(args, "ci_mode", False)), what="scan"
         )
-        out_path: Path = args.out
+        if rc is not None:
+            return rc
+
+        ci_mode = bool(getattr(args, "ci_mode", False))
+        scan_root = Path(args.root).resolve()
+
+        result, result_dict = _api_scan_project(
+            root=scan_root,
+            project_id=args.project_id or "",
+            ci_mode=ci_mode,
+        )
+
+        # In CI mode, enforce minimal structural integrity
+        if ci_mode:
+            rc = _ci_required_keys_check(result_dict)
+            if rc is not None:
+                return rc
+
+        # In CI, prevent writes escaping ./artifacts.
+        if _is_running_in_ci() and ci_mode:
+            requested_out = Path(args.out)
+            out_path = _reject_unsafe_out_path(
+                requested_out,
+                flag="--out",
+                base_dir=scan_root,
+            )
+            if out_path is None:
+                return ExitCode.ERROR
+            allowed = (scan_root / "artifacts").resolve()
+            if not out_path.is_relative_to(allowed):
+                print(
+                    "error: --out must be within artifacts/ when running in CI",
+                    file=sys.stderr,
+                )
+                return ExitCode.ERROR
+        else:
+            out_path = Path(args.out)
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(
-            json.dumps(result_dict, indent=2, default=str) + "\n",
+            stable_json_dumps(result_dict, ci_mode=ci_mode),
             encoding="utf-8",
         )
 
         # Optionally emit signals_latest.json alongside
         if args.emit_signals:
-
-            emit_rel = Path(args.emit_signals)
-            if emit_rel.is_absolute():
-                print("error: --emit-signals must be a relative path under --out", file=sys.stderr)
-                return 2
-            # Prevent path traversal (keep companion artifacts co-located)
-            resolved = (out_path.parent / emit_rel).resolve()
-            out_root = out_path.parent.resolve()
-            if out_root not in resolved.parents and resolved != out_root:
-                print("error: --emit-signals must stay within the --out directory", file=sys.stderr)
-                return 2
-            from datetime import datetime, timezone
-
             signals_latest = {
                 "schema_version": "signals_latest_v1",
                 "run_id": result_dict["run"]["run_id"],
@@ -1483,50 +1689,58 @@ def main(argv: list[str] | None = None) -> int:
                 "copy_version": result_dict["run"]["copy_version"],
                 "signals": result_dict.get("signals_snapshot", []),
             }
-            signals_path = out_path.parent / args.emit_signals
+            rel = Path(args.emit_signals)
+            signals_path = _reject_unsafe_out_path(
+                rel,
+                flag="--emit-signals",
+                base_dir=out_path.parent,
+            )
+            if signals_path is None:
+                return ExitCode.ERROR
             signals_path.write_text(
-                json.dumps(signals_latest, indent=2, default=str) + "\n",
+                stable_json_dumps(signals_latest, ci_mode=ci_mode),
                 encoding="utf-8",
             )
 
         _print_human(result_dict)
-        tier = result_dict.get("summary", {}).get("vibe_tier", "red")
-        return {"green": 0, "yellow": 1, "red": 2}.get(str(tier), 2)
+        score = result_dict.get("summary", {}).get("confidence_score", 0)
+        return _exit_code_from_score(score)
 
-    # ── default positional-path mode (class-based pipeline) ─────────
+    # ── default positional-path mode ─────────────────────────────────
     if args.path is None:
         print("error: please provide a path or use a subcommand.", file=sys.stderr)
-        return 2
+        return ExitCode.ERROR
+
+    rc = _require_ci_flag(
+        bool(getattr(args, "ci_mode", False)), what="default scan"
+    )
+    if rc is not None:
+        return rc
 
     target: Path = args.path.resolve()
     if not target.exists():
         print(f"error: path does not exist: {target}", file=sys.stderr)
-        return 2
+        return ExitCode.ERROR
 
-    # Default analyzers
-    analyzers = [
-        ComplexityAnalyzer(),
-        DuplicationAnalyzer(),
-        ExceptionsAnalyzer(),
-        FileSizesAnalyzer(),
-    ]
-
-    result = run_scan(
+    ci_mode = bool(getattr(args, "ci_mode", False))
+    _, result_dict = _api_scan_project(
         root=target if target.is_dir() else target.parent,
-        analyzers=analyzers,
         project_id=args.project_id or "",
-        ci_mode=getattr(args, 'ci_mode', False),
+        ci_mode=ci_mode,
     )
 
-    result_dict = result.to_dict()
+    # In CI mode, enforce minimal structural integrity
+    if ci_mode:
+        rc = _ci_required_keys_check(result_dict)
+        if rc is not None:
+            return rc
 
     # Always show human summary on stderr
     _print_human(result_dict)
 
     # Optionally dump full JSON to stdout (pipe-friendly)
     if args.json_out:
-        json.dump(result_dict, sys.stdout, indent=2, default=str)
-        print()  # trailing newline
+        stable_json_dump(result_dict, sys.stdout, ci_mode=ci_mode, indent=2)
 
     # Exit code mirrors tier
     score = result_dict.get("summary", {}).get("confidence_score", 0)

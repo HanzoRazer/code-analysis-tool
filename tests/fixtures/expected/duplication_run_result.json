@@ -6,19 +6,17 @@
   "findings_raw": [
     {
       "confidence": 0.85,
-      "finding_id": "dup_7fdc1228_0000",
-      "fingerprint": "sha256:7fdc1228b8432935f71cb013638deb5656f256d56e9e09490362c9042bb692c7",
+      "finding_id": "F0000",
       "location": {
         "line_end": 19,
         "line_start": 8,
-        "path": "src\\app.py"
+        "path": "src/app.py"
       },
       "message": "Function 'process_users' is a structural clone (2 copies, 24 total duplicate lines)",
       "metadata": {
-        "ast_hash": "e0aee406a59258ad",
         "clone_count": 2,
         "peer_locations": [
-          "src\\app.py:22"
+          "src/app.py:22"
         ],
         "rule_id": "DUP-PAIR-001",
         "total_dup_lines": 24
@@ -29,19 +27,17 @@
     },
     {
       "confidence": 0.85,
-      "finding_id": "dup_d29b5cd8_0001",
-      "fingerprint": "sha256:d29b5cd8e3d542c6669a67c17d3668390ab181ba075760d12252fb66c079df76",
+      "finding_id": "F0001",
       "location": {
         "line_end": 33,
         "line_start": 22,
-        "path": "src\\app.py"
+        "path": "src/app.py"
       },
       "message": "Function 'process_orders' is a structural clone (2 copies, 24 total duplicate lines)",
       "metadata": {
-        "ast_hash": "e0aee406a59258ad",
         "clone_count": 2,
         "peer_locations": [
-          "src\\app.py:8"
+          "src/app.py:8"
         ],
         "rule_id": "DUP-PAIR-001",
         "total_dup_lines": 24
@@ -70,18 +66,18 @@
   "signals_snapshot": [
     {
       "action": {
-        "text_key": "signal.complexity.DUP-PAIR-001.action",
+        "text_key": "signals.complexity.action.text",
         "urgency": "optional"
       },
       "evidence": {
         "finding_ids": [
-          "dup_7fdc1228_0000",
-          "dup_d29b5cd8_0001"
+          "F0000",
+          "F0001"
         ],
         "primary_location": {
           "line_end": 19,
           "line_start": 8,
-          "path": "src\\app.py"
+          "path": "src/app.py"
         },
         "summary": {
           "logged_count": 0,
@@ -89,12 +85,12 @@
         }
       },
       "risk_level": "green",
-      "signal_id": "sig_sha256:7fdc1228b",
-      "summary_key": "signal.complexity.DUP-PAIR-001.summary",
-      "title_key": "signal.complexity.DUP-PAIR-001.title",
+      "signal_id": "S0000",
+      "summary_key": "signals.complexity.summary",
+      "title_key": "signals.complexity.title",
       "type": "complexity",
       "urgency": "optional",
-      "why_key": "signal.complexity.DUP-PAIR-001.why"
+      "why_key": "signals.complexity.why"
     }
   ],
   "summary": {

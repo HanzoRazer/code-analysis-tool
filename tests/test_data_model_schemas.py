@@ -46,6 +46,17 @@ def user_event_example():
     return _load("user_event.example.json")
 
 
+
+@pytest.fixture()
+def debt_snapshot_schema():
+    return _load("debt_snapshot.schema.json")
+
+
+@pytest.fixture()
+def debt_snapshot_example():
+    return _load("debt_snapshot.example.json")
+
+
 # ── happy-path: examples validate ───────────────────────────────────
 
 class TestRunResult:
@@ -130,3 +141,15 @@ class TestNegativeCases:
         bad["events"][0]["type"] = "signal_exploded"
         with pytest.raises(ValidationError):
             Draft202012Validator(user_event_schema).validate(bad)
+
+
+
+class TestDebtSnapshot:
+    def test_example_validates(self, debt_snapshot_schema, debt_snapshot_example):
+        Draft202012Validator(debt_snapshot_schema).validate(debt_snapshot_example)
+
+    def test_schema_version_const(self, debt_snapshot_example):
+        assert debt_snapshot_example["schema_version"] == "debt_snapshot_v1"
+
+    def test_debt_count_matches_items(self, debt_snapshot_example):
+        assert debt_snapshot_example["debt_count"] == len(debt_snapshot_example["items"])

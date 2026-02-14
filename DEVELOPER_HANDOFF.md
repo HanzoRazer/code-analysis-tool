@@ -688,3 +688,67 @@ The **default positional branch is clean** — properly delegates to `_api_scan_
 | | | |
 
 *Update this table as improvements are made.*
+
+---
+
+## 12. Vibe Coder Rescue & Template System (2026-02-13)
+
+The platform now includes a **complete file generation system** for beginner developers ("vibe coders") who need to either rescue a messy codebase or build proper architecture from scratch.
+
+### 12.1 Tier Structure
+
+| Tier | Purpose | Target User |
+|------|---------|-------------|
+| **Rescue** | Detect problems in existing dumpster-fire repos | Beginner inheriting legacy code |
+| **Template** | Generate proper architecture scaffolding | Beginner starting fresh |
+
+### 12.2 Rescue Tier (`tests/rescue/`)
+
+```bash
+pytest tests/rescue/test_smell_detection.py -v -s    # Detect smells
+pytest tests/rescue/test_extraction_plan.py -v -s    # Generate refactor plan
+```
+
+**Smell Detectors:** God Class (15+ methods or 300+ lines), God Function (50+ lines), Deep Nesting (4+ levels), Long Parameter List (5+ params), Large File (500+ lines), Bare Excepts, Mutable Defaults.
+
+**Output:** `RESCUE_PLAN.json` + `RESCUE_PLAN.md` with step-by-step instructions.
+
+### 12.3 Template Tier (`tests/template/`)
+
+```bash
+pytest tests/template/test_scaffold_check.py -v -s       # Check structure
+pytest tests/template/test_migration_validator.py -v -s  # Full validation
+```
+
+### 12.4 Scaffold Generator
+
+```bash
+python -m code_audit.scaffold api --level 1   # MVP (sync, no auth)
+python -m code_audit.scaffold api --level 2   # Production (async, JWT, SQLite)
+python -m code_audit.scaffold api --level 3   # Enterprise (Celery, Redis, PostgreSQL)
+```
+
+### 12.5 Design Principles
+
+1. **Complete files, not diffs** — Every template is copy-paste ready
+2. **No async until Level 3** — Beginners don't need Celery to ship
+3. **Progressive disclosure** — Level 1 works out of the box
+4. **Tests PASS by finding problems** — Rescue tests succeed when detecting issues
+
+### 12.6 File Locations
+
+```
+code-analysis-tool/repo/
+├── src/code_audit/
+│   ├── scaffold.py           # Scaffold generator
+│   └── web_api/              # Generated API package
+│
+└── tests/
+    ├── rescue/               # Rescue tier tests
+    │   ├── test_smell_detection.py
+    │   └── test_extraction_plan.py
+    │
+    └── template/             # Template tier tests
+        ├── test_scaffold_check.py
+        └── test_migration_validator.py
+```

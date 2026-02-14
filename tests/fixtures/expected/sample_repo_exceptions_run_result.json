@@ -1,0 +1,280 @@
+{
+  "artifacts": {
+    "redactions_applied": false,
+    "snippet_policy": "truncated"
+  },
+  "findings_raw": [
+    {
+      "confidence": 0.98,
+      "finding_id": "F0000",
+      "location": {
+        "line_end": 86,
+        "line_start": 86,
+        "path": "src/handlers.py"
+      },
+      "message": "1 statement(s) after 'return' will never execute",
+      "metadata": {
+        "context": "unreachable_after_return",
+        "rule_id": "DC_UNREACHABLE_001",
+        "terminator": "return",
+        "unreachable_count": 1
+      },
+      "severity": "high",
+      "snippet": "# 1 unreachable statement(s) after return\n  print(...)",
+      "type": "dead_code"
+    },
+    {
+      "confidence": 0.95,
+      "finding_id": "F0001",
+      "location": {
+        "line_end": 17,
+        "line_start": 16,
+        "path": "src/handlers.py"
+      },
+      "message": "Bare except catches everything \u2014 including keyboard interrupts",
+      "metadata": {
+        "rule_id": "EXC-BARE-001"
+      },
+      "severity": "high",
+      "snippet": "except:\n    pass",
+      "type": "exceptions"
+    },
+    {
+      "confidence": 0.95,
+      "finding_id": "F0002",
+      "location": {
+        "line_end": 28,
+        "line_start": 27,
+        "path": "src/handlers.py"
+      },
+      "message": "Broad except may hide unexpected errors",
+      "metadata": {
+        "rule_id": "EXC-BROAD-001"
+      },
+      "severity": "medium",
+      "snippet": "except Exception:\n    \u2026",
+      "type": "exceptions"
+    },
+    {
+      "confidence": 0.85,
+      "finding_id": "F0003",
+      "location": {
+        "line_end": 41,
+        "line_start": 40,
+        "path": "src/handlers.py"
+      },
+      "message": "Exception is caught and silently ignored",
+      "metadata": {
+        "rule_id": "EXC-SWALLOW-001"
+      },
+      "severity": "high",
+      "snippet": "except Exception:\n    pass",
+      "type": "exceptions"
+    },
+    {
+      "confidence": 0.85,
+      "finding_id": "F0004",
+      "location": {
+        "line_end": 67,
+        "line_start": 66,
+        "path": "src/handlers.py"
+      },
+      "message": "Exception is caught and silently ignored",
+      "metadata": {
+        "rule_id": "EXC-SWALLOW-001"
+      },
+      "severity": "high",
+      "snippet": "except Exception:\n    pass",
+      "type": "exceptions"
+    },
+    {
+      "confidence": 0.99,
+      "finding_id": "F0005",
+      "location": {
+        "line_end": 17,
+        "line_start": 16,
+        "path": "src/handlers.py"
+      },
+      "message": "Bare except hides bugs and can swallow KeyboardInterrupt",
+      "metadata": {
+        "fence_type": "safety",
+        "rule_id": "FENCE-BARE-EXCEPT"
+      },
+      "severity": "high",
+      "snippet": "except:\n    ...",
+      "type": "safety"
+    }
+  ],
+  "run": {
+    "config": {
+      "exclude": [],
+      "include": [
+        "**/*.py"
+      ]
+    },
+    "copy_version": "i18n@dev",
+    "created_at": "2026-02-11T00:00:00+00:00",
+    "engine_version": "engine_v1",
+    "project_id": "",
+    "run_id": "00000000-0000-0000-0000-000000000000",
+    "signal_logic_version": "signals_v1",
+    "tool_version": "0.1.0"
+  },
+  "schema_version": "run_result_v1",
+  "signals_snapshot": [
+    {
+      "action": {
+        "text_key": "signals.dead_code.action.text",
+        "urgency": "important"
+      },
+      "evidence": {
+        "finding_ids": [
+          "F0000"
+        ],
+        "primary_location": {
+          "line_end": 86,
+          "line_start": 86,
+          "path": "src/handlers.py"
+        },
+        "summary": {
+          "if_false_count": 0,
+          "unreachable_count": 1
+        }
+      },
+      "footer_icon_key": "signals.dead_code.footer_icon",
+      "footer_key": "signals.dead_code.footer",
+      "risk_level": "red",
+      "signal_id": "S0000",
+      "summary_key": "signals.dead_code.summary",
+      "title_key": "signals.dead_code.title",
+      "type": "dead_code",
+      "urgency": "important",
+      "why_key": "signals.dead_code.why"
+    },
+    {
+      "action": {
+        "text_key": "signals.exceptions.action.text",
+        "urgency": "important"
+      },
+      "evidence": {
+        "finding_ids": [
+          "F0001"
+        ],
+        "primary_location": {
+          "line_end": 17,
+          "line_start": 16,
+          "path": "src/handlers.py"
+        },
+        "summary": {
+          "logged_count": 0,
+          "swallowed_count": 0
+        }
+      },
+      "risk_level": "red",
+      "signal_id": "S0001",
+      "summary_key": "signals.exceptions.summary",
+      "title_key": "signals.exceptions.title",
+      "type": "exceptions",
+      "urgency": "important",
+      "why_key": "signals.exceptions.why"
+    },
+    {
+      "action": {
+        "text_key": "signals.exceptions.action.text",
+        "urgency": "recommended"
+      },
+      "evidence": {
+        "finding_ids": [
+          "F0002"
+        ],
+        "primary_location": {
+          "line_end": 28,
+          "line_start": 27,
+          "path": "src/handlers.py"
+        },
+        "summary": {
+          "logged_count": 0,
+          "swallowed_count": 0
+        }
+      },
+      "risk_level": "yellow",
+      "signal_id": "S0002",
+      "summary_key": "signals.exceptions.summary",
+      "title_key": "signals.exceptions.title",
+      "type": "exceptions",
+      "urgency": "recommended",
+      "why_key": "signals.exceptions.why"
+    },
+    {
+      "action": {
+        "text_key": "signals.exceptions.action.text",
+        "urgency": "important"
+      },
+      "evidence": {
+        "finding_ids": [
+          "F0003",
+          "F0004"
+        ],
+        "primary_location": {
+          "line_end": 41,
+          "line_start": 40,
+          "path": "src/handlers.py"
+        },
+        "summary": {
+          "logged_count": 0,
+          "swallowed_count": 2
+        }
+      },
+      "risk_level": "red",
+      "signal_id": "S0003",
+      "summary_key": "signals.exceptions.summary",
+      "title_key": "signals.exceptions.title",
+      "type": "exceptions",
+      "urgency": "important",
+      "why_key": "signals.exceptions.why"
+    },
+    {
+      "action": {
+        "text_key": "signals.safety.action.text",
+        "urgency": "important"
+      },
+      "evidence": {
+        "finding_ids": [
+          "F0005"
+        ],
+        "primary_location": {
+          "line_end": 17,
+          "line_start": 16,
+          "path": "src/handlers.py"
+        },
+        "summary": {
+          "logged_count": 0,
+          "swallowed_count": 0
+        }
+      },
+      "risk_level": "red",
+      "signal_id": "S0004",
+      "summary_key": "signals.safety.summary",
+      "title_key": "signals.safety.title",
+      "type": "safety",
+      "urgency": "important",
+      "why_key": "signals.safety.why"
+    }
+  ],
+  "summary": {
+    "confidence_score": 64,
+    "counts": {
+      "by_severity": {
+        "high": 5,
+        "medium": 1
+      },
+      "by_type": {
+        "dead_code": 1,
+        "exceptions": 4,
+        "safety": 1
+      },
+      "findings_total": 6
+    },
+    "vibe_tier": "red"
+  }
+}

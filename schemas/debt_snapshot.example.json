@@ -1,0 +1,20 @@
+{
+  "created_at": "2000-01-01T00:00:00+00:00",
+  "debt_count": 1,
+  "items": [
+    {
+      "debt_type": "god_function",
+      "fingerprint": "0123456789abcdef",
+      "line_end": 120,
+      "line_start": 1,
+      "metrics": {
+        "cc": 20,
+        "line_count": 120
+      },
+      "path": "src/app.py",
+      "strategy": "Extract Function",
+      "symbol": "do_everything"
+    }
+  ],
+  "schema_version": "debt_snapshot_v1"
+}

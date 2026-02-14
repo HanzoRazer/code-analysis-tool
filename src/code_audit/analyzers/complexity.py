@@ -51,7 +51,7 @@ class ComplexityAnalyzer:
             except SyntaxError:
                 continue
 
-            rel = str(path.relative_to(root))
+            rel = path.relative_to(root).as_posix()
             for node in ast.walk(tree):
                 if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                     continue

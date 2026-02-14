@@ -13,6 +13,8 @@ import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+
+from code_audit.utils.json_norm import stable_json_dumps
 from typing import Any
 
 from code_audit.model.debt_instance import DebtInstance, DebtType, make_debt_fingerprint
@@ -69,7 +71,7 @@ class DebtRegistry:
         }
         path = self._dir / f"{name}.json"
         path.write_text(
-            json.dumps(data, indent=2, default=str) + "\n",
+            stable_json_dumps(data),
             encoding="utf-8",
         )
         return path
@@ -83,10 +85,11 @@ class DebtRegistry:
         data = json.loads(path.read_text(encoding="utf-8"))
         items: list[DebtInstance] = []
         for raw in data.get("items", []):
+            path_str = str(raw["path"]).replace("\\", "/")
             items.append(
                 DebtInstance(
                     debt_type=DebtType(raw["debt_type"]),
-                    path=raw["path"],
+                    path=path_str,
                     symbol=raw["symbol"],
                     line_start=raw["line_start"],
                     line_end=raw["line_end"],
@@ -95,7 +98,7 @@ class DebtRegistry:
                     fingerprint=raw.get(
                         "fingerprint",
                         make_debt_fingerprint(
-                            raw["debt_type"], raw["path"], raw["symbol"]
+                            raw["debt_type"], path_str, raw["symbol"]
                         ),
                     ),
                 )
@@ -111,6 +114,32 @@ class DebtRegistry:
         )
 
     # ── comparison ──────────────────────────────────────────────────
+
+    @staticmethod
+    def _items_from_snapshot_dict(snapshot: dict[str, Any]) -> list[DebtInstance]:
+        """Parse a ``debt_snapshot_v1`` dict into ``DebtInstance`` objects.
+
+        Shared by CLI and programmatic API to avoid duplication.
+        """
+        items: list[DebtInstance] = []
+        for raw in snapshot.get("items", []) or []:
+            path_str = str(raw["path"]).replace("\\", "/")
+            items.append(
+                DebtInstance(
+                    debt_type=DebtType(raw["debt_type"]),
+                    path=path_str,
+                    symbol=raw["symbol"],
+                    line_start=int(raw["line_start"]),
+                    line_end=int(raw["line_end"]),
+                    metrics=raw.get("metrics", {}) or {},
+                    strategy=raw.get("strategy", "") or "",
+                    fingerprint=raw.get("fingerprint")
+                    or make_debt_fingerprint(
+                        raw["debt_type"], path_str, raw["symbol"]
+                    ),
+                )
+            )
+        return items
 
     @staticmethod
     def compare(

@@ -64,5 +64,7 @@ def make_fingerprint(
     snippet: str,
 ) -> str:
     """Deterministic finding fingerprint per spec: sha256(rule|path|symbol|snippet)."""
+    # Normalize path separators for cross-platform stability
+    rel_path = rel_path.replace("\\", "/")
     payload = "|".join([rule_id, rel_path, symbol, snippet.strip()])
     return "sha256:" + hashlib.sha256(payload.encode()).hexdigest()

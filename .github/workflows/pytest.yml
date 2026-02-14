@@ -33,6 +33,18 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e ".[dev]"
 
+      - name: Fail if stale schema duplicate exists
+        shell: bash
+        run: bash ci/reject_stale_schema_duplicate.sh
+
+      - name: Ensure repo-root schemas/ matches canonical (strict)
+        shell: bash
+        run: bash ci/enforce_fallback_schema_sync.sh
+
+      - name: Enforce schema_version bump on canonical schema changes
+        shell: bash
+        run: bash ci/enforce_schema_version_bump.sh
+
       - name: Run tests
         run: |
           python -m pytest -q

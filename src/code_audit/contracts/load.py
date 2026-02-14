@@ -23,16 +23,30 @@ SCHEMA_DIR = "data/schemas"
 
 
 def _schema_path(name: str) -> Path:
-    """Resolve a public schema first from pip-installed package data,
-    then from the repo checkout layout."""
+    """Resolve a public schema.
+
+    Priority:
+    1. Canonical ``src/code_audit/data/schemas/`` (relative to this file)
+    2. pip-installed package data via importlib.resources
+    3. Repo-root ``schemas/`` fallback for bare checkout
+    """
+    # 1. canonical: data/schemas relative to the code_audit package root
+    canonical = Path(__file__).resolve().parents[1] / SCHEMA_DIR / name
+    if canonical.exists():
+        return canonical
+
+    # 2. importlib.resources (works for wheel / zip installs)
     try:
         with resources.as_file(
             resources.files("code_audit") / SCHEMA_DIR / name
         ) as p:
-            return p
+            if p.exists():
+                return p
     except Exception:
-        # fallback: repo checkout layout  (schemas/ at project root)
-        return Path(__file__).resolve().parents[3] / "schemas" / name
+        pass
+
+    # 3. repo checkout layout (schemas/ at project root)
+    return Path(__file__).resolve().parents[3] / "schemas" / name
 
 
 def load_schema(name: str) -> dict[str, Any]:
@@ -53,6 +67,17 @@ def validate_instance(instance: Any, schema_name: str) -> None:
 def validate_file(instance_path: Path, schema_name: str) -> None:
     """Load a JSON file and validate it against the named schema."""
     instance = json.loads(instance_path.read_text(encoding="utf-8"))
+
+    # Explicit contract check for debt snapshot artifacts.
+    # The JSON schema already constrains schema_version via "const", but this
+    # surface a readable error before the generic jsonschema traceback.
+    if schema_name == "debt_snapshot.schema.json":
+        sv = instance.get("schema_version")
+        if sv != "debt_snapshot_v1":
+            raise ValueError(
+                f"{instance_path}: expected schema_version='debt_snapshot_v1', got {sv!r}"
+            )
+
     validate_instance(instance, schema_name)
 
 

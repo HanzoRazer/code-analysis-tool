@@ -1,0 +1,757 @@
+{
+  "created_at": "2000-01-01T00:00:00+00:00",
+  "debt_count": 61,
+  "schema_version": "debt_snapshot_v1",
+  "items": [
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:0346d344cb56757a634a2ac113681e7e12c3bd9c003b58d9c3189bce79d07d78",
+      "line_end": 382,
+      "line_start": 233,
+      "metrics": {
+        "lines": 150
+      },
+      "path": "scripts/copy_lint.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "lint_text"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:067b89f330a29296d14c31f63d82660f3bd806b3b2027e6d109f2cd981cf78d3",
+      "line_end": 456,
+      "line_start": 391,
+      "metrics": {
+        "lines": 66
+      },
+      "path": "scripts/copy_lint.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "cmd_lint"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:7c29f6d84f610b50e801181d79616be0fcf5371d19a6e62c69ad134e9c6ad051",
+      "line_end": 263,
+      "line_start": 179,
+      "metrics": {
+        "lines": 85
+      },
+      "path": "scripts/copy_lint_vibe_saas.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "lint_string_common"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:a0d76df773fd4f11973457e065fe14158d0875f12832508b5f6da0fe03a74f3b",
+      "line_end": 383,
+      "line_start": 269,
+      "metrics": {
+        "lines": 115
+      },
+      "path": "scripts/copy_lint_vibe_saas.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "lint_signals_like"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:a5ca9aa0b1148153646c5f0582584e5e7ff9472813d4c199b734a0ed06f07fc5",
+      "line_end": 448,
+      "line_start": 385,
+      "metrics": {
+        "lines": 64
+      },
+      "path": "scripts/copy_lint_vibe_saas.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "lint_buttons"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:3b6daffbb3096d9766bdeb651927b97c79a7afca9bf05ee0b14a74db819a70cc",
+      "line_end": 111,
+      "line_start": 47,
+      "metrics": {
+        "lines": 65
+      },
+      "path": "scripts/locale_parity.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "check_parity"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:e77374b28a2a35dbaa9e7f3e76e45c1bb48494f5272ab79f40223186846c3166",
+      "line_end": 656,
+      "line_start": 103,
+      "metrics": {
+        "lines": 554
+      },
+      "path": "src/code_audit/__main__.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "_build_parser"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:363fc7f7ed8706e785e9b215591514dc7c49094fa1a613cc5436c54314093bb9",
+      "line_end": 795,
+      "line_start": 714,
+      "metrics": {
+        "lines": 82
+      },
+      "path": "src/code_audit/__main__.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "_handle_governance"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:5214b0a70e5a4a9b6f719d1ed66897e40dfc04fef8752f8975fb29da5081424d",
+      "line_end": 1428,
+      "line_start": 1178,
+      "metrics": {
+        "lines": 251
+      },
+      "path": "src/code_audit/__main__.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "_handle_debt"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:749465ca4225093fde661abe99eb135f35dcd80f43524e0d2b971d38178487b7",
+      "line_end": 1565,
+      "line_start": 1431,
+      "metrics": {
+        "lines": 135
+      },
+      "path": "src/code_audit/__main__.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "main"
+    },
+    {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:e79b7ef4c4c98316de00bc4f6541cebbcf6aa2edad94b315ab215b8071079d57",
+      "line_end": 36,
+      "line_start": 16,
+      "metrics": {
+        "nesting_depth": 7
+      },
+      "path": "src/code_audit/analyzers/complexity.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "_cyclomatic_complexity"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:0458fdae0ef36ac4fd2e411430de688a062306e75d0135d987d5cff0c4393c64",
+      "line_end": 254,
+      "line_start": 162,
+      "metrics": {
+        "lines": 93
+      },
+      "path": "src/code_audit/analyzers/duplication.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "run"
+    },
+    {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:8a7e259d50b55fa5661eaf5e769c75905db1245b0cb0ea47a1b7e06f58e4ff26",
+      "line_end": 111,
+      "line_start": 42,
+      "metrics": {
+        "nesting_depth": 6
+      },
+      "path": "src/code_audit/analyzers/exceptions.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "run"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:c1e556e147a6a1a435c26b09fcf641ce1adeeab4edcc3b00b3676c8c667d026d",
+      "line_end": 111,
+      "line_start": 42,
+      "metrics": {
+        "lines": 70
+      },
+      "path": "src/code_audit/analyzers/exceptions.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "run"
+    },
+    {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:1a99603476a7407bbb483fc720a8b1a1af8036fc7228bce74d2d7b7f0ef22916",
+      "line_end": 213,
+      "line_start": 181,
+      "metrics": {
+        "nesting_depth": 5
+      },
+      "path": "src/code_audit/analyzers/exceptions.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "_handler_has_logging"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:6845d6a9da3e8ca93debddbf97440a054a88c739e4df484a51d0131d7813d415",
+      "line_end": 374,
+      "line_start": 246,
+      "metrics": {
+        "lines": 129
+      },
+      "path": "src/code_audit/analyzers/exceptions.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "analyze_exceptions"
+    },
+    {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:d5e878ca63ca7fb39b8383fc139079afcf249073bc6d2b2b43b40391e0329e05",
+      "line_end": 374,
+      "line_start": 246,
+      "metrics": {
+        "nesting_depth": 7
+      },
+      "path": "src/code_audit/analyzers/exceptions.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "analyze_exceptions"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:11467570942c410c5a6c9640b7fbaa57bdc06d20738d698d5c7b78ac98c5a85f",
+      "line_end": 214,
+      "line_start": 154,
+      "metrics": {
+        "lines": 61
+      },
+      "path": "src/code_audit/contracts/safety_fence.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "_check_safety_decorators"
+    },
+    {
+      "debt_type": "long_parameter_list",
+      "fingerprint": "sha256:69c8ef8826480142d3d4eaf4de92e2328edd359036babe2becbca8ef1850c122",
+      "line_end": 120,
+      "line_start": 21,
+      "metrics": {
+        "param_count": 8
+      },
+      "path": "src/code_audit/core/runner.py",
+      "strategy": "Introduce Parameter Object / Preserve Whole Object",
+      "symbol": "run_scan"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:fb4af95153fa81ed553acf555bd497ed3a8f4f03bafe5fa8ec54c14d96d7007c",
+      "line_end": 120,
+      "line_start": 21,
+      "metrics": {
+        "lines": 100
+      },
+      "path": "src/code_audit/core/runner.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "run_scan"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:d03d2ace0b2b94fc9e0312255cd8862bb4cd61118b5cc812b4db3da6163da4d9",
+      "line_end": 199,
+      "line_start": 90,
+      "metrics": {
+        "lines": 110
+      },
+      "path": "src/code_audit/governance/deprecation.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "run"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:16a8df17e6d174ccb394e4d65cad76315f5dc7e0a70ab2a75187102fcc97617a",
+      "line_end": 114,
+      "line_start": 54,
+      "metrics": {
+        "lines": 61
+      },
+      "path": "src/code_audit/governance/import_ban.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "run"
+    },
+    {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:023f452804407ef24c278b87180d1859f041a16b18f0368f9f4d5b12bc23f4d5",
+      "line_end": 159,
+      "line_start": 91,
+      "metrics": {
+        "nesting_depth": 5
+      },
+      "path": "src/code_audit/governance/legacy_usage.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "run"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:a7f9e8706b052b1a5723359ddd9e20cfa66b48ef7e609016808c97fbac9d616b",
+      "line_end": 159,
+      "line_start": 91,
+      "metrics": {
+        "lines": 69
+      },
+      "path": "src/code_audit/governance/legacy_usage.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "run"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:ade11e259151794e0f059cb734e7a7e2ebf0c97e617b218746d0a0319c381ca3",
+      "line_end": 168,
+      "line_start": 102,
+      "metrics": {
+        "lines": 67
+      },
+      "path": "src/code_audit/governance/sdk_boundary.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "run"
+    },
+    {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:5f293b00e4ffa956cd471250d96c33e3fd13b3633e989bf021b97d8dc750fbb0",
+      "line_end": 40,
+      "line_start": 25,
+      "metrics": {
+        "nesting_depth": 7
+      },
+      "path": "src/code_audit/ml/feature_extraction.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "_cyclomatic_complexity"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:570f82c81ef40c082c8b795f34c714770ed0febbf405c24aefb19c68bf249578",
+      "line_end": 233,
+      "line_start": 142,
+      "metrics": {
+        "lines": 92
+      },
+      "path": "src/code_audit/ml/feature_extraction.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "extract_file_features"
+    },
+    {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:6eda6c8f045c16487b768000cdfb0f2e157fce40214f3c96cfde541bc09ba38c",
+      "line_end": 233,
+      "line_start": 142,
+      "metrics": {
+        "nesting_depth": 5
+      },
+      "path": "src/code_audit/ml/feature_extraction.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "extract_file_features"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:023af0f58e1556a7513be8ee51cfd46cda27ddf3d25131976a900337547960d7",
+      "line_end": 157,
+      "line_start": 42,
+      "metrics": {
+        "lines": 116
+      },
+      "path": "src/code_audit/reports/dashboard.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "render_dashboard"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:8284915b1039c28a4216dc1e2fb3c817273b804df611370c59574ceece8129b2",
+      "line_end": 218,
+      "line_start": 80,
+      "metrics": {
+        "lines": 139
+      },
+      "path": "src/code_audit/reports/debt_report.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "render_markdown"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:0e228234aab383b6cf80f1544611a89e2ae9dc0716130d60e7ad006f314996ef",
+      "line_end": 199,
+      "line_start": 138,
+      "metrics": {
+        "lines": 62
+      },
+      "path": "src/code_audit/reports/exporters.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "export_html"
+    },
+    {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:dce1c00bbfa4d2e946e5c85f51295b7285ace7f5ce2db361bd1ba6674a6d366d",
+      "line_end": 134,
+      "line_start": 78,
+      "metrics": {
+        "nesting_depth": 8
+      },
+      "path": "src/code_audit/run_result.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "_compute_confidence_and_vibe"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:b1e3f2132abd4012433227eba92eb2608230d9f73dc8c062421df3fa5c0504db",
+      "line_end": 217,
+      "line_start": 137,
+      "metrics": {
+        "lines": 81
+      },
+      "path": "src/code_audit/run_result.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "_build_signals_snapshot"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:5b08a693b7e10870eaa9bcfe35b2185b8439541abb40de7af37e462d7fa8b1e5",
+      "line_end": 289,
+      "line_start": 222,
+      "metrics": {
+        "lines": 68
+      },
+      "path": "src/code_audit/run_result.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "build_run_result"
+    },
+    {
+      "debt_type": "long_parameter_list",
+      "fingerprint": "sha256:a79004952033fa5e44b9e8b97a108e2ec46ae975089defb03c1c21e555293dc7",
+      "line_end": 289,
+      "line_start": 222,
+      "metrics": {
+        "param_count": 8
+      },
+      "path": "src/code_audit/run_result.py",
+      "strategy": "Introduce Parameter Object / Preserve Whole Object",
+      "symbol": "build_run_result"
+    },
+    {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:0bd8d92b85b05795b740f1ebaade3eb51b761147c7eb8e29c8e0d3617cff71bd",
+      "line_end": 62,
+      "line_start": 47,
+      "metrics": {
+        "nesting_depth": 5
+      },
+      "path": "src/code_audit/strangler/debt_detector.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "_count_attributes"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:440a850312917a56a9666023b475fc5540c2d8053b822b18c376b20d66e47481",
+      "line_end": 255,
+      "line_start": 189,
+      "metrics": {
+        "lines": 67
+      },
+      "path": "src/code_audit/strangler/debt_detector.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "_check_classes"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:a227065d01f3aa494f342ab50776af6a0fe63a0ef8bc8b31725670e3cad87b8f",
+      "line_end": 410,
+      "line_start": 257,
+      "metrics": {
+        "lines": 154
+      },
+      "path": "src/code_audit/strangler/debt_detector.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "_check_functions"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:61c074bd7d344a238f1ac085ca6ec4c0d492aacf25d9ebdfd34acde57f6a8feb",
+      "line_end": 135,
+      "line_start": 43,
+      "metrics": {
+        "lines": 93
+      },
+      "path": "src/code_audit/strangler/plan_generator.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "generate_plan"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:8f1ddfb7768b94dee2c2ec3b62e224ed2b0f27323548d5d755eeb4fd15a2c2f6",
+      "line_end": 144,
+      "line_start": 54,
+      "metrics": {
+        "lines": 91
+      },
+      "path": "src/code_audit/utils/parse_truth_map.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "parse_truth_map"
+    },
+    {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:4be82a9726eba54b0c7b04dbdccd32bdef9e07f24071434a4515a816e6b4ee9f",
+      "line_end": 28,
+      "line_start": 8,
+      "metrics": {
+        "nesting_depth": 5
+      },
+      "path": "tests/fixtures/repos/mixed_severity/src/app.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "do_work"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:2ed9fc4bf1abd50e4df3646006e95f953fc93580cd54283334057cf793f25607",
+      "line_end": 72,
+      "line_start": 1,
+      "metrics": {
+        "lines": 72
+      },
+      "path": "tests/fixtures/sample_repo_debt/big.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "big_function"
+    },
+    {
+      "debt_type": "long_parameter_list",
+      "fingerprint": "sha256:d7952120eb69167e30eb00c53cc6fc3c3cd5ce2e78d97988c3fa8fa3b687516a",
+      "line_end": 36,
+      "line_start": 16,
+      "metrics": {
+        "param_count": 6
+      },
+      "path": "tests/test_debt_report.py",
+      "strategy": "Introduce Parameter Object / Preserve Whole Object",
+      "symbol": "_make_finding"
+    },
+    {
+      "debt_type": "god_class",
+      "fingerprint": "sha256:77bb8de8a1dfe4f629d711f25a53694654f39c753d97676fbda108336308eea2",
+      "line_end": 202,
+      "line_start": 44,
+      "metrics": {
+        "attributes": 0,
+        "methods": 16
+      },
+      "path": "tests/test_debt_report.py",
+      "strategy": "Extract Class / Extract Interface",
+      "symbol": "TestRenderMarkdown"
+    },
+    {
+      "debt_type": "god_class",
+      "fingerprint": "sha256:09f97c420051edf6564a5ea2bf310b5e76fe1e021e59f1277b359b0f98d57012",
+      "line_end": 331,
+      "line_start": 14,
+      "metrics": {
+        "attributes": 0,
+        "methods": 14
+      },
+      "path": "tests/test_duplication.py",
+      "strategy": "Extract Class / Extract Interface",
+      "symbol": "TestDuplicationAnalyzer"
+    },
+    {
+      "debt_type": "god_class",
+      "fingerprint": "sha256:c515d89e96d7b23d90c50c5ffd18bd3959ab3d987ee55734319cebd95682adb2",
+      "line_end": 146,
+      "line_start": 12,
+      "metrics": {
+        "attributes": 0,
+        "methods": 12
+      },
+      "path": "tests/test_file_sizes.py",
+      "strategy": "Extract Class / Extract Interface",
+      "symbol": "TestFileSizesAnalyzer"
+    },
+    {
+      "debt_type": "god_class",
+      "fingerprint": "sha256:c4ab5fd754c0b8bf63bd6d3d3c220d766058f816f47fffa906908937c6629ac7",
+      "line_end": 132,
+      "line_start": 23,
+      "metrics": {
+        "attributes": 0,
+        "methods": 12
+      },
+      "path": "tests/test_governance.py",
+      "strategy": "Extract Class / Extract Interface",
+      "symbol": "TestImportBanAnalyzer"
+    },
+    {
+      "debt_type": "god_class",
+      "fingerprint": "sha256:546b32037c82a2a1bd8a462fcf05f14af7b847255b4529c38e4472f0f8acbcba",
+      "line_end": 346,
+      "line_start": 140,
+      "metrics": {
+        "attributes": 0,
+        "methods": 13
+      },
+      "path": "tests/test_governance.py",
+      "strategy": "Extract Class / Extract Interface",
+      "symbol": "TestDeprecationAnalyzer"
+    },
+    {
+      "debt_type": "god_class",
+      "fingerprint": "sha256:b842b823d678195781271e2531a0b9a798d412af3c75cc10e2f6c904d64a4276",
+      "line_end": 470,
+      "line_start": 354,
+      "metrics": {
+        "attributes": 0,
+        "methods": 13
+      },
+      "path": "tests/test_governance.py",
+      "strategy": "Extract Class / Extract Interface",
+      "symbol": "TestLegacyUsageAnalyzer"
+    },
+    {
+      "debt_type": "long_parameter_list",
+      "fingerprint": "sha256:bcd85b4f45f7ddf277646f067a9d4d31992b075add3776c9b61222e8dd671b67",
+      "line_end": 39,
+      "line_start": 19,
+      "metrics": {
+        "param_count": 6
+      },
+      "path": "tests/test_phase7.py",
+      "strategy": "Introduce Parameter Object / Preserve Whole Object",
+      "symbol": "_make_finding"
+    },
+    {
+      "debt_type": "god_class",
+      "fingerprint": "sha256:823559027ad926a8c8077053b340c8a3eda58b46e8465d690f89269e9f924b55",
+      "line_end": 282,
+      "line_start": 74,
+      "metrics": {
+        "attributes": 0,
+        "methods": 16
+      },
+      "path": "tests/test_phase7.py",
+      "strategy": "Extract Class / Extract Interface",
+      "symbol": "TestTrendAnalysis"
+    },
+    {
+      "debt_type": "god_class",
+      "fingerprint": "sha256:d492e3ed1f8dfe4dec395816c14e2e75fd518cf901dd6c20fd305c4576d4851b",
+      "line_end": 384,
+      "line_start": 290,
+      "metrics": {
+        "attributes": 0,
+        "methods": 11
+      },
+      "path": "tests/test_phase7.py",
+      "strategy": "Extract Class / Extract Interface",
+      "symbol": "TestExporters"
+    },
+    {
+      "debt_type": "god_class",
+      "fingerprint": "sha256:6a80ef8b971a69089fe64eb9950f34abca905171e693daf352ef8aa2f53de19f",
+      "line_end": 847,
+      "line_start": 747,
+      "metrics": {
+        "attributes": 0,
+        "methods": 11
+      },
+      "path": "tests/test_phase7.py",
+      "strategy": "Extract Class / Extract Interface",
+      "symbol": "TestCodeClustering"
+    },
+    {
+      "debt_type": "god_class",
+      "fingerprint": "sha256:37fb35590e8dea305c7a64a6a40def7cb2b4753d89d85b14a05d41e72ace8b14",
+      "line_end": 1038,
+      "line_start": 899,
+      "metrics": {
+        "attributes": 0,
+        "methods": 18
+      },
+      "path": "tests/test_phase7.py",
+      "strategy": "Extract Class / Extract Interface",
+      "symbol": "TestCLISmoke"
+    },
+    {
+      "debt_type": "god_class",
+      "fingerprint": "sha256:fec5bb0c33ae98a62be86f603ab656ebb802891ac9ed6494d38b5659ed27242a",
+      "line_end": 234,
+      "line_start": 21,
+      "metrics": {
+        "attributes": 0,
+        "methods": 13
+      },
+      "path": "tests/test_safety_fence.py",
+      "strategy": "Extract Class / Extract Interface",
+      "symbol": "TestSafetyFenceAnalyzer"
+    },
+    {
+      "debt_type": "god_class",
+      "fingerprint": "sha256:570a2539023d708b052ffbf95f9590af08aa4322edd65b67456ace28b42d95a5",
+      "line_end": 223,
+      "line_start": 62,
+      "metrics": {
+        "attributes": 0,
+        "methods": 13
+      },
+      "path": "tests/test_strangler.py",
+      "strategy": "Extract Class / Extract Interface",
+      "symbol": "TestDebtDetector"
+    },
+    {
+      "debt_type": "god_class",
+      "fingerprint": "sha256:b873cbfd3810f8c40d1163e43693846607568e1b236c75cc874a1219612384ca",
+      "line_end": 447,
+      "line_start": 366,
+      "metrics": {
+        "attributes": 0,
+        "methods": 10
+      },
+      "path": "tests/test_strangler.py",
+      "strategy": "Extract Class / Extract Interface",
+      "symbol": "TestDebtRegistry"
+    },
+    {
+      "debt_type": "god_class",
+      "fingerprint": "sha256:4c42a4a54c9cddad9e84c1bb1fc66a05b0ac35fc8c968c65676d1d42c87bf54e",
+      "line_end": 145,
+      "line_start": 27,
+      "metrics": {
+        "attributes": 0,
+        "methods": 17
+      },
+      "path": "tests/test_supporting_modules.py",
+      "strategy": "Extract Class / Extract Interface",
+      "symbol": "TestFeatureHunt"
+    },
+    {
+      "debt_type": "god_class",
+      "fingerprint": "sha256:95fa09c12f427b04e9b847a438c5135979073a1f562c9b5b9e68c261af25d8be",
+      "line_end": 254,
+      "line_start": 153,
+      "metrics": {
+        "attributes": 0,
+        "methods": 14
+      },
+      "path": "tests/test_supporting_modules.py",
+      "strategy": "Extract Class / Extract Interface",
+      "symbol": "TestSdkBoundary"
+    },
+    {
+      "debt_type": "god_class",
+      "fingerprint": "sha256:8dfe557e0e0d3ffe580c13a7e665a8b36ee04ef67c4284858d9027ecdef5156d",
+      "line_end": 382,
+      "line_start": 274,
+      "metrics": {
+        "attributes": 0,
+        "methods": 14
+      },
+      "path": "tests/test_supporting_modules.py",
+      "strategy": "Extract Class / Extract Interface",
+      "symbol": "TestParseTruthMap"
+    },
+    {
+      "debt_type": "god_class",
+      "fingerprint": "sha256:acc8b9613f5e909ace4402b1fa46162e65e24d7c51a379e7e0de70b1f4e3613d",
+      "line_end": 481,
+      "line_start": 390,
+      "metrics": {
+        "attributes": 0,
+        "methods": 12
+      },
+      "path": "tests/test_supporting_modules.py",
+      "strategy": "Extract Class / Extract Interface",
+      "symbol": "TestP6CLI"
+    }
+  ],
+  "schema_version": "debt_snapshot_v1"
+}

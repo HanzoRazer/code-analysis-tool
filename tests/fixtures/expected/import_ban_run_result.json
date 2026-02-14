@@ -6,8 +6,7 @@
   "findings_raw": [
     {
       "confidence": 0.99,
-      "finding_id": "ib_38d31713_0000",
-      "fingerprint": "sha256:38d31713c1590587334a201d4b005e095d2baf7d3d3455734cd4d04bcb6b0f70",
+      "finding_id": "F0000",
       "location": {
         "line_end": 7,
         "line_start": 7,
@@ -42,12 +41,12 @@
   "signals_snapshot": [
     {
       "action": {
-        "text_key": "signal.security.GOV-IMPORT-BAN.action",
+        "text_key": "signals.security.action.text",
         "urgency": "important"
       },
       "evidence": {
         "finding_ids": [
-          "ib_38d31713_0000"
+          "F0000"
         ],
         "primary_location": {
           "line_end": 7,
@@ -55,17 +54,23 @@
           "path": "banned_imports.py"
         },
         "summary": {
-          "logged_count": 0,
-          "swallowed_count": 0
+          "eval_exec_count": 0,
+          "hardcoded_secret_count": 0,
+          "pickle_load_count": 0,
+          "sql_injection_count": 0,
+          "subprocess_shell_count": 0,
+          "yaml_unsafe_count": 0
         }
       },
+      "footer_icon_key": "signals.security.footer_icon",
+      "footer_key": "signals.security.footer",
       "risk_level": "red",
-      "signal_id": "sig_sha256:38d31713c",
-      "summary_key": "signal.security.GOV-IMPORT-BAN.summary",
-      "title_key": "signal.security.GOV-IMPORT-BAN.title",
+      "signal_id": "S0000",
+      "summary_key": "signals.security.summary",
+      "title_key": "signals.security.title",
       "type": "security",
       "urgency": "important",
-      "why_key": "signal.security.GOV-IMPORT-BAN.why"
+      "why_key": "signals.security.why"
     }
   ],
   "summary": {

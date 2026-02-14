@@ -1,5 +1,11 @@
 """Monolithic run-result builder — functional pipeline.
 
+.. deprecated:: CAT-0020
+   ``build_run_result`` is superseded by ``code_audit.api.scan_project``.
+   All CLI paths now route through the canonical API.  This module is
+   retained only for backward-compatibility with any external callers.
+   It will be removed in a future release.
+
 ``build_run_result()`` owns the full lifecycle:
   1. discover Python files
   2. run functional analyzers (dict-based)
@@ -17,10 +23,12 @@ from __future__ import annotations
 import hashlib
 import os
 import uuid
+import warnings
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
+from .analyzers.dead_code import analyze_dead_code
 from .analyzers.exceptions import analyze_exceptions
 from .contracts.load import validate_instance
 
@@ -55,7 +63,8 @@ def _iter_python_files(root: Path) -> List[Path]:
         for fn in fns:
             if fn.endswith(".py"):
                 out.append(Path(dp) / fn)
-    return out
+    # Ensure deterministic ordering across platforms/filesystems.
+    return sorted(out, key=lambda p: p.as_posix())
 
 
 def _severity_counts(findings: List[Dict[str, Any]]) -> Dict[str, int]:
@@ -87,7 +96,18 @@ def _compute_confidence_and_vibe(
     vibe: RiskLevel = "green"
 
     for f in findings:
-        if f.get("type") == "exceptions":
+        ftype = f.get("type")
+        if ftype == "dead_code":
+            rule_id = (f.get("metadata") or {}).get("rule_id")
+            if rule_id == "DC_UNREACHABLE_001":
+                score -= 8
+            elif rule_id == "DC_IF_FALSE_001":
+                score -= 4
+            else:
+                score -= 6
+            continue
+
+        if ftype == "exceptions":
             rule_id = (f.get("metadata") or {}).get("rule_id")
             sev = f.get("severity")
             # Stronger penalty for "swallowed error" because it destroys feedback loops for beginners.
@@ -118,6 +138,7 @@ def _compute_confidence_and_vibe(
 
     score = max(0, min(100, score))
 
+    has_dead_code = any(f.get("type") == "dead_code" for f in findings)
     has_exc = any(f.get("type") == "exceptions" for f in findings)
     has_high_exc = any(
         f.get("type") == "exceptions"
@@ -126,7 +147,7 @@ def _compute_confidence_and_vibe(
     )
     if has_high_exc:
         vibe = "red"
-    elif has_exc:
+    elif has_exc or has_dead_code:
         vibe = "yellow"
     else:
         vibe = "green"
@@ -144,9 +165,11 @@ def _build_signals_snapshot(
       - Evidence: link to finding_ids and primary_location of the first finding.
     """
     exc_findings = [f for f in findings if f.get("type") == "exceptions"]
+    dead_findings = [f for f in findings if f.get("type") == "dead_code"]
+
+    out: List[Dict[str, Any]] = []
+
     exc_ids = [f["finding_id"] for f in exc_findings]
-    if not exc_ids:
-        return []
 
     # Prefer evidence ordering: swallowed errors first, then logged broad, then other broad.
     # This makes the "why" and "action" feel maximally relevant without changing copy keys.
@@ -189,32 +212,101 @@ def _build_signals_snapshot(
 
     signal_id = "sig_" + _stable_id("exceptions", *sorted(exc_ids))[:16]
 
-    return [
-        {
-            "signal_id": signal_id,
-            "type": "exceptions",
-            "risk_level": risk,
-            "urgency": urgency,
-            "title_key": "signals.exceptions.title",
-            "summary_key": "signals.exceptions.summary",
-            "why_key": "signals.exceptions.why",
-            "action": {
-                "text_key": "signals.exceptions.action.text",
+    if exc_ids:
+        out.append(
+            {
+                "signal_id": signal_id,
+                "type": "exceptions",
+                "risk_level": risk,
                 "urgency": urgency,
-            },
-            "footer_key": "signals.exceptions.footer",
-            "footer_icon_key": "signals.exceptions.footer_icon",
-            "button_context": "exceptions",
-            "evidence": {
-                "finding_ids": exc_ids_sorted,
-                "summary": {
-                    "swallowed_count": swallowed_count,
-                    "logged_count": logged_count,
+                "title_key": "signals.exceptions.title",
+                "summary_key": "signals.exceptions.summary",
+                "why_key": "signals.exceptions.why",
+                "action": {
+                    "text_key": "signals.exceptions.action.text",
+                    "urgency": urgency,
                 },
-                "primary_location": primary_location,
-            },
+                "footer_key": "signals.exceptions.footer",
+                "footer_icon_key": "signals.exceptions.footer_icon",
+                "button_context": "exceptions",
+                "evidence": {
+                    "finding_ids": exc_ids_sorted,
+                    "summary": {
+                        "swallowed_count": swallowed_count,
+                        "logged_count": logged_count,
+                    },
+                    "primary_location": primary_location,
+                },
+            }
+        )
+
+    # Dead code signal
+    dead_ids = [f["finding_id"] for f in dead_findings]
+    if dead_ids:
+        def _dead_priority(f: Dict[str, Any]) -> int:
+            rule = (f.get("metadata") or {}).get("rule_id", "")
+            if rule == "DC_UNREACHABLE_001":
+                return 0
+            if rule == "DC_IF_FALSE_001":
+                return 1
+            return 2
+
+        dead_sorted = sorted(
+            dead_findings,
+            key=lambda f: (
+                _dead_priority(f),
+                (f.get("location", {}) or {}).get("path", ""),
+                (f.get("location", {}) or {}).get("line_start", 0),
+            ),
+        )
+        dead_ids_sorted = [f["finding_id"] for f in dead_sorted]
+
+        first_dead = dead_sorted[0]
+        dloc = first_dead.get("location", {}) or {}
+        dead_primary = {
+            "path": dloc.get("path", ""),
+            "line_start": dloc.get("line_start", 1),
+            "line_end": dloc.get("line_end", 1),
         }
-    ]
+
+        unreachable_count = sum(
+            1 for f in dead_findings
+            if (f.get("metadata") or {}).get("rule_id") == "DC_UNREACHABLE_001"
+        )
+        if_false_count = sum(
+            1 for f in dead_findings
+            if (f.get("metadata") or {}).get("rule_id") == "DC_IF_FALSE_001"
+        )
+
+        dead_signal_id = "sig_" + _stable_id("dead_code", *sorted(dead_ids))[:16]
+        out.append(
+            {
+                "signal_id": dead_signal_id,
+                "type": "dead_code",
+                "risk_level": "red",
+                "urgency": "recommended",
+                "title_key": "signals.dead_code.title",
+                "summary_key": "signals.dead_code.summary",
+                "why_key": "signals.dead_code.why",
+                "action": {
+                    "text_key": "signals.dead_code.action.text",
+                    "urgency": "recommended",
+                },
+                "footer_key": "signals.dead_code.footer",
+                "footer_icon_key": "signals.dead_code.footer_icon",
+                "button_context": "dead_code",
+                "evidence": {
+                    "finding_ids": dead_ids_sorted,
+                    "summary": {
+                        "unreachable_count": unreachable_count,
+                        "if_false_count": if_false_count,
+                    },
+                    "primary_location": dead_primary,
+                },
+            }
+        )
+
+    return out
 
 
 # ── public entry point ───────────────────────────────────────────────
@@ -233,14 +325,24 @@ def build_run_result(
 ) -> Dict[str, Any]:
     """Build a complete run-result dict that validates against the schema.
 
+    .. deprecated:: CAT-0020
+       Use ``code_audit.api.scan_project`` instead.
+
     This is the **functional** pipeline entry point.  For the
     dataclass-based pipeline, use ``core.runner.run_scan`` instead.
     """
+    warnings.warn(
+        "build_run_result() is deprecated since CAT-0020. "
+        "Use code_audit.api.scan_project() instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     root_path = Path(root).resolve()
 
     # 1) Raw findings (engine truth)
     findings_raw: List[Dict[str, Any]] = []
     for pyfile in _iter_python_files(root_path):
+        findings_raw.extend(analyze_dead_code(pyfile, root=root_path))
         findings_raw.extend(analyze_exceptions(pyfile, root=root_path))
 
     # 2) Snapshot signals (what the user saw at scan time)

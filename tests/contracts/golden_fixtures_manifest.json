@@ -1,0 +1,19 @@
+{
+  "files": {
+    "tests/fixtures/expected/clean_project_run_result.json": "sha256:0c404862b2673a092783b042ef04b063d068f3ca59a6a8ea407171360bb11385",
+    "tests/fixtures/expected/complexity_hot_run_result.json": "sha256:0c404862b2673a092783b042ef04b063d068f3ca59a6a8ea407171360bb11385",
+    "tests/fixtures/expected/dead_code_clean_run_result.json": "sha256:0c404862b2673a092783b042ef04b063d068f3ca59a6a8ea407171360bb11385",
+    "tests/fixtures/expected/dead_code_hot_run_result.json": "sha256:1ec2af29bab27b2841953ce22094ded2e9ba311b7f5b622b7f6edf89aee91ba9",
+    "tests/fixtures/expected/duplication_run_result.json": "sha256:c1c91e8e7892e9abb8bf3e5634c6e45244f65c4e5d50d5f0b34b063fce92a29a",
+    "tests/fixtures/expected/global_state_clean_run_result.json": "sha256:0c404862b2673a092783b042ef04b063d068f3ca59a6a8ea407171360bb11385",
+    "tests/fixtures/expected/global_state_hot_run_result.json": "sha256:0c404862b2673a092783b042ef04b063d068f3ca59a6a8ea407171360bb11385",
+    "tests/fixtures/expected/import_ban_run_result.json": "sha256:4f833a3b62e4fe53221635e1ac045c5c0d1522bdeaf79378fd05866e3a38740d",
+    "tests/fixtures/expected/large_file_run_result.json": "sha256:d75e94fb0e729921d52297dd7a01cdb102a79418196ec014acbadf8d0f8c3db5",
+    "tests/fixtures/expected/mixed_severity_run_result.json": "sha256:23bc0555dfa60d98180a736b30d73eeae93cf258e0da292359c720c099e2653b",
+    "tests/fixtures/expected/safety_fence_run_result.json": "sha256:d15b328c4bbb46864cc5ba20f4444f74e44b12cbc4716e110664345b49005f93",
+    "tests/fixtures/expected/sample_repo_exceptions_run_result.json": "sha256:7ef9483ebe093e9a509fc2f712e54c25832298988e0e2bb01433b3ebedb474d3",
+    "tests/fixtures/expected/security_clean_run_result.json": "sha256:0c404862b2673a092783b042ef04b063d068f3ca59a6a8ea407171360bb11385",
+    "tests/fixtures/expected/security_hot_run_result.json": "sha256:0c404862b2673a092783b042ef04b063d068f3ca59a6a8ea407171360bb11385"
+  },
+  "signal_logic_version": "signals_v1"
+}

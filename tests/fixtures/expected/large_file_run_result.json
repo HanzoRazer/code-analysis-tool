@@ -6,12 +6,11 @@
   "findings_raw": [
     {
       "confidence": 1.0,
-      "finding_id": "fs_0e4e6f22_0000",
-      "fingerprint": "sha256:0e4e6f2298b8b8888018750871f80c704329c3e7d00e710203b292f13cf79e14",
+      "finding_id": "F0000",
       "location": {
         "line_end": 514,
         "line_start": 1,
-        "path": "src\\app.py"
+        "path": "src/app.py"
       },
       "message": "File has 514 lines (threshold: 500, over by: 14)",
       "metadata": {
@@ -21,7 +20,7 @@
         "threshold": 500
       },
       "severity": "medium",
-      "snippet": "src\\app.py: 514 lines (+14 over threshold)",
+      "snippet": "src/app.py: 514 lines (+14 over threshold)",
       "type": "complexity"
     }
   ],
@@ -44,17 +43,17 @@
   "signals_snapshot": [
     {
       "action": {
-        "text_key": "signal.complexity.FS-MOD-001.action",
+        "text_key": "signals.complexity.action.text",
         "urgency": "recommended"
       },
       "evidence": {
         "finding_ids": [
-          "fs_0e4e6f22_0000"
+          "F0000"
         ],
         "primary_location": {
           "line_end": 514,
           "line_start": 1,
-          "path": "src\\app.py"
+          "path": "src/app.py"
         },
         "summary": {
           "logged_count": 0,
@@ -62,12 +61,12 @@
         }
       },
       "risk_level": "yellow",
-      "signal_id": "sig_sha256:0e4e6f229",
-      "summary_key": "signal.complexity.FS-MOD-001.summary",
-      "title_key": "signal.complexity.FS-MOD-001.title",
+      "signal_id": "S0000",
+      "summary_key": "signals.complexity.summary",
+      "title_key": "signals.complexity.title",
       "type": "complexity",
       "urgency": "recommended",
-      "why_key": "signal.complexity.FS-MOD-001.why"
+      "why_key": "signals.complexity.why"
     }
   ],
   "summary": {

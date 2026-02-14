@@ -18,6 +18,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from code_audit.model import Severity
+from code_audit.utils.json_norm import stable_json_dumps
 from code_audit.model.run_result import RunResult
 
 # ── severity ordering (worst first) ─────────────────────────────────
@@ -37,7 +38,7 @@ _SEVERITY_ORDER = [
 
 def export_json(result: RunResult, *, indent: int = 2) -> str:
     """Export a ``RunResult`` as indented JSON."""
-    return json.dumps(result.to_dict(), indent=indent, default=str)
+    return stable_json_dumps(result.to_dict(), indent=indent)
 
 
 # ════════════════════════════════════════════════════════════════════

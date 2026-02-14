@@ -1,0 +1,224 @@
+{
+  "artifacts": {
+    "redactions_applied": false,
+    "snippet_policy": "truncated"
+  },
+  "findings_raw": [
+    {
+      "confidence": 0.98,
+      "finding_id": "F0000",
+      "location": {
+        "line_end": 11,
+        "line_start": 10,
+        "path": "src/app.py"
+      },
+      "message": "2 statement(s) after 'return' will never execute",
+      "metadata": {
+        "context": "unreachable_after_return",
+        "rule_id": "DC_UNREACHABLE_001",
+        "terminator": "return",
+        "unreachable_count": 2
+      },
+      "severity": "high",
+      "snippet": "# 2 unreachable statement(s) after return\n  print(...)\n  ... = ...",
+      "type": "dead_code"
+    },
+    {
+      "confidence": 0.98,
+      "finding_id": "F0001",
+      "location": {
+        "line_end": 17,
+        "line_start": 17,
+        "path": "src/app.py"
+      },
+      "message": "1 statement(s) after 'raise' will never execute",
+      "metadata": {
+        "context": "unreachable_after_raise",
+        "rule_id": "DC_UNREACHABLE_001",
+        "terminator": "raise",
+        "unreachable_count": 1
+      },
+      "severity": "high",
+      "snippet": "# 1 unreachable statement(s) after raise\n  cleanup(...)",
+      "type": "dead_code"
+    },
+    {
+      "confidence": 0.95,
+      "finding_id": "F0002",
+      "location": {
+        "line_end": 23,
+        "line_start": 21,
+        "path": "src/app.py"
+      },
+      "message": "'if False:' block contains 2 statement(s) that will never execute",
+      "metadata": {
+        "block_type": "if",
+        "context": "<module>",
+        "dead_statement_count": 2,
+        "rule_id": "DC_IF_FALSE_001"
+      },
+      "severity": "high",
+      "snippet": "if False:  # 2 statement(s) never execute",
+      "type": "dead_code"
+    },
+    {
+      "confidence": 0.95,
+      "finding_id": "F0003",
+      "location": {
+        "line_end": 29,
+        "line_start": 28,
+        "path": "src/app.py"
+      },
+      "message": "'while False:' block contains 1 statement(s) that will never execute",
+      "metadata": {
+        "block_type": "while",
+        "context": "while_false_example",
+        "dead_statement_count": 1,
+        "rule_id": "DC_IF_FALSE_001"
+      },
+      "severity": "high",
+      "snippet": "while False:  # 1 statement(s) never execute",
+      "type": "dead_code"
+    },
+    {
+      "confidence": 0.9,
+      "finding_id": "F0004",
+      "location": {
+        "line_end": 34,
+        "line_start": 34,
+        "path": "src/app.py"
+      },
+      "message": "'assert False' will always fail when reached",
+      "metadata": {
+        "context": "always_fails",
+        "rule_id": "DC_ASSERT_FALSE_001"
+      },
+      "severity": "medium",
+      "snippet": "assert False  # always fails",
+      "type": "dead_code"
+    },
+    {
+      "confidence": 0.9,
+      "finding_id": "F0005",
+      "location": {
+        "line_end": 39,
+        "line_start": 39,
+        "path": "src/app.py"
+      },
+      "message": "'assert False' will always fail when reached",
+      "metadata": {
+        "context": "also_always_fails",
+        "rule_id": "DC_ASSERT_FALSE_001"
+      },
+      "severity": "medium",
+      "snippet": "assert False  # always fails",
+      "type": "dead_code"
+    },
+    {
+      "confidence": 0.98,
+      "finding_id": "F0006",
+      "location": {
+        "line_end": 47,
+        "line_start": 47,
+        "path": "src/app.py"
+      },
+      "message": "1 statement(s) after 'break' will never execute",
+      "metadata": {
+        "context": "unreachable_in_loop",
+        "rule_id": "DC_UNREACHABLE_001",
+        "terminator": "break",
+        "unreachable_count": 1
+      },
+      "severity": "high",
+      "snippet": "# 1 unreachable statement(s) after break\n  print(...)",
+      "type": "dead_code"
+    },
+    {
+      "confidence": 0.98,
+      "finding_id": "F0007",
+      "location": {
+        "line_end": 49,
+        "line_start": 49,
+        "path": "src/app.py"
+      },
+      "message": "1 statement(s) after 'continue' will never execute",
+      "metadata": {
+        "context": "unreachable_in_loop",
+        "rule_id": "DC_UNREACHABLE_001",
+        "terminator": "continue",
+        "unreachable_count": 1
+      },
+      "severity": "high",
+      "snippet": "# 1 unreachable statement(s) after continue\n  print(...)",
+      "type": "dead_code"
+    }
+  ],
+  "run": {
+    "config": {
+      "exclude": [],
+      "include": [
+        "**/*.py"
+      ]
+    },
+    "copy_version": "i18n@dev",
+    "created_at": "2026-02-11T00:00:00+00:00",
+    "engine_version": "engine_v1",
+    "project_id": "",
+    "run_id": "00000000-0000-0000-0000-000000000000",
+    "signal_logic_version": "signals_v1",
+    "tool_version": "0.1.0"
+  },
+  "schema_version": "run_result_v1",
+  "signals_snapshot": [
+    {
+      "action": {
+        "text_key": "signals.dead_code.action.text",
+        "urgency": "important"
+      },
+      "evidence": {
+        "finding_ids": [
+          "F0000",
+          "F0001",
+          "F0002",
+          "F0003",
+          "F0004",
+          "F0005",
+          "F0006",
+          "F0007"
+        ],
+        "primary_location": {
+          "line_end": 11,
+          "line_start": 10,
+          "path": "src/app.py"
+        },
+        "summary": {
+          "if_false_count": 2,
+          "unreachable_count": 4
+        }
+      },
+      "footer_icon_key": "signals.dead_code.footer_icon",
+      "footer_key": "signals.dead_code.footer",
+      "risk_level": "red",
+      "signal_id": "S0000",
+      "summary_key": "signals.dead_code.summary",
+      "title_key": "signals.dead_code.title",
+      "type": "dead_code",
+      "urgency": "important",
+      "why_key": "signals.dead_code.why"
+    }
+  ],
+  "summary": {
+    "confidence_score": 75,
+    "counts": {
+      "by_severity": {
+        "high": 6,
+        "medium": 2
+      },
+      "by_type": {
+        "dead_code": 8
+      },
+      "findings_total": 8
+    },
+    "vibe_tier": "green"
+  }
+}

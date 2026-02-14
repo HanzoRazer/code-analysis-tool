@@ -6,12 +6,11 @@
   "findings_raw": [
     {
       "confidence": 0.85,
-      "finding_id": "exc_cefc9fa1_0000",
-      "fingerprint": "sha256:cefc9fa1ccba22624a8f7b9f77c443a86e26415ae66d768a69d477209441d1da",
+      "finding_id": "F0000",
       "location": {
         "line_end": 27,
         "line_start": 26,
-        "path": "src\\app.py"
+        "path": "src/app.py"
       },
       "message": "Exception is caught and silently ignored",
       "metadata": {
@@ -41,30 +40,30 @@
   "signals_snapshot": [
     {
       "action": {
-        "text_key": "signal.exceptions.EXC-SWALLOW-001.action",
+        "text_key": "signals.exceptions.action.text",
         "urgency": "important"
       },
       "evidence": {
         "finding_ids": [
-          "exc_cefc9fa1_0000"
+          "F0000"
         ],
         "primary_location": {
           "line_end": 27,
           "line_start": 26,
-          "path": "src\\app.py"
+          "path": "src/app.py"
         },
         "summary": {
           "logged_count": 0,
-          "swallowed_count": 0
+          "swallowed_count": 1
         }
       },
       "risk_level": "red",
-      "signal_id": "sig_sha256:cefc9fa1c",
-      "summary_key": "signal.exceptions.EXC-SWALLOW-001.summary",
-      "title_key": "signal.exceptions.EXC-SWALLOW-001.title",
+      "signal_id": "S0000",
+      "summary_key": "signals.exceptions.summary",
+      "title_key": "signals.exceptions.title",
       "type": "exceptions",
       "urgency": "important",
-      "why_key": "signal.exceptions.EXC-SWALLOW-001.why"
+      "why_key": "signals.exceptions.why"
     }
   ],
   "summary": {

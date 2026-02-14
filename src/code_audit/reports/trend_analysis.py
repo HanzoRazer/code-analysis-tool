@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from code_audit.model.debt_instance import DebtInstance, DebtType
+from code_audit.utils.json_norm import stable_json_dumps
 
 
 # ── data structures ───────────────────────────────────────────────────
@@ -206,7 +207,7 @@ def render_trend_json(trend: TrendReport) -> str:
             for s in trend.snapshots
         ],
     }
-    return json.dumps(data, indent=2)
+    return stable_json_dumps(data)
 
 
 # ── helpers ───────────────────────────────────────────────────────────

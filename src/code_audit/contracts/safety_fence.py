@@ -104,7 +104,7 @@ class SafetyFenceAnalyzer:
             except SyntaxError:
                 continue
 
-            rel = str(path.relative_to(root))
+            rel = path.relative_to(root).as_posix()
 
             if self._check_bare_except:
                 findings.extend(self._check_bare_excepts(tree, rel))

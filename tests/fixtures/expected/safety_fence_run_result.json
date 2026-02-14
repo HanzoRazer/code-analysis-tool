@@ -6,12 +6,11 @@
   "findings_raw": [
     {
       "confidence": 0.95,
-      "finding_id": "exc_99cf22aa_0000",
-      "fingerprint": "sha256:99cf22aa9953c2c4d872badf50ac7dc95f47a8747e1f90b1aa4c31a076a96ecc",
+      "finding_id": "F0000",
       "location": {
         "line_end": 16,
         "line_start": 15,
-        "path": "src\\app.py"
+        "path": "src/app.py"
       },
       "message": "Bare except catches everything \u2014 including keyboard interrupts",
       "metadata": {
@@ -22,31 +21,12 @@
       "type": "exceptions"
     },
     {
-      "confidence": 0.99,
-      "finding_id": "sf_f989b2f3_0000",
-      "fingerprint": "sha256:f989b2f318818b4d28713b0eb0767de735a83fab73d95c1e6a1b57a1b29ea436",
-      "location": {
-        "line_end": 16,
-        "line_start": 15,
-        "path": "src\\app.py"
-      },
-      "message": "Bare except hides bugs and can swallow KeyboardInterrupt",
-      "metadata": {
-        "fence_type": "safety",
-        "rule_id": "FENCE-BARE-EXCEPT"
-      },
-      "severity": "high",
-      "snippet": "except:\n    ...",
-      "type": "safety"
-    },
-    {
       "confidence": 0.95,
-      "finding_id": "sf_bc87ed48_0001",
-      "fingerprint": "sha256:bc87ed485fbeb23fbf03a064c9225fb0c7e8b8a7742f7c297b3482f5116a3a21",
+      "finding_id": "F0001",
       "location": {
         "line_end": 16,
         "line_start": 8,
-        "path": "src\\app.py"
+        "path": "src/app.py"
       },
       "message": "Safety-critical function 'generate_gcode' is missing @safety_critical decorator",
       "metadata": {
@@ -57,6 +37,23 @@
       },
       "severity": "critical",
       "snippet": "def generate_gcode(...)  # missing @safety_critical",
+      "type": "safety"
+    },
+    {
+      "confidence": 0.99,
+      "finding_id": "F0002",
+      "location": {
+        "line_end": 16,
+        "line_start": 15,
+        "path": "src/app.py"
+      },
+      "message": "Bare except hides bugs and can swallow KeyboardInterrupt",
+      "metadata": {
+        "fence_type": "safety",
+        "rule_id": "FENCE-BARE-EXCEPT"
+      },
+      "severity": "high",
+      "snippet": "except:\n    ...",
       "type": "safety"
     }
   ],
@@ -79,17 +76,17 @@
   "signals_snapshot": [
     {
       "action": {
-        "text_key": "signal.exceptions.EXC-BARE-001.action",
+        "text_key": "signals.exceptions.action.text",
         "urgency": "important"
       },
       "evidence": {
         "finding_ids": [
-          "exc_99cf22aa_0000"
+          "F0000"
         ],
         "primary_location": {
           "line_end": 16,
           "line_start": 15,
-          "path": "src\\app.py"
+          "path": "src/app.py"
         },
         "summary": {
           "logged_count": 0,
@@ -97,26 +94,26 @@
         }
       },
       "risk_level": "red",
-      "signal_id": "sig_sha256:99cf22aa9",
-      "summary_key": "signal.exceptions.EXC-BARE-001.summary",
-      "title_key": "signal.exceptions.EXC-BARE-001.title",
+      "signal_id": "S0000",
+      "summary_key": "signals.exceptions.summary",
+      "title_key": "signals.exceptions.title",
       "type": "exceptions",
       "urgency": "important",
-      "why_key": "signal.exceptions.EXC-BARE-001.why"
+      "why_key": "signals.exceptions.why"
     },
     {
       "action": {
-        "text_key": "signal.safety.FENCE-BARE-EXCEPT.action",
+        "text_key": "signals.safety.action.text",
         "urgency": "important"
       },
       "evidence": {
         "finding_ids": [
-          "sf_f989b2f3_0000"
+          "F0002"
         ],
         "primary_location": {
           "line_end": 16,
           "line_start": 15,
-          "path": "src\\app.py"
+          "path": "src/app.py"
         },
         "summary": {
           "logged_count": 0,
@@ -124,26 +121,26 @@
         }
       },
       "risk_level": "red",
-      "signal_id": "sig_sha256:f989b2f31",
-      "summary_key": "signal.safety.FENCE-BARE-EXCEPT.summary",
-      "title_key": "signal.safety.FENCE-BARE-EXCEPT.title",
+      "signal_id": "S0001",
+      "summary_key": "signals.safety.summary",
+      "title_key": "signals.safety.title",
       "type": "safety",
       "urgency": "important",
-      "why_key": "signal.safety.FENCE-BARE-EXCEPT.why"
+      "why_key": "signals.safety.why"
     },
     {
       "action": {
-        "text_key": "signal.safety.FENCE-SAFETY-DECORATOR.action",
+        "text_key": "signals.safety.action.text",
         "urgency": "important"
       },
       "evidence": {
         "finding_ids": [
-          "sf_bc87ed48_0001"
+          "F0001"
         ],
         "primary_location": {
           "line_end": 16,
           "line_start": 8,
-          "path": "src\\app.py"
+          "path": "src/app.py"
         },
         "summary": {
           "logged_count": 0,
@@ -151,12 +148,12 @@
         }
       },
       "risk_level": "red",
-      "signal_id": "sig_sha256:bc87ed485",
-      "summary_key": "signal.safety.FENCE-SAFETY-DECORATOR.summary",
-      "title_key": "signal.safety.FENCE-SAFETY-DECORATOR.title",
+      "signal_id": "S0002",
+      "summary_key": "signals.safety.summary",
+      "title_key": "signals.safety.title",
       "type": "safety",
       "urgency": "important",
-      "why_key": "signal.safety.FENCE-SAFETY-DECORATOR.why"
+      "why_key": "signals.safety.why"
     }
   ],
   "summary": {

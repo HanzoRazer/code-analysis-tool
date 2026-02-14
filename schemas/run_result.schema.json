@@ -98,11 +98,13 @@
             },
             "summary": {
               "type": "object",
-              "additionalProperties": false,
-              "required": ["swallowed_count", "logged_count"],
+              "additionalProperties": true,
               "properties": {
                 "swallowed_count": { "type": "integer", "minimum": 0 },
-                "logged_count": { "type": "integer", "minimum": 0 }
+                "logged_count": { "type": "integer", "minimum": 0 },
+                "mutable_default_count": { "type": "integer", "minimum": 0 },
+                "module_mutable_count": { "type": "integer", "minimum": 0 },
+                "global_keyword_count": { "type": "integer", "minimum": 0 }
               }
             },
             "primary_location": {

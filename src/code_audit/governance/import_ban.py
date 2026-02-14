@@ -61,7 +61,7 @@ class ImportBanAnalyzer:
             except SyntaxError:
                 continue
 
-            rel = str(path.relative_to(root))
+            rel = path.relative_to(root).as_posix()
 
             # Optionally skip shim files (files that re-export the banned module)
             if self._skip_shims and "_shim" in path.stem:

@@ -1,0 +1,20 @@
+{
+  "get_items": {
+    "call_count": 154203,
+    "frequency": 0.32,
+    "avg_response_ms": 45,
+    "last_used": "2026-01-15T10:30:00"
+  },
+  "create_item": {
+    "call_count": 87654,
+    "frequency": 0.18,
+    "avg_response_ms": 120,
+    "last_used": "2026-01-15T09:15:00"
+  },
+  "debug_internal_state": {
+    "call_count": 3,
+    "frequency": 0.0001,
+    "last_used": "2025-11-02T14:20:00"
+  },
+  "_comment": "Populate from production logs via /api/_analytics/export. Keys = function names, values = usage metrics."
+}

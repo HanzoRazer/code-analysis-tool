@@ -1,0 +1,53 @@
+{
+  "analyzers": [
+    {
+      "class_name": "ComplexityAnalyzer",
+      "logic_hash": "sha256:8a9628309549866a470f2878238276ecc01f1c252bd6131ae544c0b750f3e516",
+      "module": "code_audit.analyzers.complexity",
+      "version": "1.0.0"
+    },
+    {
+      "class_name": "DeadCodeAnalyzer",
+      "logic_hash": "sha256:e2b51f7ad1d5e9b1e797d1b7f6e99f0a93a5664768c0255def15f783044d1ccb",
+      "module": "code_audit.analyzers.dead_code",
+      "version": "1.0.0"
+    },
+    {
+      "class_name": "DuplicationAnalyzer",
+      "logic_hash": "sha256:154c3907d1304a1e693beec066ee5f187e9d26cc1c8ae9c497b9361fe0f04957",
+      "module": "code_audit.analyzers.duplication",
+      "version": "1.0.0"
+    },
+    {
+      "class_name": "ExceptionsAnalyzer",
+      "logic_hash": "sha256:f1437c28c3b89800009f1ba9a4315ceec5408e474d7b6cbffff83c3121bbacd9",
+      "module": "code_audit.analyzers.exceptions",
+      "version": "1.0.0"
+    },
+    {
+      "class_name": "FileSizesAnalyzer",
+      "logic_hash": "sha256:49c38f0621131e9409935dabd9e4ee4506cdfc5b465e8cdfd7ee4e7c9d9e08e6",
+      "module": "code_audit.analyzers.file_sizes",
+      "version": "1.1.0"
+    },
+    {
+      "class_name": "GlobalStateAnalyzer",
+      "logic_hash": "sha256:50c60b686d29e342aef857c8a08888920f80e5b183951fffb83d8ee2a752de83",
+      "module": "code_audit.analyzers.global_state",
+      "version": "1.0.0"
+    },
+    {
+      "class_name": "RoutersAnalyzer",
+      "logic_hash": "sha256:aacf8a413e59e5aa46dda41ecd54ebeb77f28e8ae76517eac81cff6c7dc992f1",
+      "module": "code_audit.analyzers.routers",
+      "version": "1.0.0"
+    },
+    {
+      "class_name": "SecurityAnalyzer",
+      "logic_hash": "sha256:9b67594f208a2e0bf0ab16d840d091d183613a410a83e792607c31ab7ed143dc",
+      "module": "code_audit.analyzers.security",
+      "version": "1.0.0"
+    }
+  ],
+  "signal_logic_version": "signals_v1"
+}

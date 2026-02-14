@@ -170,7 +170,7 @@ class DuplicationAnalyzer:
             except SyntaxError:
                 continue
 
-            rel = str(path.relative_to(root))
+            rel = path.relative_to(root).as_posix()
             all_blocks.extend(_extract_blocks(tree, rel, self.min_lines))
 
         # 2. Group by hash → clone groups

@@ -153,7 +153,8 @@ class DebtDetector:
             except SyntaxError:
                 continue
 
-            rel = str(path.relative_to(root))
+            # Use POSIX-style repo-relative paths for cross-platform stability.
+            rel = path.relative_to(root).as_posix()
             self._check_classes(tree, rel, findings, debt_items)
             self._check_functions(tree, rel, findings, debt_items)
 
@@ -178,7 +179,8 @@ class DebtDetector:
             except SyntaxError:
                 continue
 
-            rel = str(path.relative_to(root))
+            # Use POSIX-style repo-relative paths for cross-platform stability.
+            rel = path.relative_to(root).as_posix()
             self._check_classes(tree, rel, findings, debt_items)
             self._check_functions(tree, rel, findings, debt_items)
 

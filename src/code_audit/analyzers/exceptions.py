@@ -48,7 +48,7 @@ class ExceptionsAnalyzer:
             except SyntaxError:
                 continue
 
-            rel = str(path.relative_to(root))
+            rel = path.relative_to(root).as_posix()
             for node in ast.walk(tree):
                 if not isinstance(node, ast.ExceptHandler):
                     continue
@@ -259,7 +259,7 @@ def analyze_exceptions(path: Path, *, root: Path) -> List[Dict[str, Any]]:
     except SyntaxError:
         return []
 
-    rel = str(path.resolve().relative_to(root.resolve()))
+    rel = path.resolve().relative_to(root.resolve()).as_posix()
     findings: List[Dict[str, Any]] = []
 
     for node in ast.walk(tree):

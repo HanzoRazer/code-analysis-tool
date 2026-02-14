@@ -76,7 +76,7 @@ class FileSizesAnalyzer:
             if line_count <= self.threshold:
                 continue
 
-            rel = str(path.relative_to(root))
+            rel = path.relative_to(root).as_posix()
             over_by = line_count - self.threshold
             severity = Severity.HIGH if line_count >= self.high_threshold else Severity.MEDIUM
             rule_id = "FS-HIGH-001" if line_count >= self.high_threshold else "FS-MOD-001"

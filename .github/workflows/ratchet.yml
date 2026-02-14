@@ -1,0 +1,212 @@
+name: Debt Ratchet
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+env:
+  PYTHONHASHSEED: "0"
+  CODE_AUDIT_DETERMINISTIC: "1"
+
+jobs:
+  debt-ratchet:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: "pip"
+
+      - name: Install (editable + dev)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Fail-fast: baseline file must exist
+        run: |
+          if [ ! -f "baselines/main.json" ]; then
+            echo "::error title=Missing baseline::baselines/main.json not found. Create it with: code-audit debt snapshot . --ci --out baselines/main.json"
+            exit 2
+          fi
+
+      - name: Validate baseline snapshot schema (fail-fast)
+        run: |
+          echo "Validating baseline snapshot schema..."
+          code-audit validate baselines/main.json debt_snapshot.schema.json
+
+      - name: Create deterministic current snapshot
+        run: |
+          mkdir -p artifacts
+          echo "Creating deterministic current snapshot..."
+          code-audit debt snapshot . --ci --out artifacts/current.json
+
+      - name: Validate current snapshot schema (fail-fast)
+        run: |
+          echo "Validating current snapshot schema..."
+          code-audit validate artifacts/current.json debt_snapshot.schema.json
+
+      - name: Compare against baseline (ratchet)
+        run: |
+          echo "Comparing against baseline..."
+          # Write JSON diff for PR summary + debugging.
+          code-audit debt compare . \
+            --baseline baselines/main.json \
+            --current artifacts/current.json \
+            --ci --json > artifacts/compare.json
+
+      - name: Upload ratchet artifacts (always)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: debt-ratchet
+          path: |
+            artifacts/current.json
+            artifacts/compare.json
+
+      - name: PR comment summary (always)
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = 'artifacts/compare.json';
+            let body = `### code-audit ratchet\n`;
+
+            if (!fs.existsSync(path)) {
+              body += `⚠️ No compare.json produced (workflow may have failed before compare).\n`;
+            } else {
+              const raw = fs.readFileSync(path, 'utf8');
+              const data = JSON.parse(raw);
+              const newCount = Array.isArray(data.new) ? data.new.length : 0;
+              const resolvedCount = Array.isArray(data.resolved) ? data.resolved.length : 0;
+              const unchanged = typeof data.unchanged === 'number' ? data.unchanged : 0;
+
+              // Keep the comment short and stable.
+              body += `- New debt: **${newCount}**\n`;
+              body += `- Resolved debt: **${resolvedCount}**\n`;
+              body += `- Unchanged: **${unchanged}**\n\n`;
+
+              // Top 5 new debt items (deterministic ordering)
+              if (newCount > 0) {
+                const newItems = data.new || [];
+                const safeStr = (v) => (typeof v === 'string' ? v : '');
+                const safeNum = (v) => (typeof v === 'number' ? v : 0);
+
+                // Stable ordering: (path, line_start, symbol, debt_type, fingerprint)
+                const sorted = newItems.slice().sort((a, b) => {
+                  const ap = safeStr(a.path);
+                  const bp = safeStr(b.path);
+                  if (ap !== bp) return ap.localeCompare(bp);
+                  const al = safeNum(a.line_start);
+                  const bl = safeNum(b.line_start);
+                  if (al !== bl) return al - bl;
+                  const as = safeStr(a.symbol);
+                  const bs = safeStr(b.symbol);
+                  if (as !== bs) return as.localeCompare(bs);
+                  const at = safeStr(a.debt_type);
+                  const bt = safeStr(b.debt_type);
+                  if (at !== bt) return at.localeCompare(bt);
+                  const af = safeStr(a.fingerprint);
+                  const bf = safeStr(b.fingerprint);
+                  return af.localeCompare(bf);
+                });
+
+                const top = sorted.slice(0, 5);
+                body += `**Top new debt (first 5):**\n`;
+                for (const it of top) {
+                  const p = safeStr(it.path) || '(unknown-path)';
+                  const sym = safeStr(it.symbol) || '(unknown-symbol)';
+                  const line = safeNum(it.line_start);
+                  const loc = line > 0 ? `${p}:${line}` : p;
+                  body += `- \`${loc}:${sym}\`\n`;
+                }
+                if (newCount > 5) {
+                  body += `- …and ${newCount - 5} more\n`;
+                }
+                body += `\n`;
+              }
+
+              // Top 3 resolved debt items (deterministic ordering)
+              if (resolvedCount > 0) {
+                const resolvedItems = data.resolved || [];
+                const safeStr = (v) => (typeof v === 'string' ? v : '');
+                const safeNum = (v) => (typeof v === 'number' ? v : 0);
+
+                const sortedResolved = resolvedItems.slice().sort((a, b) => {
+                  const ap = safeStr(a.path);
+                  const bp = safeStr(b.path);
+                  if (ap !== bp) return ap.localeCompare(bp);
+                  const al = safeNum(a.line_start);
+                  const bl = safeNum(b.line_start);
+                  if (al !== bl) return al - bl;
+                  const as = safeStr(a.symbol);
+                  const bs = safeStr(b.symbol);
+                  if (as !== bs) return as.localeCompare(bs);
+                  const at = safeStr(a.debt_type);
+                  const bt = safeStr(b.debt_type);
+                  if (at !== bt) return at.localeCompare(bt);
+                  const af = safeStr(a.fingerprint);
+                  const bf = safeStr(b.fingerprint);
+                  return af.localeCompare(bf);
+                });
+
+                const topResolved = sortedResolved.slice(0, 3);
+                body += `**Top resolved debt (first 3):**\n`;
+                for (const it of topResolved) {
+                  const p = safeStr(it.path) || '(unknown-path)';
+                  const sym = safeStr(it.symbol) || '(unknown-symbol)';
+                  const line = safeNum(it.line_start);
+                  const loc = line > 0 ? `${p}:${line}` : p;
+                  body += `- ✅ \`${loc}:${sym}\`\n`;
+                }
+                if (resolvedCount > 3) {
+                  body += `- ✅ …and ${resolvedCount - 3} more\n`;
+                }
+                body += `\n`;
+              }
+
+              if (newCount > 0) {
+                body += `❌ Ratchet failed (new structural debt introduced).\n`;
+
+                // Tiny morale/clarity boost: show exact deterministic local command
+                body += `\n`;
+                body += `Run locally:\n`;
+                body += "```bash\n";
+                body += "code-audit debt compare . --baseline baselines/main.json --ci --json > compare.json\n";
+                body += "```\n";
+
+              } else {
+                body += `✅ Ratchet passed (no new structural debt).\n`;
+              }
+            }
+
+            // Post (or update) a single sticky comment.
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+
+            const marker = '<!-- code-audit-ratchet -->';
+            body = `${marker}\n` + body;
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner, repo, issue_number, per_page: 100,
+            });
+            const existing = comments.find(c => c.body && c.body.startsWith(marker));
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner, repo, comment_id: existing.id, body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner, repo, issue_number, body
+              });
+            }
+

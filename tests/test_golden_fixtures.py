@@ -17,6 +17,7 @@ import jsonschema
 import pytest
 
 from code_audit.analyzers.complexity import ComplexityAnalyzer
+from code_audit.analyzers.dead_code import DeadCodeAnalyzer
 from code_audit.analyzers.duplication import DuplicationAnalyzer
 from code_audit.analyzers.exceptions import ExceptionsAnalyzer
 from code_audit.analyzers.file_sizes import FileSizesAnalyzer
@@ -37,6 +38,7 @@ def _golden_run(fixture_path: Path, tmp_path: Path) -> dict:
     """Run the class-based pipeline with deterministic hooks."""
     analyzers = [
         ComplexityAnalyzer(),
+        DeadCodeAnalyzer(),
         DuplicationAnalyzer(),
         ExceptionsAnalyzer(),
         FileSizesAnalyzer(),
@@ -54,10 +56,77 @@ def _golden_run(fixture_path: Path, tmp_path: Path) -> dict:
 
 
 def _normalize(d: dict) -> dict:
-    """Strip run.config.root (machine-dependent) for stable comparison."""
+    """Normalize volatile fields so golden comparisons are semantic and cross-platform.
+
+    Strips machine-dependent config.root and normalizes path separators.
+    Also removes hash/ID fields that can differ across Python versions
+    (e.g., AST dump hashing) while keeping messages, severities, locations,
+    and counts intact.
+    """
     out = json.loads(json.dumps(d, sort_keys=True, default=str))
+
+    # 1) Drop machine-dependent config
     if "run" in out and "config" in out["run"]:
         out["run"]["config"].pop("root", None)
+
+    # 2) Normalize path separators
+    def _fix_paths(v):
+        if isinstance(v, dict):
+            return {k: _fix_paths(val) for k, val in v.items()}
+        if isinstance(v, list):
+            return [_fix_paths(x) for x in v]
+        if isinstance(v, str) and "\\" in v:
+            return v.replace("\\", "/")
+        return v
+
+    out = _fix_paths(out)
+
+    # 3) Normalize findings: remove fingerprints/ast hashes + re-stable IDs
+    findings = out.get("findings_raw", []) or []
+    # Sort deterministically by location + message so ID reassignment is stable
+    findings.sort(
+        key=lambda f: (
+            f.get("type", ""),
+            (f.get("location", {}) or {}).get("path", ""),
+            (f.get("location", {}) or {}).get("line_start", 0),
+            f.get("message", ""),
+        )
+    )
+
+    id_map: dict[str, str] = {}
+    for i, f in enumerate(findings):
+        old_id = f.get("finding_id", "")
+        new_id = f"F{i:04d}"
+        if old_id:
+            id_map[old_id] = new_id
+        f["finding_id"] = new_id
+        f.pop("fingerprint", None)
+        meta = f.get("metadata")
+        if isinstance(meta, dict):
+            meta.pop("ast_hash", None)
+
+    out["findings_raw"] = findings
+
+    # 4) Normalize signals: stable IDs + rewrite evidence.finding_ids
+    signals = out.get("signals_snapshot", []) or []
+    signals.sort(
+        key=lambda s: (
+            s.get("type", ""),
+            s.get("summary_key", ""),
+            (s.get("evidence", {}) or {}).get("primary_location", {}).get("path", ""),
+        )
+    )
+    for i, s in enumerate(signals):
+        s["signal_id"] = f"S{i:04d}"
+        ev = s.get("evidence")
+        if isinstance(ev, dict):
+            fids = ev.get("finding_ids")
+            if isinstance(fids, list):
+                ev["finding_ids"] = [id_map.get(x, x) for x in fids]
+                ev["finding_ids"].sort()
+
+    out["signals_snapshot"] = signals
+
     return out
 
 
@@ -104,7 +173,7 @@ class TestGoldenFixtures:
                 f"re-run to compare."
             )
 
-        expected = json.loads(expected_path.read_text(encoding="utf-8"))
+        expected = _normalize(json.loads(expected_path.read_text(encoding="utf-8")))
         actual = _normalize(result)
 
         assert actual == expected, (

@@ -89,5 +89,7 @@ def make_debt_fingerprint(
     symbol: str,
 ) -> str:
     """Deterministic fingerprint for a debt instance."""
-    payload = "|".join([debt_type, path, symbol])
+    # Normalize path separators to avoid cross-platform fingerprint drift.
+    norm_path = path.replace("\\", "/")
+    payload = "|".join([debt_type, norm_path, symbol])
     return "sha256:" + hashlib.sha256(payload.encode()).hexdigest()

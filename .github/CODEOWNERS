@@ -1,0 +1,6 @@
+# Baseline + contracts require explicit owner review.
+# (Golden fixtures define the contract for signal_logic_version.)
+
+/baselines/main.json      @HanzoRazer
+tests/fixtures/expected/  @HanzoRazer
+schemas/                  @HanzoRazer

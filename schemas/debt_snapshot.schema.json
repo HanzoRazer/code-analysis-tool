@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "created_at": {
+      "type": "string"
+    },
+    "debt_count": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "items": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "debt_type": {
+            "type": "string"
+          },
+          "fingerprint": {
+            "type": "string"
+          },
+          "line_end": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "line_start": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "metrics": {
+            "type": "object"
+          },
+          "path": {
+            "type": "string"
+          },
+          "strategy": {
+            "type": "string"
+          },
+          "symbol": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "debt_type",
+          "path",
+          "symbol",
+          "line_start",
+          "line_end",
+          "metrics",
+          "strategy",
+          "fingerprint"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "schema_version": {
+      "const": "debt_snapshot_v1"
+    }
+  },
+  "required": [
+    "schema_version",
+    "created_at",
+    "debt_count",
+    "items"
+  ],
+  "title": "Debt Snapshot v1",
+  "type": "object"
+}
