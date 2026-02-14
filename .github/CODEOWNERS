@@ -4,3 +4,11 @@
 /baselines/main.json      @HanzoRazer
 tests/fixtures/expected/  @HanzoRazer
 schemas/                  @HanzoRazer
+
+# Rule registry is a downstream contract surface.
+# Changes affect code-rescue-tool and other consumers.
+docs/rule_registry.json   @HanzoRazer
+src/code_audit/rules.py   @HanzoRazer
+
+# Translator policy manifest tracks signal aggregation logic.
+tests/contracts/          @HanzoRazer
