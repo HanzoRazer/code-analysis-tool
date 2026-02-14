@@ -30,3 +30,7 @@ Thumbs.db
 htmlcov/
 .coverage
 .coverage.*
+
+# Generated rescue plan artifacts (use docs/archive/ for historical copies)
+RESCUE_PLAN.json
+RESCUE_PLAN.md

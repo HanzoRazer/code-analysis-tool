@@ -51,9 +51,11 @@ def test_scan_subcommand_ci_never_calls_tier_label(monkeypatch, tmp_path):
         ),
     )
 
+    # CLI requires --out to be a relative path; chdir to tmp_path first
+    monkeypatch.chdir(tmp_path)
     rc = _mod.main([
-        "scan", "--root", str(tmp_path),
-        "--out", str(tmp_path / "out.json"),
+        "scan", "--root", ".",
+        "--out", "out.json",
         "--ci",
     ])
     assert rc == 0
