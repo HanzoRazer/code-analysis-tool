@@ -11,18 +11,22 @@ import json
 import sys
 from pathlib import Path
 
-# Add src to path for import
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "src"))
-
-from code_audit.rules import ALL_RULE_IDS
-
+RULES_PY = ROOT / "src" / "code_audit" / "rules.py"
 OUTPUT = ROOT / "docs" / "rule_registry.json"
+
+
+def load_all_rule_ids() -> list[str]:
+    """Load ALL_RULE_IDS from rules.py without importing the full package."""
+    # Execute rules.py in isolation to avoid triggering __init__.py imports
+    namespace: dict = {}
+    exec(RULES_PY.read_text(encoding="utf-8"), namespace)
+    return namespace["ALL_RULE_IDS"]
 
 
 def generate() -> str:
     """Generate rule_registry.json content from ALL_RULE_IDS."""
-    data = {"supported_rule_ids": list(ALL_RULE_IDS)}
+    data = {"supported_rule_ids": load_all_rule_ids()}
     return json.dumps(data, indent=2) + "\n"
 
 
