@@ -60,6 +60,7 @@ jobs:
             //  - ID_MARKER is the canonical identity (search key)
             const SCOPE_MARKER = "<!-- drift-rolling-issue: contracts -->";
             const ID_MARKER = "<!-- drift-rolling-issue-id: contracts:9d3f1a2c -->";
+            const FIRST_DETECTED_PREFIX = "<!-- drift-first-detected: ";
             const TAMPER_NOTE = "> \u26a0\ufe0f **Automation identity markers**: Do not remove or edit the hidden HTML markers at the top of this issue body. They are used to locate, reopen, and update this rolling issue automatically.\n";
 
             const reportPath = "drift_report.txt";
@@ -92,6 +93,45 @@ jobs:
             function hasBothMarkers(body) {
               const b = body || "";
               return b.includes(SCOPE_MARKER) && b.includes(ID_MARKER);
+            }
+
+            function extractFirstDetectedIso(body) {
+              const b = body || "";
+              const re = /<!--\s*drift-first-detected:\s*([0-9T:\.\-Z]+)\s*-->/;
+              const m = b.match(re);
+              return m ? m[1] : null;
+            }
+
+            function ensureFirstDetectedMarker(body, iso) {
+              // If marker exists, keep it; else insert after ID marker line (top-of-body).
+              const b = body || "";
+              if (b.includes("<!-- drift-first-detected:")) return b;
+              const lines = b.split("\n");
+              // Expected top:
+              // 0: SCOPE_MARKER
+              // 1: ID_MARKER
+              // Insert at line 2.
+              const markerLine = `<!-- drift-first-detected: ${iso} -->`;
+              if (lines.length >= 2 && lines[0].includes("drift-rolling-issue") && lines[1].includes("drift-rolling-issue-id")) {
+                lines.splice(2, 0, markerLine);
+                return lines.join("\n");
+              }
+              // Fallback: prepend everything.
+              return `${SCOPE_MARKER}\n${ID_MARKER}\n${markerLine}\n\n${b.trimStart()}`;
+            }
+
+            function formatDuration(ms) {
+              const totalSec = Math.max(0, Math.floor(ms / 1000));
+              const days = Math.floor(totalSec / 86400);
+              const hours = Math.floor((totalSec % 86400) / 3600);
+              const mins = Math.floor((totalSec % 3600) / 60);
+              const secs = totalSec % 60;
+              const parts = [];
+              if (days) parts.push(`${days}d`);
+              if (days || hours) parts.push(`${hours}h`);
+              if (days || hours || mins) parts.push(`${mins}m`);
+              parts.push(`${secs}s`);
+              return parts.join(" ");
             }
 
             function ensureDualMarkers(body) {
@@ -174,6 +214,8 @@ jobs:
             let reopened = false;
             let foundBy = found.foundBy;
             let markersRepaired = false;
+            let firstDetectedIso = null;
+            let firstDetectedWasRepaired = false;
 
             if (!existing) {
               found = await findRollingIssue("closed");
@@ -193,20 +235,35 @@ jobs:
 
             if (!existing) {
               // Still not found: create it once.
+              firstDetectedIso = now; // new unresolved period starts now
               const created = await github.rest.issues.create({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 title: ISSUE_TITLE,
-                body,
+                body: ensureFirstDetectedMarker(body, firstDetectedIso),
                 labels: LABELS
               });
               existing = created.data;
               foundBy = "created";
               core.info(`Created issue: ${created.data.html_url}`);
             } else {
+              // Determine first-detected time:
+              // - If reopening (was closed), start a new unresolved period now.
+              // - If already open, preserve existing marker; if missing, repair to now (tamper/self-heal).
+              if (reopened) {
+                firstDetectedIso = now;
+              } else {
+                firstDetectedIso = extractFirstDetectedIso(existing.body || "") || null;
+                if (!firstDetectedIso) {
+                  firstDetectedIso = now;
+                  firstDetectedWasRepaired = true;
+                }
+              }
+
               // If found by fallback (title/scope), markers may be missing or partial.
               // Enforce dual markers (self-healing).
               let patchedBody = ensureDualMarkers(existing.body || "");
+              patchedBody = ensureFirstDetectedMarker(patchedBody, firstDetectedIso);
               // Also ensure the tamper warning exists.
               patchedBody = bodyWithTamperWarning(patchedBody);
               if ((existing.body || "") !== patchedBody) {
@@ -248,13 +305,50 @@ jobs:
               }
             }
 
+            // Compute unresolved duration and inject into the body we'll publish.
+            let durationStr = "unknown";
+            try {
+              const fdMs = Date.parse(firstDetectedIso || "");
+              const nowMs = Date.parse(now);
+              if (!Number.isNaN(fdMs) && !Number.isNaN(nowMs)) {
+                durationStr = formatDuration(nowMs - fdMs);
+              }
+            } catch (e) {
+              // keep "unknown"
+            }
+
+            // Add "first detected" + "unresolved duration" just below the header section.
+            // We'll do this by inserting after the "## Contract parity drift detected" line.
+            function injectDurationFields(bodyText) {
+              const lines = (bodyText || "").split("\n");
+              const idx = lines.findIndex(l => l.trim() === "## Contract parity drift detected");
+              if (idx === -1) return bodyText;
+              // Insert after the header and a blank line (header is followed by blank line currently).
+              const insertAt = Math.min(idx + 2, lines.length);
+              const fields = [
+                `**First detected (UTC):** ${firstDetectedIso}`,
+                `**Unresolved drift duration:** ${durationStr}`,
+                ""
+              ];
+              // Avoid duplicating if rerun: remove existing lines with these prefixes first.
+              const cleaned = lines.filter(l =>
+                !l.startsWith("**First detected (UTC):**") &&
+                !l.startsWith("**Unresolved drift duration:**")
+              );
+              cleaned.splice(insertAt, 0, ...fields);
+              return cleaned.join("\n");
+            }
+
+            body = ensureFirstDetectedMarker(body, firstDetectedIso);
+            body = injectDurationFields(body);
+
             // If markers were repaired, leave a visible breadcrumb to discourage manual edits.
-            if (markersRepaired) {
+            if (markersRepaired || firstDetectedWasRepaired) {
               const tamperComment = [
-                "\u26a0\ufe0f **Marker tamper detected and repaired**",
+                "⚠️ **Marker tamper detected and repaired**",
                 "",
                 "This rolling issue is located and managed by hidden HTML markers in the issue body.",
-                "Those markers were missing or edited, so the observer workflow restored them automatically.",
+                "One or more identity markers (and/or first-detected marker) were missing or edited, so the observer workflow restored them automatically.",
                 "",
                 "Please avoid editing or removing the hidden markers at the top of the issue body.",
                 `Workflow run: ${runUrl}`,
@@ -281,6 +375,7 @@ jobs:
               `Workflow run: ${runUrl}`,
               "",
               `_Rolling issue identity: dual-marker (fallback used: ${foundBy})._`,
+              `**Unresolved drift duration:** ${durationStr}`,
               "",
               "```",
               clippedReport.trimEnd(),
