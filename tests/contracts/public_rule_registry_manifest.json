@@ -1,0 +1,10 @@
+{
+  "docs_supported_rule_ids_sha256": "b32959e4300d590ae11eca97d334172a00e32087d05d518196b67bf018afbc8b",
+  "hash_scope": "supported_rule_ids_only",
+  "paths": {
+    "canonical": "src/code_audit/rules.py:PUBLIC_RULE_IDS",
+    "registry": "docs/rule_registry.json:supported_rule_ids"
+  },
+  "public_rule_ids_sha256": "b32959e4300d590ae11eca97d334172a00e32087d05d518196b67bf018afbc8b",
+  "signal_logic_version": "signals_v1"
+}
