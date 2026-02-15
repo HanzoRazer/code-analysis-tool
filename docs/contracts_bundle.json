@@ -1,0 +1,20 @@
+{
+  "artifacts": {
+    "rule_registry": {
+      "hash_scope": "supported_rule_ids_only",
+      "path": "docs/rule_registry.json",
+      "sha256": "b32959e4300d590ae11eca97d334172a00e32087d05d518196b67bf018afbc8b"
+    },
+    "rule_registry_schema": {
+      "hash_scope": "file_bytes",
+      "path": "schemas/rule_registry.schema.json",
+      "sha256": "8f34c7f0003aa8cdcb0ef79c18722d2a9ad0018a3977913979c9fb0753445bf2"
+    },
+    "run_result_schema": {
+      "hash_scope": "file_bytes",
+      "path": "schemas/run_result.schema.json",
+      "sha256": "51e720805dba7747962713e4ba0d0e17d36464a14891016d613072ea11ab4024"
+    }
+  },
+  "signal_logic_version": "signals_v2"
+}
