@@ -12,6 +12,10 @@ jobs:
   test:
     name: Run pytest (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    env:
+      # Pin confidence policy hashing entrypoints (dependency-closure starts here).
+      # Comma-separated repo-relative paths. Add more if confidence scoring moves/splits.
+      CONFIDENCE_ENTRYPOINTS: src/code_audit/insights/confidence.py
 
     strategy:
       fail-fast: false

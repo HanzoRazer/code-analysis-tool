@@ -1,20 +1,27 @@
 """Contract gate: confidence_score policy requires signal_logic_version bump.
 
-Scope: semantic logic inside src/code_audit/insights/confidence.py
-Trigger: AST-level semantic change (function bodies, thresholds, weights)
+Scope: dependency closure of confidence scoring entrypoints
+Trigger: AST-level semantic change in any module reachable from the
+         confidence entrypoint(s) via internal imports
 Requirement: bump signal_logic_version + refresh manifest
 
-AST normalization:
-  - Strips module and function docstrings
-  - Strips CONFIDENCE_POLICY_VERSION assignment (bookkeeping only)
-  - Hashes remaining AST dump
+Dependency-closure hashing:
+  - Starts from entrypoint(s) (default: insights/confidence.py)
+  - Recursively resolves all `code_audit.*` imports
+  - AST-normalizes each module (strips docstrings + CONFIDENCE_POLICY_VERSION)
+  - Hashes the closure deterministically
+
+Override:
+  CONFIDENCE_ENTRYPOINTS="src/code_audit/insights/confidence.py,..."
 """
 from __future__ import annotations
 
 import ast
 import hashlib
 import json
+import os
 from pathlib import Path
+from typing import Iterable
 
 import pytest
 
@@ -22,11 +29,128 @@ from code_audit.model.run_result import RunResult
 
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / "tests" / "contracts" / "confidence_policy_manifest.json"
+SRC_ROOT = ROOT / "src" / "code_audit"
 
-# Confidence module(s) — expand if logic spans multiple files.
-CONFIDENCE_FILES = [
-    ROOT / "src" / "code_audit" / "insights" / "confidence.py",
-]
+
+# ── Entrypoint resolution ───────────────────────────────────────────
+
+
+def _entrypoints() -> list[Path]:
+    """Return confidence scoring entrypoints.
+
+    Override via CONFIDENCE_ENTRYPOINTS (comma-separated repo-relative paths).
+    """
+    override = os.environ.get("CONFIDENCE_ENTRYPOINTS", "").strip()
+    if override:
+        eps = [ROOT / p.strip() for p in override.split(",") if p.strip()]
+        return sorted(eps, key=lambda p: p.as_posix())
+    return [SRC_ROOT / "insights" / "confidence.py"]
+
+
+# ── Import resolution helpers ────────────────────────────────────────
+
+
+def _is_internal_module(mod: str) -> bool:
+    return mod == "code_audit" or mod.startswith("code_audit.")
+
+
+def _module_to_path(mod: str) -> Path | None:
+    """Resolve code_audit.foo.bar → src/code_audit/foo/bar.py or …/__init__.py."""
+    if not _is_internal_module(mod):
+        return None
+    rel = mod.split(".", 1)[1] if mod != "code_audit" else ""
+    base = SRC_ROOT / Path(*([p for p in rel.split(".") if p] or []))
+    file_py = base.with_suffix(".py")
+    pkg_init = base / "__init__.py"
+    if file_py.exists():
+        return file_py
+    if pkg_init.exists():
+        return pkg_init
+    return None
+
+
+def _resolve_from_import(module_file: Path, node: ast.ImportFrom) -> list[Path]:
+    """Resolve ``from ... import ...`` into internal module file paths."""
+    results: list[Path] = []
+    if node.level and node.level > 0:
+        # Relative import — compute package from file position.
+        rel_parts = module_file.relative_to(SRC_ROOT).parts
+        pkg_parts = (
+            rel_parts[:-1] if rel_parts[-1] != "__init__.py" else rel_parts[:-1]
+        )
+        up = node.level - 1
+        base_parts = pkg_parts[:-up] if up and up <= len(pkg_parts) else pkg_parts
+        base_mod = "code_audit" + (
+            ("." + ".".join(base_parts)) if base_parts else ""
+        )
+        full_mod = base_mod + ("." + node.module if node.module else "")
+    else:
+        full_mod = node.module or ""
+
+    if not full_mod:
+        return results
+
+    p = _module_to_path(full_mod)
+    if p:
+        results.append(p)
+
+    for alias in node.names:
+        if alias.name == "*":
+            continue
+        sp = _module_to_path(f"{full_mod}.{alias.name}")
+        if sp:
+            results.append(sp)
+
+    return results
+
+
+def _extract_internal_imports(module_file: Path, src: str) -> list[Path]:
+    tree = ast.parse(src)
+    deps: list[Path] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for a in node.names:
+                if _is_internal_module(a.name):
+                    p = _module_to_path(a.name)
+                    if p:
+                        deps.append(p)
+        elif isinstance(node, ast.ImportFrom):
+            deps.extend(_resolve_from_import(module_file, node))
+    return sorted(set(deps), key=lambda p: p.as_posix())
+
+
+# ── Dependency closure ───────────────────────────────────────────────
+
+
+def _closure(entrypoints: Iterable[Path]) -> list[Path]:
+    """Build deterministic dependency closure over internal modules."""
+    missing = [p for p in entrypoints if not p.exists()]
+    assert not missing, (
+        "Missing confidence entrypoint(s):\n  - "
+        + "\n  - ".join(str(p) for p in missing)
+        + "\nSet CONFIDENCE_ENTRYPOINTS to valid paths."
+    )
+
+    seen: set[Path] = set()
+    stack: list[Path] = sorted(set(entrypoints), key=lambda p: p.as_posix())
+    out: list[Path] = []
+
+    while stack:
+        p = stack.pop(0)  # BFS for stability
+        if p in seen:
+            continue
+        seen.add(p)
+        out.append(p)
+        src = p.read_text(encoding="utf-8")
+        for d in _extract_internal_imports(p, src):
+            if d not in seen and d not in stack:
+                stack.append(d)
+        stack.sort(key=lambda x: x.as_posix())
+
+    return out
+
+
+# ── AST normalization ────────────────────────────────────────────────
 
 
 def _strip_docstring(body: list[ast.stmt]) -> list[ast.stmt]:
@@ -84,23 +208,25 @@ def _normalize_module_for_hash(src: str) -> str:
     return ast.dump(tree, include_attributes=False)
 
 
+# ── Hash computation ─────────────────────────────────────────────────
+
+
 def _hash_confidence_logic() -> str:
-    """Compute canonical hash across all confidence module(s)."""
-    missing = [p for p in CONFIDENCE_FILES if not p.exists()]
-    assert not missing, (
-        "Missing confidence module(s):\n  - "
-        + "\n  - ".join(str(p) for p in missing)
-        + "\nUpdate CONFIDENCE_FILES in "
-        "tests/test_confidence_policy_requires_signal_logic_bump.py"
-    )
+    """Compute canonical hash over the dependency closure."""
+    files = _closure(_entrypoints())
 
-    parts: list[str] = []
-    for p in CONFIDENCE_FILES:
+    normalized_parts: list[str] = []
+    for p in files:
         src = p.read_text(encoding="utf-8")
-        parts.append(f"# {p.name}\n{_normalize_module_for_hash(src)}\n")
+        normalized_parts.append(
+            f"# {p.as_posix()}\n{_normalize_module_for_hash(src)}\n"
+        )
 
-    canonical = "\n".join(parts).encode("utf-8")
+    canonical = "\n".join(normalized_parts).encode("utf-8")
     return hashlib.sha256(canonical).hexdigest()
+
+
+# ── Test ─────────────────────────────────────────────────────────────
 
 
 @pytest.mark.contract

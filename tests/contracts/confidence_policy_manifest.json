@@ -1,5 +1,15 @@
 {
-  "confidence_policy_hash": "36f1fef19b129c9812ae7b1ba1ef832d7a237f57545c96f3b261e0884e455c71",
-  "signal_logic_version": "signals_v1",
-  "refreshed_at": "2026-02-15T03:52:45.462553+00:00"
+  "confidence_policy_hash": "3208098d5af82b70917f002cd223b9bdb88b9564a7dcc4085d3d1c955ededa44",
+  "discovery": {
+    "mode": "dependency_closure_internal_imports",
+    "override_env": "CONFIDENCE_ENTRYPOINTS",
+    "root": "src/code_audit"
+  },
+  "hash_scope": "ast_normalized_dependency_closure_no_docstrings_no_CONFIDENCE_POLICY_VERSION",
+  "paths": [
+    "src/code_audit/insights/confidence.py",
+    "src/code_audit/model/__init__.py",
+    "src/code_audit/model/finding.py"
+  ],
+  "signal_logic_version": "signals_v1"
 }

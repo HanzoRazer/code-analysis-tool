@@ -174,3 +174,36 @@ The purpose of `code_audit` is:
 > Prevent structural decay while enabling fast iteration.
 
 Stability, determinism, and clarity take precedence over feature expansion.
+
+---
+
+## 11. Confidence Policy Contract
+
+Confidence scoring semantics are hash-guarded via **dependency-closure hashing**.
+
+The confidence policy manifest hashes the dependency closure of the confidence
+scoring entrypoints and all internal `code_audit.*` modules they import
+(recursively), using AST normalization (strips docstrings and
+`CONFIDENCE_POLICY_VERSION` assignments).
+
+CI pins the hashing roots explicitly via:
+
+```
+CONFIDENCE_ENTRYPOINTS=src/code_audit/insights/confidence.py
+```
+
+If confidence scoring is refactored into new modules, update
+`CONFIDENCE_ENTRYPOINTS` accordingly.
+
+**Bump rules:**
+
+- Editing confidence scoring logic (weights, thresholds, formula) → bump
+  `signal_logic_version` + refresh manifest
+- Adding new internal imports to the confidence module → refresh manifest
+  (hash will change automatically via closure expansion)
+
+**Refresh command:**
+
+```bash
+python scripts/refresh_confidence_policy_manifest.py
+```
