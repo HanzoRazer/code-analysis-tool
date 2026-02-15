@@ -55,7 +55,11 @@ jobs:
 
             const ISSUE_TITLE = "Upstream contract drift detected";
             const LABELS = ["contracts", "drift", "automation"];
-            const MARKER = "<!-- drift-rolling-issue: contracts -->";
+            // Dual-marker hardening:
+            //  - SCOPE_MARKER is human-readable category
+            //  - ID_MARKER is the canonical identity (search key)
+            const SCOPE_MARKER = "<!-- drift-rolling-issue: contracts -->";
+            const ID_MARKER = "<!-- drift-rolling-issue-id: contracts:9d3f1a2c -->";
 
             const reportPath = "drift_report.txt";
             const report = fs.existsSync(reportPath)
@@ -74,10 +78,60 @@ jobs:
                 + clippedReport.slice(-35000);
             }
 
-            // IMPORTANT: Embed immutable marker at top of body so we can find/reopen/update
-            // the same rolling issue reliably via Search API (not title matching).
+            const repoQ = `repo:${context.repo.owner}/${context.repo.repo}`;
+
+            async function searchOne(query) {
+              const res = await github.rest.search.issuesAndPullRequests({
+                q: query,
+                per_page: 10
+              });
+              return res.data.items || [];
+            }
+
+            function hasBothMarkers(body) {
+              const b = body || "";
+              return b.includes(SCOPE_MARKER) && b.includes(ID_MARKER);
+            }
+
+            function ensureDualMarkers(body) {
+              const b = (body || "").trimStart();
+              // Place markers at the very top, stable order.
+              // If either is missing, prepend both (idempotent if already present).
+              if (hasBothMarkers(b)) return b;
+              // Remove any single/partial marker occurrences to avoid duplicates.
+              const cleaned = b
+                .replaceAll(SCOPE_MARKER, "")
+                .replaceAll(ID_MARKER, "")
+                .trimStart();
+              return `${SCOPE_MARKER}\n${ID_MARKER}\n\n${cleaned}`;
+            }
+
+            async function findRollingIssue(state) {
+              // 1) ID-marker search (canonical identity)
+              const byIdQ = `${repoQ} is:issue in:body "${ID_MARKER}" is:${state}`;
+              const idItems = await searchOne(byIdQ);
+              const idHit = idItems.find(i => (i.body || "").includes(ID_MARKER)) || null;
+              if (idHit) return { issue: idHit, foundBy: "id_marker" };
+
+              // 2) Scope-marker fallback (older identity)
+              const byScopeQ = `${repoQ} is:issue in:body "${SCOPE_MARKER}" is:${state}`;
+              const scopeItems = await searchOne(byScopeQ);
+              const scopeHit = scopeItems.find(i => (i.body || "").includes(SCOPE_MARKER)) || null;
+              if (scopeHit) return { issue: scopeHit, foundBy: "scope_marker" };
+
+              // 3) Title-based fallback (exact title) in case markers were removed
+              const byTitleQ = `${repoQ} is:issue in:title "${ISSUE_TITLE}" is:${state}`;
+              const titleItems = await searchOne(byTitleQ);
+              const titleHit = titleItems.find(i => i.title === ISSUE_TITLE) || null;
+              if (titleHit) return { issue: titleHit, foundBy: "title" };
+
+              return { issue: null, foundBy: "none" };
+            }
+
+            // Embed dual markers at top of body for stable identity via Search API.
             const body = [
-              MARKER,
+              SCOPE_MARKER,
+              ID_MARKER,
               "",
               "## Contract parity drift detected",
               "",
@@ -99,29 +153,18 @@ jobs:
               "_This issue is maintained automatically and will be updated on subsequent drift detections._"
             ].join("\n");
 
-            // Use GitHub Search API to find the rolling issue by immutable marker (not title).
-            // Strategy:
-            //  1) search open issues containing MARKER in body
-            //  2) else search closed issues containing MARKER in body and reopen
-            //  3) else create once (with MARKER)
-            const repoQ = `repo:${context.repo.owner}/${context.repo.repo}`;
-
-            async function searchByMarker(state) {
-              const q = `${repoQ} is:issue in:body "${MARKER}" is:${state}`;
-              const res = await github.rest.search.issuesAndPullRequests({
-                q,
-                per_page: 5
-              });
-              const items = res.data.items || [];
-              // Marker search is already very specific; still ensure the marker is actually present.
-              return items.find(i => (i.body || "").includes(MARKER)) || null;
-            }
-
-            let existing = await searchByMarker("open");
+            // Find rolling issue:
+            //  - Prefer ID marker identity
+            //  - Fall back to scope marker, then exact title if markers got removed
+            let found = await findRollingIssue("open");
+            let existing = found.issue;
             let reopened = false;
+            let foundBy = found.foundBy;
 
             if (!existing) {
-              existing = await searchByMarker("closed");
+              found = await findRollingIssue("closed");
+              existing = found.issue;
+              foundBy = found.foundBy;
               if (existing) {
                 await github.rest.issues.update({
                   owner: context.repo.owner,
@@ -144,8 +187,23 @@ jobs:
                 labels: LABELS
               });
               existing = created.data;
+              foundBy = "created";
               core.info(`Created issue: ${created.data.html_url}`);
             } else {
+              // If found by fallback (title/scope), markers may be missing or partial.
+              // Enforce dual markers (self-healing).
+              const patchedBody = ensureDualMarkers(existing.body || "");
+              if ((existing.body || "") !== patchedBody) {
+                await github.rest.issues.update({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: existing.number,
+                  body: patchedBody
+                });
+                core.info(`Enforced dual markers on issue #${existing.number} (found by: ${foundBy}).`);
+                existing = { ...existing, body: patchedBody };
+              }
+
               // Ensure title is set (optional cosmetic) while marker remains identity.
               // This is safe even if someone renamed it manually.
               try {
@@ -185,7 +243,7 @@ jobs:
               reopened ? `🔄 Drift detected again (issue reopened) at **${now}**.` : `Drift detected again at **${now}**.`,
               `Workflow run: ${runUrl}`,
               "",
-              "_Rolling issue identity is marker-based._",
+              `_Rolling issue identity: dual-marker (fallback used: ${foundBy})._`,
               "",
               "```",
               clippedReport.trimEnd(),
@@ -207,20 +265,67 @@ jobs:
         with:
           script: |
             const ISSUE_TITLE = "Upstream contract drift detected";
-            const MARKER = "<!-- drift-rolling-issue: contracts -->";
+            const SCOPE_MARKER = "<!-- drift-rolling-issue: contracts -->";
+            const ID_MARKER = "<!-- drift-rolling-issue-id: contracts:9d3f1a2c -->";
             const now = new Date().toISOString();
             const runUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
 
-            // Find existing open rolling issue by immutable marker (not title).
             const repoQ = `repo:${context.repo.owner}/${context.repo.repo}`;
-            const q = `${repoQ} is:issue in:body "${MARKER}" is:open`;
-            const res = await github.rest.search.issuesAndPullRequests({ q, per_page: 5 });
-            const items = res.data.items || [];
-            const existing = items.find(i => (i.body || "").includes(MARKER)) || null;
+
+            async function searchOne(query) {
+              const res = await github.rest.search.issuesAndPullRequests({
+                q: query,
+                per_page: 10
+              });
+              return res.data.items || [];
+            }
+
+            function hasBothMarkers(body) {
+              const b = body || "";
+              return b.includes(SCOPE_MARKER) && b.includes(ID_MARKER);
+            }
+            function ensureDualMarkers(body) {
+              const b = (body || "").trimStart();
+              if (hasBothMarkers(b)) return b;
+              const cleaned = b
+                .replaceAll(SCOPE_MARKER, "")
+                .replaceAll(ID_MARKER, "")
+                .trimStart();
+              return `${SCOPE_MARKER}\n${ID_MARKER}\n\n${cleaned}`;
+            }
+
+            // Prefer ID-marker identity; fall back to scope-marker, then exact title.
+            let foundBy = "id_marker";
+            let items = await searchOne(`${repoQ} is:issue in:body "${ID_MARKER}" is:open`);
+            let existing = items.find(i => (i.body || "").includes(ID_MARKER)) || null;
+
+            if (!existing) {
+              foundBy = "scope_marker";
+              items = await searchOne(`${repoQ} is:issue in:body "${SCOPE_MARKER}" is:open`);
+              existing = items.find(i => (i.body || "").includes(SCOPE_MARKER)) || null;
+            }
+
+            if (!existing) {
+              foundBy = "title";
+              items = await searchOne(`${repoQ} is:issue in:title "${ISSUE_TITLE}" is:open`);
+              existing = items.find(i => i.title === ISSUE_TITLE) || null;
+            }
 
             if (!existing) {
               core.info("No open drift issue found; nothing to close.");
               return;
+            }
+
+            // Enforce dual markers (self-healing) before closing.
+            const patchedBody = ensureDualMarkers(existing.body || "");
+            if ((existing.body || "") !== patchedBody) {
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                body: patchedBody
+              });
+              core.info(`Enforced dual markers on issue #${existing.number} during auto-close (found by: ${foundBy}).`);
             }
 
             // Comment "Resolved" with context.
@@ -231,7 +336,7 @@ jobs:
               "",
               "If drift reappears, this issue will be reopened automatically by the observer.",
               "",
-              "_Rolling issue identity is marker-based._"
+              `_Rolling issue identity: dual-marker (fallback used: ${foundBy})._`
             ].join("\n");
 
             await github.rest.issues.createComment({
