@@ -38,6 +38,8 @@ from code_audit.analyzers.file_sizes import FileSizesAnalyzer
 from code_audit.analyzers.global_state import GlobalStateAnalyzer
 from code_audit.analyzers.routers import RoutersAnalyzer
 from code_audit.analyzers.security import SecurityAnalyzer
+from code_audit.analyzers.deployment import DeploymentAnalyzer
+from code_audit.analyzers.sql_ecosystem import SQLEcosystemAnalyzer
 from code_audit.core.discover import discover_py_files
 from code_audit.core.runner import run_scan
 from code_audit.model.run_result import RunResult
@@ -51,12 +53,14 @@ _DETERMINISTIC_TIMESTAMP = "2000-01-01T00:00:00+00:00"
 _DEFAULT_ANALYZERS = (
     ComplexityAnalyzer,
     DeadCodeAnalyzer,
+    DeploymentAnalyzer,
     DuplicationAnalyzer,
     ExceptionsAnalyzer,
     FileSizesAnalyzer,
     GlobalStateAnalyzer,
     RoutersAnalyzer,
     SecurityAnalyzer,
+    SQLEcosystemAnalyzer,
 )
 
 

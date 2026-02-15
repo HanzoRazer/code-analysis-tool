@@ -28,7 +28,7 @@ class RunResult:
     )
     tool_version: str = __version__
     engine_version: str = "engine_v1"
-    signal_logic_version: str = "signals_v1"
+    signal_logic_version: str = "signals_v2"
     copy_version: str = "i18n@dev"
 
     config: dict = field(default_factory=dict)

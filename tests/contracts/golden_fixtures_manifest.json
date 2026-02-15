@@ -1,19 +1,19 @@
 {
   "files": {
-    "tests/fixtures/expected/clean_project_run_result.json": "sha256:0c404862b2673a092783b042ef04b063d068f3ca59a6a8ea407171360bb11385",
-    "tests/fixtures/expected/complexity_hot_run_result.json": "sha256:0c404862b2673a092783b042ef04b063d068f3ca59a6a8ea407171360bb11385",
-    "tests/fixtures/expected/dead_code_clean_run_result.json": "sha256:0c404862b2673a092783b042ef04b063d068f3ca59a6a8ea407171360bb11385",
-    "tests/fixtures/expected/dead_code_hot_run_result.json": "sha256:1ec2af29bab27b2841953ce22094ded2e9ba311b7f5b622b7f6edf89aee91ba9",
-    "tests/fixtures/expected/duplication_run_result.json": "sha256:c1c91e8e7892e9abb8bf3e5634c6e45244f65c4e5d50d5f0b34b063fce92a29a",
-    "tests/fixtures/expected/global_state_clean_run_result.json": "sha256:0c404862b2673a092783b042ef04b063d068f3ca59a6a8ea407171360bb11385",
-    "tests/fixtures/expected/global_state_hot_run_result.json": "sha256:0c404862b2673a092783b042ef04b063d068f3ca59a6a8ea407171360bb11385",
-    "tests/fixtures/expected/import_ban_run_result.json": "sha256:4f833a3b62e4fe53221635e1ac045c5c0d1522bdeaf79378fd05866e3a38740d",
-    "tests/fixtures/expected/large_file_run_result.json": "sha256:d75e94fb0e729921d52297dd7a01cdb102a79418196ec014acbadf8d0f8c3db5",
-    "tests/fixtures/expected/mixed_severity_run_result.json": "sha256:23bc0555dfa60d98180a736b30d73eeae93cf258e0da292359c720c099e2653b",
-    "tests/fixtures/expected/safety_fence_run_result.json": "sha256:d15b328c4bbb46864cc5ba20f4444f74e44b12cbc4716e110664345b49005f93",
-    "tests/fixtures/expected/sample_repo_exceptions_run_result.json": "sha256:7ef9483ebe093e9a509fc2f712e54c25832298988e0e2bb01433b3ebedb474d3",
-    "tests/fixtures/expected/security_clean_run_result.json": "sha256:0c404862b2673a092783b042ef04b063d068f3ca59a6a8ea407171360bb11385",
-    "tests/fixtures/expected/security_hot_run_result.json": "sha256:0c404862b2673a092783b042ef04b063d068f3ca59a6a8ea407171360bb11385"
+    "tests/fixtures/expected/clean_project_run_result.json": "sha256:8697a8e8c931e19241e8d3a1948bfd1aca1758f58b4081fa325333636364fe53",
+    "tests/fixtures/expected/complexity_hot_run_result.json": "sha256:8697a8e8c931e19241e8d3a1948bfd1aca1758f58b4081fa325333636364fe53",
+    "tests/fixtures/expected/dead_code_clean_run_result.json": "sha256:8697a8e8c931e19241e8d3a1948bfd1aca1758f58b4081fa325333636364fe53",
+    "tests/fixtures/expected/dead_code_hot_run_result.json": "sha256:754660bf646db46c6d763bad46f4f05a109822e68edfdf10fee9f95205d6b2e0",
+    "tests/fixtures/expected/duplication_run_result.json": "sha256:8184e5156ba9877425ba88d0ab4aba912ce24291cd00f69a88572adb0472f89b",
+    "tests/fixtures/expected/global_state_clean_run_result.json": "sha256:8697a8e8c931e19241e8d3a1948bfd1aca1758f58b4081fa325333636364fe53",
+    "tests/fixtures/expected/global_state_hot_run_result.json": "sha256:8697a8e8c931e19241e8d3a1948bfd1aca1758f58b4081fa325333636364fe53",
+    "tests/fixtures/expected/import_ban_run_result.json": "sha256:b2ea1c9365ca15f73dd2f3ff4240c75796f01d9fe70f7ef63ebe88535c233bad",
+    "tests/fixtures/expected/large_file_run_result.json": "sha256:0b6d8dbbfc4061b2d0f5006747b945fc123adfb0887e614ca315e42803082a05",
+    "tests/fixtures/expected/mixed_severity_run_result.json": "sha256:4ad407ed66e53a44e62a2c5ba6e6f1064b7fec094d5756a1e3e66a9f7eabbc50",
+    "tests/fixtures/expected/safety_fence_run_result.json": "sha256:4d61d5168f6daa6e8c3c02db07fbaf99f7832f9871e18ce7ae52e559dc3d1860",
+    "tests/fixtures/expected/sample_repo_exceptions_run_result.json": "sha256:d63c44451a5ae4bfa4804ca58056db1567c20f2a32f32a48a57305962c2f66e4",
+    "tests/fixtures/expected/security_clean_run_result.json": "sha256:8697a8e8c931e19241e8d3a1948bfd1aca1758f58b4081fa325333636364fe53",
+    "tests/fixtures/expected/security_hot_run_result.json": "sha256:8697a8e8c931e19241e8d3a1948bfd1aca1758f58b4081fa325333636364fe53"
   },
-  "signal_logic_version": "signals_v1"
+  "signal_logic_version": "signals_v2"
 }

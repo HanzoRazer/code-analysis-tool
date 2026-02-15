@@ -13,6 +13,7 @@ Two calling conventions:
 Available analyzers:
     - FileSizesAnalyzer: Detects files exceeding line count thresholds
     - DeploymentAnalyzer: Detects deployment configuration issues
+    - SQLEcosystemAnalyzer: Detects SQL syntax, security, performance, schema issues
     - (See individual modules for more)
 """
 
@@ -46,4 +47,35 @@ def __getattr__(name: str):
     if name == "FileSizesAnalyzer":
         from .file_sizes import FileSizesAnalyzer
         return FileSizesAnalyzer
+    if name == "SQLEcosystemAnalyzer":
+        from .sql_ecosystem import SQLEcosystemAnalyzer
+        return SQLEcosystemAnalyzer
+    if name == "SQLAnalyzerConfig":
+        from .sql_ecosystem import SQLAnalyzerConfig
+        return SQLAnalyzerConfig
+    if name == "analyze_sql_project":
+        from .sql_ecosystem import analyze_sql_project
+        return analyze_sql_project
+    if name == "check_sql_injection":
+        from .sql_ecosystem import check_sql_injection
+        return check_sql_injection
+    # Auto-fix exports
+    if name == "AutoFixer":
+        from .sql_autofix import AutoFixer
+        return AutoFixer
+    if name == "Fix":
+        from .sql_autofix import Fix
+        return Fix
+    if name == "FixResult":
+        from .sql_autofix import FixResult
+        return FixResult
+    if name == "apply_fixes":
+        from .sql_autofix import apply_fixes
+        return apply_fixes
+    if name == "fix_file":
+        from .sql_autofix import fix_file
+        return fix_file
+    if name == "fix_directory":
+        from .sql_autofix import fix_directory
+        return fix_directory
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

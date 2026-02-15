@@ -41,3 +41,4 @@ class AnalyzerType(str, Enum):
     GLOBAL_STATE = "global_state"
     DEAD_CODE = "dead_code"
     ROUTERS = "routers"
+    SQL = "sql"

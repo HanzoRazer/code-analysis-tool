@@ -1,0 +1,46 @@
+# SQL Ecosystem Analyzer Configuration
+# Copy to .sql-analyzer.yaml in your project root
+
+# SQL dialect for parsing (postgresql, mysql, sqlite, mssql, oracle)
+dialect: postgresql
+
+# Which validators to enable
+validators:
+  - syntax       # SQL syntax errors
+  - security     # SQL injection in SQL files, privilege issues
+  - injection    # SQL injection in Python code
+  - performance  # SELECT *, N+1 queries, LIKE patterns
+  - schema       # Missing PKs, reserved words, naming conventions
+  - migration    # Breaking changes, missing rollbacks
+  - orm          # SQLAlchemy/Django model issues
+
+# Minimum severity to report (LOW, MEDIUM, HIGH, CRITICAL)
+severity_threshold: LOW
+
+# File patterns to scan
+sql_patterns:
+  - "**/*.sql"
+  - "**/*.prc"
+  - "**/*.fnc"
+  - "**/*.trg"
+
+orm_patterns:
+  - "**/models/**/*.py"
+  - "**/models.py"
+  - "**/schemas.py"
+
+migration_patterns:
+  - "**/migrations/**/*.sql"
+  - "**/migrations/**/*.py"
+  - "**/alembic/**/*.py"
+
+python_sql_patterns:
+  - "**/*.py"
+
+# Schema requirements
+required_audit_columns:
+  - created_at
+  - updated_at
+
+# Performance thresholds
+max_query_complexity: 10

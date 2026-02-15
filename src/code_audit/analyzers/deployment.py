@@ -216,6 +216,11 @@ class PythonDependencyValidator(BaseValidator):
     ) -> list[Finding]:
         findings: list[Finding] = []
         api_root = root / config.api_root
+        
+        # Skip if api_root doesn't exist (not a structured project)
+        if not api_root.exists():
+            return findings
+            
         req_path = api_root / config.requirements_file
 
         if not req_path.exists():

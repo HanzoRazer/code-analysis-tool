@@ -33,7 +33,7 @@
     "engine_version": "engine_v1",
     "project_id": "",
     "run_id": "00000000-0000-0000-0000-000000000000",
-    "signal_logic_version": "signals_v1",
+    "signal_logic_version": "signals_v2",
     "tool_version": "0.1.0"
   },
   "schema_version": "run_result_v1",

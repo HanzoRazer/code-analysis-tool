@@ -1,0 +1,22 @@
+{
+  "hash": "6ead8cf6926f40291d24e9548391aa1be7a32d502ab634bbce86c8036d178d4d",
+  "sources": {
+    "AnalyzerType": [
+      "complexity",
+      "dead_code",
+      "exceptions",
+      "global_state",
+      "routers",
+      "safety",
+      "security",
+      "sql"
+    ],
+    "Severity": [
+      "critical",
+      "high",
+      "info",
+      "low",
+      "medium"
+    ]
+  }
+}
