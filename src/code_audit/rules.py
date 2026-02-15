@@ -33,7 +33,7 @@ SEC_YAML_UNSAFE_001 = "SEC_YAML_UNSAFE_001"
 
 # ── Buckets ─────────────────────────────────────────────────────────
 
-PUBLIC_RULE_IDS: list[str] = [
+PUBLIC_RULE_IDS: list[str] = sorted([
     # Dead Code
     DC_UNREACHABLE_001,
     DC_IF_FALSE_001,
@@ -49,19 +49,64 @@ PUBLIC_RULE_IDS: list[str] = [
     SEC_SQL_INJECTION_001,
     SEC_PICKLE_LOAD_001,
     SEC_YAML_UNSAFE_001,
-]
+])
 
-EXPERIMENTAL_RULE_IDS: list[str] = [
+EXPERIMENTAL_RULE_IDS: list[str] = sorted([
     # Add experimental rules here as they're developed
-    # Example: "EXP_UNUSED_IMPORT_001",
-]
+])
 
-DEPRECATED_RULE_IDS: list[str] = [
+DEPRECATED_RULE_IDS: list[str] = sorted([
     # Add deprecated rules here before removal
-    # Example: "OLD_RULE_001",
-]
+])
 
 # Union of all buckets (internal use only)
-ALL_RULE_IDS: list[str] = (
-    PUBLIC_RULE_IDS + EXPERIMENTAL_RULE_IDS + DEPRECATED_RULE_IDS
-)
+ALL_RULE_IDS: list[str] = sorted(set(
+    PUBLIC_RULE_IDS
+    + EXPERIMENTAL_RULE_IDS
+    + DEPRECATED_RULE_IDS
+))
+
+
+def _assert_rule_registry_invariants() -> None:
+    """Fail fast on invariant violations.
+
+    Called at import time so CI and local runs catch issues immediately.
+    """
+    import re
+
+    # Pattern matches multi-segment IDs like DC_ASSERT_FALSE_001
+    rule_re = re.compile(r"^[A-Z]{2,4}_[A-Z][A-Z0-9_]*_[0-9]{3}$")
+
+    def _check_bucket(name: str, ids: list[str]) -> None:
+        if ids != sorted(ids):
+            raise AssertionError(f"{name} must be sorted")
+        if len(ids) != len(set(ids)):
+            raise AssertionError(f"{name} must contain unique IDs")
+        bad = [x for x in ids if not rule_re.match(x)]
+        if bad:
+            raise AssertionError(f"{name} contains invalid rule IDs: {bad}")
+
+    _check_bucket("PUBLIC_RULE_IDS", PUBLIC_RULE_IDS)
+    _check_bucket("EXPERIMENTAL_RULE_IDS", EXPERIMENTAL_RULE_IDS)
+    _check_bucket("DEPRECATED_RULE_IDS", DEPRECATED_RULE_IDS)
+    _check_bucket("ALL_RULE_IDS", ALL_RULE_IDS)
+
+    # Buckets must be disjoint.
+    pub = set(PUBLIC_RULE_IDS)
+    exp = set(EXPERIMENTAL_RULE_IDS)
+    dep = set(DEPRECATED_RULE_IDS)
+    overlap = (pub & exp) | (pub & dep) | (exp & dep)
+    if overlap:
+        raise AssertionError(
+            f"Rule ID buckets must be disjoint; overlaps: {sorted(overlap)}"
+        )
+
+    # ALL must be exact union.
+    union = pub | exp | dep
+    if set(ALL_RULE_IDS) != union:
+        raise AssertionError(
+            "ALL_RULE_IDS must equal union(PUBLIC, EXPERIMENTAL, DEPRECATED)"
+        )
+
+
+_assert_rule_registry_invariants()

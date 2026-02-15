@@ -4,9 +4,13 @@
   "title": "Rule Registry",
   "description": "Canonical list of rule IDs emitted by code-analysis-tool",
   "type": "object",
-  "required": ["supported_rule_ids"],
+  "required": ["schema_version", "supported_rule_ids"],
   "additionalProperties": false,
   "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "rule_registry_v1"
+    },
     "supported_rule_ids": {
       "type": "array",
       "description": "Stable, public rule IDs safe for downstream consumption",

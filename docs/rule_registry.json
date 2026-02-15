@@ -1,4 +1,5 @@
 {
+  "schema_version": "rule_registry_v1",
   "supported_rule_ids": [
     "DC_ASSERT_FALSE_001",
     "DC_IF_FALSE_001",

@@ -105,6 +105,7 @@ def validate(buckets: dict[str, list[str]]) -> list[str]:
 def generate(buckets: dict[str, list[str]]) -> str:
     """Generate rule_registry.json content."""
     data: dict = {
+        "schema_version": "rule_registry_v1",
         "supported_rule_ids": sorted(buckets["public"]),
     }
 

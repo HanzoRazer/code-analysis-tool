@@ -30,7 +30,7 @@ def _cli_env() -> dict[str, str]:
 
 
 def _norm(b: bytes) -> bytes:
-    """Normalize CRLF → LF for cross-platform byte comparison."""
+    """Normalize CRLF -> LF for cross-platform byte comparison."""
     return b.replace(b"\r\n", b"\n")
 
 
@@ -62,19 +62,21 @@ def test_contract_parity_scan_subcommand_ci(tmp_path: Path) -> None:
     _, api_dict = scan_project(workdir, ci_mode=True)
     api_bytes = stable_json_dumps(api_dict, ci_mode=True).encode("utf-8")
 
-    # CLI scan subcommand writes to --out file
-    out_file = tmp_path / "result.json"
+    # CLI scan subcommand writes to --out file (relative path in artifacts/)
+    (tmp_path / "artifacts").mkdir(exist_ok=True)
     p = subprocess.run(
         [
             sys.executable, "-m", "code_audit",
             "scan", "--root", str(workdir),
-            "--out", str(out_file),
+            "--out", "artifacts/result.json",
             "--ci",
         ],
         env=_cli_env(),
+        cwd=tmp_path,
         capture_output=True,
     )
     assert p.returncode in (0, 1), (p.stdout, p.stderr)
+    out_file = tmp_path / "artifacts" / "result.json"
     assert _norm(api_bytes) == _norm(out_file.read_bytes())
 
 
@@ -91,22 +93,24 @@ def test_contract_default_and_subcommand_produce_same_result(tmp_path: Path) -> 
     )
     assert p1.returncode in (0, 1)
 
-    # Scan subcommand
-    out_file = tmp_path / "scan_result.json"
+    # Scan subcommand (relative path in artifacts/)
+    (tmp_path / "artifacts").mkdir(exist_ok=True)
     p2 = subprocess.run(
         [
             sys.executable, "-m", "code_audit",
             "scan", "--root", str(workdir),
-            "--out", str(out_file),
+            "--out", "artifacts/scan_result.json",
             "--ci",
         ],
         env=_cli_env(),
+        cwd=tmp_path,
         capture_output=True,
     )
     assert p2.returncode in (0, 1)
 
     import json
     d1 = json.loads(p1.stdout)
+    out_file = tmp_path / "artifacts" / "scan_result.json"
     d2 = json.loads(out_file.read_text(encoding="utf-8"))
 
     # config.root may differ in representation; normalize for comparison
