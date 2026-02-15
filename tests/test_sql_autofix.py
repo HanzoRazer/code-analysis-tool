@@ -160,6 +160,29 @@ subprocess.run(cmd, shell=True, capture_output=True)
         finally:
             path.unlink(missing_ok=True)
 
+    def test_shell_fix_preserves_variable_assignment(self):
+        """Test that fix preserves variable assignment like 'result = '."""
+        code = '''import subprocess
+result = subprocess.run(cmd, shell=True, capture_output=True)
+'''
+        with tempfile.NamedTemporaryFile(suffix='.py', delete=False, mode='w') as f:
+            f.write(code)
+            f.flush()
+            path = Path(f.name)
+
+        try:
+            fixer = AutoFixer()
+            fixes = fixer.analyze_file(path)
+
+            assert len(fixes) >= 1
+            fix = fixes[0]
+            # Must preserve the "result = " assignment
+            assert 'result = ' in fix.new_code or 'result=' in fix.new_code
+            assert 'shlex.split' in fix.new_code
+            assert 'shell=True' not in fix.new_code
+        finally:
+            path.unlink(missing_ok=True)
+
 
 class TestApplyFixes:
     """Tests for applying fixes to files."""

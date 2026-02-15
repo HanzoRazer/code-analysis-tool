@@ -441,7 +441,10 @@ class AutoFixer:
             old_code = ''.join(lines[line_num - 1:end_line])
 
             # Build the fix - wrap command in shlex.split() and remove shell=True
-            indent = len(old_code) - len(old_code.lstrip())
+            # Preserve any prefix before the call (e.g., "result = ")
+            first_line = lines[line_num - 1]
+            col_offset = getattr(node, 'col_offset', 0)
+            prefix = first_line[:col_offset]  # Everything before the call (indent + assignment)
 
             # Reconstruct the call
             func_name = ast.unparse(node.func) if hasattr(ast, 'unparse') else 'subprocess.run'
@@ -465,7 +468,7 @@ class AutoFixer:
             all_args = [new_first_arg] + other_args + new_keywords
             new_call = f"{func_name}({', '.join(all_args)})"
 
-            new_code = ' ' * indent + new_call + '\n'
+            new_code = prefix + new_call + '\n'
 
             fix = Fix(
                 file_path=file_path,
