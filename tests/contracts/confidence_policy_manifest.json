@@ -1,5 +1,5 @@
 {
-  "confidence_policy_hash": "3208098d5af82b70917f002cd223b9bdb88b9564a7dcc4085d3d1c955ededa44",
+  "confidence_policy_hash": "749870aa502fb728f0a7d11113e4d7bf6e62671aec1234be6ffdecec28cc20b5",
   "discovery": {
     "mode": "dependency_closure_internal_imports",
     "override_env": "CONFIDENCE_ENTRYPOINTS",
@@ -11,5 +11,5 @@
     "src/code_audit/model/__init__.py",
     "src/code_audit/model/finding.py"
   ],
-  "signal_logic_version": "signals_v1"
+  "signal_logic_version": "signals_v2"
 }

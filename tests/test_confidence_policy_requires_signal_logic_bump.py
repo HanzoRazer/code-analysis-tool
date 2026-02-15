@@ -32,6 +32,25 @@ MANIFEST = ROOT / "tests" / "contracts" / "confidence_policy_manifest.json"
 SRC_ROOT = ROOT / "src" / "code_audit"
 
 
+# ── CI enforcement ───────────────────────────────────────────────────
+
+
+def _is_ci() -> bool:
+    """GitHub Actions and many CI systems set CI=true."""
+    v = os.environ.get("CI", "").strip()
+    return v.lower() in {"1", "true", "yes", "on"}
+
+
+def _require_entrypoints_in_ci() -> None:
+    if _is_ci() and not os.environ.get("CONFIDENCE_ENTRYPOINTS", "").strip():
+        raise AssertionError(
+            "CI requires CONFIDENCE_ENTRYPOINTS to be set to avoid default "
+            "entrypoint mode.\n"
+            "Example:\n"
+            "  CONFIDENCE_ENTRYPOINTS=src/code_audit/insights/confidence.py\n"
+        )
+
+
 # ── Entrypoint resolution ───────────────────────────────────────────
 
 
@@ -39,7 +58,9 @@ def _entrypoints() -> list[Path]:
     """Return confidence scoring entrypoints.
 
     Override via CONFIDENCE_ENTRYPOINTS (comma-separated repo-relative paths).
+    In CI, CONFIDENCE_ENTRYPOINTS must be explicitly set.
     """
+    _require_entrypoints_in_ci()
     override = os.environ.get("CONFIDENCE_ENTRYPOINTS", "").strip()
     if override:
         eps = [ROOT / p.strip() for p in override.split(",") if p.strip()]

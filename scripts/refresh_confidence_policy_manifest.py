@@ -25,10 +25,27 @@ MANIFEST = ROOT / "tests" / "contracts" / "confidence_policy_manifest.json"
 SRC_ROOT = ROOT / "src" / "code_audit"
 
 
+# ── CI enforcement ───────────────────────────────────────────────────
+
+
+def _is_ci() -> bool:
+    v = os.environ.get("CI", "").strip()
+    return v.lower() in {"1", "true", "yes", "on"}
+
+
+def _require_entrypoints_in_ci() -> None:
+    if _is_ci() and not os.environ.get("CONFIDENCE_ENTRYPOINTS", "").strip():
+        raise SystemExit(
+            "CI requires CONFIDENCE_ENTRYPOINTS to be set "
+            "(no default entrypoint mode)."
+        )
+
+
 # ── Entrypoint resolution ───────────────────────────────────────────
 
 
 def _entrypoints() -> list[Path]:
+    _require_entrypoints_in_ci()
     override = os.environ.get("CONFIDENCE_ENTRYPOINTS", "").strip()
     if override:
         eps = [ROOT / p.strip() for p in override.split(",") if p.strip()]
