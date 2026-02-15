@@ -9,6 +9,11 @@ Two calling conventions:
 2. **Functional** — used by ``code_audit.run_result.build_run_result``.
    Plain functions that accept ``(path, *, root) -> list[dict]``
    returning dicts shaped to satisfy ``run_result.schema.json``.
+
+Available analyzers:
+    - FileSizesAnalyzer: Detects files exceeding line count thresholds
+    - DeploymentAnalyzer: Detects deployment configuration issues
+    - (See individual modules for more)
 """
 
 from __future__ import annotations
@@ -28,3 +33,17 @@ class Analyzer(Protocol):
     def run(self, root: Path, files: list[Path]) -> list[Finding]:
         """Analyze *files* under *root* and return findings."""
         ...
+
+
+# Lazy imports to avoid circular dependencies
+def __getattr__(name: str):
+    if name == "DeploymentAnalyzer":
+        from .deployment import DeploymentAnalyzer
+        return DeploymentAnalyzer
+    if name == "DeploymentConfig":
+        from .deployment import DeploymentConfig
+        return DeploymentConfig
+    if name == "FileSizesAnalyzer":
+        from .file_sizes import FileSizesAnalyzer
+        return FileSizesAnalyzer
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

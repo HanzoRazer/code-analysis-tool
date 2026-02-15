@@ -1,0 +1,68 @@
+# Deployment Readiness Analyzer Configuration
+# Copy to your project root as .deployment.yaml
+
+# Project structure (auto-detected if not specified)
+api_root: "services/api"
+client_root: "packages/client"
+dockerfile_path: "services/api/Dockerfile"
+
+# Python dependency validation
+requirements_file: "requirements.txt"
+critical_deps:
+  fastapi: "API framework"
+  uvicorn: "ASGI server"
+  pydantic: "Data validation"
+  httpx: "Async HTTP client"
+  openai: "OpenAI API client"
+  numpy: "Numerical operations"
+  pillow: "Image processing"
+
+optional_deps:
+  - anthropic
+  - psycopg2
+  - psycopg2-binary
+
+# Docker validation
+docker_dir_env_mapping:
+  RMOS_RUNS_DIR: "/app/data/runs"
+  UPLOAD_DIR: "/app/data/uploads"
+  CACHE_DIR: "/app/data/cache"
+
+# Frontend validation
+frontend_src: "src"
+frontend_extensions:
+  - ".vue"
+  - ".ts"
+  - ".tsx"
+  - ".js"
+  - ".jsx"
+
+# Cross-origin URL patterns to detect
+cross_origin_patterns:
+  - ["fetch\\(['\"]\/api", "Relative URL in fetch() - needs API_BASE prefix"]
+  - [":src=\"[^\"]*\\.url\"", "Possible relative URL in :src binding"]
+
+# Hardcoded URLs to flag
+hardcoded_url_patterns:
+  - ["https?://localhost:\\d+", "Hardcoded localhost URL"]
+  - ["https?://127\\.0\\.0\\.1:\\d+", "Hardcoded loopback URL"]
+  - ["https?://[a-z0-9-]+\\.up\\.railway\\.app", "Hardcoded Railway URL"]
+  - ["https?://[a-z0-9-]+\\.vercel\\.app", "Hardcoded Vercel URL"]
+  - ["https?://[a-z0-9-]+\\.netlify\\.app", "Hardcoded Netlify URL"]
+  - ["https?://[a-z0-9-]+\\.herokuapp\\.com", "Hardcoded Heroku URL"]
+
+# Field mapping rules (backend snake_case -> frontend camelCase)
+field_mapping_rules:
+  created_at_utc: "createdAt"
+  updated_at_utc: "updatedAt"
+  run_id: "runId"
+  file_path: "filePath"
+
+# Which validators to run
+enabled_validators:
+  - python_deps
+  - docker_dirs
+  - cross_origin
+  - hardcoded_urls
+  - field_mapping
+  - env_vars
