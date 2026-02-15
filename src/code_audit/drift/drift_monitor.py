@@ -131,7 +131,7 @@ class DriftTracker:
 
     def __init__(self, state_path: Path | str = ".drift_state.json"):
         self.state_path = Path(state_path)
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()  # RLock allows reentrant locking (same thread can acquire twice)
         self._events: dict[str, DriftEvent] = {}
         self._closed_issues: dict[str, datetime] = {}  # event_id -> closed_at
         self._load_state()
