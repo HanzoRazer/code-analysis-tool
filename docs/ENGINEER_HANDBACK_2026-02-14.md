@@ -243,7 +243,12 @@ SEC_HARDCODED_SECRET_001  SEC_EVAL_001     SEC_SUBPROCESS_SHELL_001
 SEC_SQL_INJECTION_001     SEC_PICKLE_LOAD_001     SEC_YAML_UNSAFE_001
 ```
 
-**Risk:** If `run_result_v1` schema changes here, `code-rescue-tool`'s `ingest/` layer and `contracts/run_result.schema.json` will break. There is currently **no cross-repo contract test**.
+**Risk:** If `run_result_v1` schema changes here, `code-rescue-tool`'s `ingest/` layer and `contracts/run_result.schema.json` will break.
+
+**Mitigations (shipped):**
+- `docs/contracts_bundle.json` — producer-side bundle of SHA-256 hashes for downstream-consumed artifacts (run_result_schema, rule_registry, rule_registry_schema).
+- `tests/test_contracts_bundle_is_fresh.py` — ensures bundle stays current with source artifacts.
+- `.github/workflows/contract-parity-main-observer.yml` — nightly drift detector that opens/reopens a rolling GitHub Issue when parity against upstream `main` fails, and auto-closes it when parity returns to green.
 
 ---
 
@@ -270,6 +275,8 @@ Moved to `docs/archive/` with historical-artifact banner. Original files referen
 | **pytest** | `.github/workflows/pytest.yml` | Runs full test suite |
 | **copy-lint** | `.github/workflows/copy-lint.yml` | i18n copy governance linter |
 | **ratchet** | `.github/workflows/ratchet.yml` | Debt snapshot + compare vs `baselines/main.json` |
+| **rule-registry-sync** | `.github/workflows/rule-registry-sync.yml` | Rule registry schema + parity enforcement |
+| **contract-parity-main-observer** | `.github/workflows/contract-parity-main-observer.yml` | Nightly drift detector against upstream `main` (non-blocking). Opens/reopens a rolling GitHub Issue on drift; auto-closes on green. |
 
 CI enforcement shell scripts in `ci/`:
 - `enforce_fallback_schema_sync.sh`
@@ -375,4 +382,21 @@ python scripts/refresh_baseline.py
 
 ---
 
-*This document was generated on 2026-02-14 to facilitate handback to the primary engineer. It supplements (does not replace) `DEVELOPER_HANDOFF.md` (2026-02-11) and `docs/CONTRACT.md`.*
+## 11. Subsequent Shipments (Sessions: 2026-02-15)
+
+| Shipment | Files Created/Modified | Commit |
+|---|---|---|
+| Rule registry semantic validation | `schemas/rule_registry.schema.json` (fix `\d` → `[0-9]`), refreshed logic manifest | `e5b060f` |
+| Public rule buckets | `src/code_audit/rules.py` (PUBLIC/EXPERIMENTAL/DEPRECATED), schema files (`schema_version: rule_registry_v1`) | `809f235` |
+| Migration script + detector + CI | `scripts/migrate_rule_ids_to_public.py`, `scripts/needs_rule_registry_migration.py`, `.github/workflows/rule-registry-sync.yml` | `722b270` |
+| Schema validator + rule registry gate | `scripts/validate_rule_registry.py`, `tests/test_rule_registry_requires_signal_logic_bump.py`, `scripts/refresh_rule_registry_manifest.py` | `05a0243` |
+| Reverse-direction parity + confidence gate | `tests/test_public_rules_registry_parity_contract.py`, `tests/test_confidence_policy_requires_signal_logic_bump.py`, refresh scripts | `237a812` |
+| Dependency-closure hashing | Rewritten confidence test + refresh with BFS closure resolver, `CONFIDENCE_ENTRYPOINTS` override, §11 in `docs/CONTRACT.md` | `bbfe270` |
+| CI enforcement guard | `_is_ci()` + `_require_entrypoints_in_ci()` in confidence test + refresh, pinned `CONFIDENCE_ENTRYPOINTS` in `pytest.yml` | `c5abd37` |
+| Standalone CI env contract | `tests/test_ci_env_contracts.py` | `22efbeb` |
+| Cross-repo contracts bundle | `scripts/refresh_contracts_bundle.py`, `tests/test_contracts_bundle_is_fresh.py`, `docs/contracts_bundle.json` | `22efbeb` |
+| Nightly observer workflow | `.github/workflows/contract-parity-main-observer.yml` — rolling issue open/reopen/auto-close | (current) |
+
+---
+
+*This document was generated on 2026-02-14 and updated on 2026-02-15. It supplements (does not replace) `DEVELOPER_HANDOFF.md` (2026-02-11) and `docs/CONTRACT.md`.*

@@ -1,0 +1,240 @@
+name: contract-parity-main-observer
+
+on:
+  # Nightly drift detector against upstream main (non-blocking observer).
+  schedule:
+    - cron: "17 3 * * *" # 03:17 UTC daily
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  parity-observer:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Check parity against upstream main (observer)
+        id: parity
+        env:
+          UPSTREAM_REF: main
+          CHECK_RULE_REGISTRY: "1"
+          CHECK_INTERNAL_RULES: "1"
+          # If you added bundle support and want to use it here, keep default USE_CONTRACTS_BUNDLE=1.
+          # USE_CONTRACTS_BUNDLE: "1"
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "Running contract parity against upstream: ${UPSTREAM_REF}"
+          echo ""
+
+          # Capture output for issue body + artifact.
+          # Do not let failure stop the job (continue-on-error is job-level).
+          python ci/check_upstream_contracts.py 2>&1 | tee drift_report.txt
+
+      - name: Upload drift report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: contract-parity-main-observer-report
+          path: drift_report.txt
+
+      - name: Open or update rolling drift issue
+        if: steps.parity.outcome == 'failure'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            const ISSUE_TITLE = "Upstream contract drift detected";
+            const LABELS = ["contracts", "drift", "automation"];
+
+            const reportPath = "drift_report.txt";
+            const report = fs.existsSync(reportPath)
+              ? fs.readFileSync(reportPath, 'utf8')
+              : "(No drift report output found.)";
+
+            const now = new Date().toISOString();
+            const runUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
+
+            // Keep issue bodies readable: trim extremely long logs but preserve the most useful tail.
+            const MAX_CHARS = 60000;
+            let clippedReport = report;
+            if (clippedReport.length > MAX_CHARS) {
+              clippedReport = clippedReport.slice(0, 15000)
+                + "\n\n... (truncated) ...\n\n"
+                + clippedReport.slice(-35000);
+            }
+
+            const body = [
+              "## Contract parity drift detected",
+              "",
+              `**Time (UTC):** ${now}`,
+              `**Workflow run:** ${runUrl}`,
+              "",
+              "This repository vendors contract artifacts from the producer repo. The nightly observer checks parity against upstream `main` and detected drift.",
+              "",
+              "### Next actions",
+              "1. Review the drift report below.",
+              "2. Decide whether to update the pinned `UPSTREAM_REF` tag (preferred) or sync vendored contracts.",
+              "3. If producer changes are intentional, cut a new producer release tag and update this repo's pin.",
+              "",
+              "### Drift report",
+              "```",
+              clippedReport.trimEnd(),
+              "```",
+              "",
+              "_This issue is maintained automatically and will be updated on subsequent drift detections._"
+            ].join("\n");
+
+            // Find existing issue (open OR closed) by exact title.
+            // We prefer:
+            //   1) an open issue with the title
+            //   2) otherwise a closed issue with the title (we'll reopen it)
+            // This prevents issue spam and keeps a single rolling issue forever.
+            async function findIssueByTitle(state) {
+              const { data } = await github.rest.issues.listForRepo({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                state,
+                per_page: 100
+              });
+              return data.find(i => i.title === ISSUE_TITLE) || null;
+            }
+
+            let existing = await findIssueByTitle("open");
+            let reopened = false;
+
+            if (!existing) {
+              existing = await findIssueByTitle("closed");
+              if (existing) {
+                // Reopen the closed rolling issue.
+                await github.rest.issues.update({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: existing.number,
+                  state: "open"
+                });
+                reopened = true;
+                core.info(`Reopened issue #${existing.number}`);
+              }
+            }
+
+            if (!existing) {
+              // Still not found: create it once.
+              const created = await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: ISSUE_TITLE,
+                body,
+                labels: LABELS
+              });
+              existing = created.data;
+              core.info(`Created issue: ${created.data.html_url}`);
+            } else {
+              // Ensure labels exist on the rolling issue (non-fatal if labels are restricted).
+              try {
+                await github.rest.issues.addLabels({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: existing.number,
+                  labels: LABELS
+                });
+              } catch (e) {
+                core.info(`Could not add labels (may be restricted): ${e}`);
+              }
+            }
+
+            // Update body (keeps latest report visible)
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: existing.number,
+              body
+            });
+
+            // Add comment (keeps a timeline of drift detections)
+            const comment = [
+              reopened ? `🔄 Drift detected again (issue reopened) at **${now}**.` : `Drift detected again at **${now}**.`,
+              `Workflow run: ${runUrl}`,
+              "",
+              "```",
+              clippedReport.trimEnd(),
+              "```"
+            ].join("\n");
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: existing.number,
+              body: comment
+            });
+
+            core.info(`Updated and commented on issue #${existing.number}`);
+
+      - name: Auto-close rolling drift issue when parity returns to green
+        if: steps.parity.outcome == 'success'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const ISSUE_TITLE = "Upstream contract drift detected";
+            const now = new Date().toISOString();
+            const runUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
+
+            // Find existing open issue by exact title.
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: "open",
+              per_page: 100
+            });
+
+            const existing = issues.find(i => i.title === ISSUE_TITLE);
+
+            if (!existing) {
+              core.info("No open drift issue found; nothing to close.");
+              return;
+            }
+
+            // Comment "Resolved" with context.
+            const comment = [
+              `✅ Resolved at **${now}**.`,
+              `Parity is green against upstream \`main\`.`,
+              `Workflow run: ${runUrl}`,
+              "",
+              "If drift reappears, this issue will be reopened automatically by the observer."
+            ].join("\n");
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: existing.number,
+              body: comment
+            });
+
+            // Close the issue.
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: existing.number,
+              state: "closed"
+            });
+
+            core.info(`Closed drift issue #${existing.number}`);
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "Observer workflow complete."
+          if [[ "${{ steps.parity.outcome }}" == "failure" ]]; then
+            echo "Parity failed: drift issue opened/updated."
+          else
+            echo "Parity OK: drift issue (if any) auto-closed."
+          fi
