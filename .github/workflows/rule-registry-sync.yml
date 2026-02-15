@@ -6,12 +6,16 @@ on:
     branches: [main]
 
 jobs:
-  check-sync:
+  rule-registry-sync:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-      - name: Check rule_registry.json matches rules.py
+
+      - name: Detect rule registry migration requirement
+        run: python scripts/needs_rule_registry_migration.py
+
+      - name: Check rule registry is in sync
         run: python scripts/sync_rule_registry.py
