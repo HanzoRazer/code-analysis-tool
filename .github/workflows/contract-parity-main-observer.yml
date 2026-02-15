@@ -55,6 +55,7 @@ jobs:
 
             const ISSUE_TITLE = "Upstream contract drift detected";
             const LABELS = ["contracts", "drift", "automation"];
+            const MARKER = "<!-- drift-rolling-issue: contracts -->";
 
             const reportPath = "drift_report.txt";
             const report = fs.existsSync(reportPath)
@@ -73,7 +74,11 @@ jobs:
                 + clippedReport.slice(-35000);
             }
 
+            // IMPORTANT: Embed immutable marker at top of body so we can find/reopen/update
+            // the same rolling issue reliably via Search API (not title matching).
             const body = [
+              MARKER,
+              "",
               "## Contract parity drift detected",
               "",
               `**Time (UTC):** ${now}`,
@@ -94,29 +99,29 @@ jobs:
               "_This issue is maintained automatically and will be updated on subsequent drift detections._"
             ].join("\n");
 
-            // Use GitHub Search API to find the rolling issue reliably without pagination.
+            // Use GitHub Search API to find the rolling issue by immutable marker (not title).
             // Strategy:
-            //  1) search open issues by exact title
-            //  2) else search closed issues by exact title and reopen
-            //  3) else create once
+            //  1) search open issues containing MARKER in body
+            //  2) else search closed issues containing MARKER in body and reopen
+            //  3) else create once (with MARKER)
             const repoQ = `repo:${context.repo.owner}/${context.repo.repo}`;
 
-            async function searchOne(state) {
-              const q = `${repoQ} is:issue in:title "${ISSUE_TITLE}" is:${state}`;
+            async function searchByMarker(state) {
+              const q = `${repoQ} is:issue in:body "${MARKER}" is:${state}`;
               const res = await github.rest.search.issuesAndPullRequests({
                 q,
                 per_page: 5
               });
-              // Exact title match guard (search can return partial matches).
               const items = res.data.items || [];
-              return items.find(i => i.title === ISSUE_TITLE) || null;
+              // Marker search is already very specific; still ensure the marker is actually present.
+              return items.find(i => (i.body || "").includes(MARKER)) || null;
             }
 
-            let existing = await searchOne("open");
+            let existing = await searchByMarker("open");
             let reopened = false;
 
             if (!existing) {
-              existing = await searchOne("closed");
+              existing = await searchByMarker("closed");
               if (existing) {
                 await github.rest.issues.update({
                   owner: context.repo.owner,
@@ -141,6 +146,19 @@ jobs:
               existing = created.data;
               core.info(`Created issue: ${created.data.html_url}`);
             } else {
+              // Ensure title is set (optional cosmetic) while marker remains identity.
+              // This is safe even if someone renamed it manually.
+              try {
+                await github.rest.issues.update({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: existing.number,
+                  title: ISSUE_TITLE
+                });
+              } catch (e) {
+                core.info(`Could not set title (non-fatal): ${e}`);
+              }
+
               // Ensure labels exist on the rolling issue (non-fatal if labels are restricted).
               try {
                 await github.rest.issues.addLabels({
@@ -167,6 +185,8 @@ jobs:
               reopened ? `🔄 Drift detected again (issue reopened) at **${now}**.` : `Drift detected again at **${now}**.`,
               `Workflow run: ${runUrl}`,
               "",
+              "_Rolling issue identity is marker-based._",
+              "",
               "```",
               clippedReport.trimEnd(),
               "```"
@@ -187,18 +207,16 @@ jobs:
         with:
           script: |
             const ISSUE_TITLE = "Upstream contract drift detected";
+            const MARKER = "<!-- drift-rolling-issue: contracts -->";
             const now = new Date().toISOString();
             const runUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
 
-            // Find existing open issue by exact title.
-            const { data: issues } = await github.rest.issues.listForRepo({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              state: "open",
-              per_page: 100
-            });
-
-            const existing = issues.find(i => i.title === ISSUE_TITLE);
+            // Find existing open rolling issue by immutable marker (not title).
+            const repoQ = `repo:${context.repo.owner}/${context.repo.repo}`;
+            const q = `${repoQ} is:issue in:body "${MARKER}" is:open`;
+            const res = await github.rest.search.issuesAndPullRequests({ q, per_page: 5 });
+            const items = res.data.items || [];
+            const existing = items.find(i => (i.body || "").includes(MARKER)) || null;
 
             if (!existing) {
               core.info("No open drift issue found; nothing to close.");
@@ -211,7 +229,9 @@ jobs:
               `Parity is green against upstream \`main\`.`,
               `Workflow run: ${runUrl}`,
               "",
-              "If drift reappears, this issue will be reopened automatically by the observer."
+              "If drift reappears, this issue will be reopened automatically by the observer.",
+              "",
+              "_Rolling issue identity is marker-based._"
             ].join("\n");
 
             await github.rest.issues.createComment({
