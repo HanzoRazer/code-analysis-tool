@@ -509,6 +509,13 @@ class FalsePositiveFilter(BaseValidator):
         r'text\s*\(\s*["\x27]DROP\s+',
         r'text\s*\(\s*["\x27]ALTER\s+',
         r'for\s+\w+_sql\s+in\s+\w+',  # Iterating over SQL list
+        # Parameterized queries with f-string for table/column names
+        r'WHERE\s+\{?\w+\}?\s*=\s*\?',  # WHERE {col} = ? (parameterized)
+        r'WHERE\s+\{?\w+\}?\s*=\s*:\w+',  # WHERE {col} = :param (named params)
+        r'\(\s*\?\s*[,\)]',  # VALUES (?, ?, ?)
+        r'LIMIT\s*\?',  # LIMIT ?
+        r'SET\s+\w+\s*=\s*\?',  # SET col = ?
+        r'f["\x27]{3}[^{]*\{where_sql\}',  # Dynamic WHERE from internal clause builder
     ]
 
     def is_false_positive(self, issue: DiagnosticIssue, content: str) -> bool:
@@ -529,19 +536,29 @@ class FalsePositiveFilter(BaseValidator):
             if word in line and 'execute' not in line.lower():
                 return True
 
-
         # Check for hardcoded SQL patterns (safe)
         for pattern in self.SAFE_SQL_PATTERNS:
             if re.search(pattern, line, re.IGNORECASE):
                 return True
 
-        # Check context (5 lines above) for hardcoded SQL iteration patterns
+        # Check context (5 lines above and below) for parameterized patterns
         context_start = max(0, issue.line_start - 6)
-        context_lines = lines[context_start:issue.line_start]
+        context_end = min(len(lines), issue.line_start + 5)
+        context_lines = lines[context_start:context_end]
         context = chr(10).join(context_lines)
+
         # Iteration over hardcoded SQL list (e.g., for index_sql in production_indexes)
-        if re.search(r'for' + chr(92) + 's+' + chr(92) + 'w+_sql' + chr(92) + 's+in' + chr(92) + 's+' + chr(92) + 'w+', context):
+        if re.search(r'for\s+\w+_sql\s+in\s+\w+', context):
             return True
+
+        # Check if f-string SQL uses parameterized values (?, :param, %s with tuple)
+        # Pattern: f-string with SQL + parameterized placeholder nearby
+        if 'f"' in line or "f'" in line or 'f"""' in line or "f'''" in line:
+            # Check if parameterized values are used
+            if re.search(r'=\s*\?', context) or re.search(r'=\s*:\w+', context):
+                # Check if there's a tuple of params passed
+                if re.search(r'\(\s*\w+\s*,?\s*\)', context) or re.search(r'tuple\(', context):
+                    return True
 
         return False
 
