@@ -60,6 +60,7 @@ jobs:
             //  - ID_MARKER is the canonical identity (search key)
             const SCOPE_MARKER = "<!-- drift-rolling-issue: contracts -->";
             const ID_MARKER = "<!-- drift-rolling-issue-id: contracts:9d3f1a2c -->";
+            const TAMPER_NOTE = "> \u26a0\ufe0f **Automation identity markers**: Do not remove or edit the hidden HTML markers at the top of this issue body. They are used to locate, reopen, and update this rolling issue automatically.\n";
 
             const reportPath = "drift_report.txt";
             const report = fs.existsSync(reportPath)
@@ -128,8 +129,19 @@ jobs:
               return { issue: null, foundBy: "none" };
             }
 
+            function bodyWithTamperWarning(bodyText) {
+              // Ensure the warning exists near the top (after markers).
+              // We keep it lightweight and idempotent.
+              if ((bodyText || "").includes("Automation identity markers")) return bodyText;
+              const lines = (bodyText || "").split("\n");
+              // After first blank line following markers block, insert warning.
+              // Markers are first 2 lines, followed by blank line.
+              lines.splice(3, 0, TAMPER_NOTE.trimEnd(), "");
+              return lines.join("\n");
+            }
+
             // Embed dual markers at top of body for stable identity via Search API.
-            const body = [
+            let body = [
               SCOPE_MARKER,
               ID_MARKER,
               "",
@@ -152,6 +164,7 @@ jobs:
               "",
               "_This issue is maintained automatically and will be updated on subsequent drift detections._"
             ].join("\n");
+            body = bodyWithTamperWarning(body);
 
             // Find rolling issue:
             //  - Prefer ID marker identity
@@ -160,6 +173,7 @@ jobs:
             let existing = found.issue;
             let reopened = false;
             let foundBy = found.foundBy;
+            let markersRepaired = false;
 
             if (!existing) {
               found = await findRollingIssue("closed");
@@ -192,7 +206,9 @@ jobs:
             } else {
               // If found by fallback (title/scope), markers may be missing or partial.
               // Enforce dual markers (self-healing).
-              const patchedBody = ensureDualMarkers(existing.body || "");
+              let patchedBody = ensureDualMarkers(existing.body || "");
+              // Also ensure the tamper warning exists.
+              patchedBody = bodyWithTamperWarning(patchedBody);
               if ((existing.body || "") !== patchedBody) {
                 await github.rest.issues.update({
                   owner: context.repo.owner,
@@ -202,6 +218,8 @@ jobs:
                 });
                 core.info(`Enforced dual markers on issue #${existing.number} (found by: ${foundBy}).`);
                 existing = { ...existing, body: patchedBody };
+                // If we had to update the body, assume markers/warning were missing/edited.
+                markersRepaired = true;
               }
 
               // Ensure title is set (optional cosmetic) while marker remains identity.
@@ -228,6 +246,25 @@ jobs:
               } catch (e) {
                 core.info(`Could not add labels (may be restricted): ${e}`);
               }
+            }
+
+            // If markers were repaired, leave a visible breadcrumb to discourage manual edits.
+            if (markersRepaired) {
+              const tamperComment = [
+                "\u26a0\ufe0f **Marker tamper detected and repaired**",
+                "",
+                "This rolling issue is located and managed by hidden HTML markers in the issue body.",
+                "Those markers were missing or edited, so the observer workflow restored them automatically.",
+                "",
+                "Please avoid editing or removing the hidden markers at the top of the issue body.",
+                `Workflow run: ${runUrl}`,
+              ].join("\n");
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                body: tamperComment
+              });
             }
 
             // Update body (keeps latest report visible)
@@ -267,6 +304,7 @@ jobs:
             const ISSUE_TITLE = "Upstream contract drift detected";
             const SCOPE_MARKER = "<!-- drift-rolling-issue: contracts -->";
             const ID_MARKER = "<!-- drift-rolling-issue-id: contracts:9d3f1a2c -->";
+            const TAMPER_NOTE = "> \u26a0\ufe0f **Automation identity markers**: Do not remove or edit the hidden HTML markers at the top of this issue body. They are used to locate, reopen, and update this rolling issue automatically.\n";
             const now = new Date().toISOString();
             const runUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
 
@@ -294,6 +332,13 @@ jobs:
               return `${SCOPE_MARKER}\n${ID_MARKER}\n\n${cleaned}`;
             }
 
+            function bodyWithTamperWarning(bodyText) {
+              if ((bodyText || "").includes("Automation identity markers")) return bodyText;
+              const lines = (bodyText || "").split("\n");
+              lines.splice(3, 0, TAMPER_NOTE.trimEnd(), "");
+              return lines.join("\n");
+            }
+
             // Prefer ID-marker identity; fall back to scope-marker, then exact title.
             let foundBy = "id_marker";
             let items = await searchOne(`${repoQ} is:issue in:body "${ID_MARKER}" is:open`);
@@ -317,7 +362,8 @@ jobs:
             }
 
             // Enforce dual markers (self-healing) before closing.
-            const patchedBody = ensureDualMarkers(existing.body || "");
+            let patchedBody = ensureDualMarkers(existing.body || "");
+            patchedBody = bodyWithTamperWarning(patchedBody);
             if ((existing.body || "") !== patchedBody) {
               await github.rest.issues.update({
                 owner: context.repo.owner,
@@ -326,6 +372,23 @@ jobs:
                 body: patchedBody
               });
               core.info(`Enforced dual markers on issue #${existing.number} during auto-close (found by: ${foundBy}).`);
+
+              // Leave a tamper warning comment if we had to repair body markers/warning.
+              const tamperComment = [
+                "\u26a0\ufe0f **Marker tamper detected and repaired**",
+                "",
+                "This rolling issue is located and managed by hidden HTML markers in the issue body.",
+                "Those markers were missing or edited, so the observer workflow restored them automatically.",
+                "",
+                "Please avoid editing or removing the hidden markers at the top of the issue body.",
+                `Workflow run: ${runUrl}`,
+              ].join("\n");
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                body: tamperComment
+              });
             }
 
             // Comment "Resolved" with context.
