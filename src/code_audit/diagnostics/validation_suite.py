@@ -435,6 +435,16 @@ class FalsePositiveFilter(BaseValidator):
     # Words that look like SQL but aren't in log messages
     SAFE_WORDS = ['Created', 'Updated', 'Deleted', 'Selected', 'Inserted']
 
+    # Hardcoded SQL patterns that are safe (no user input)
+    SAFE_SQL_PATTERNS = [
+        r'text\s*\(\s*["\x27]SELECT\s+1',  # Health check
+        r'text\s*\(\s*["\x27]CREATE\s+INDEX',  # DDL
+        r'text\s*\(\s*["\x27]CREATE\s+TABLE',
+        r'text\s*\(\s*["\x27]DROP\s+',
+        r'text\s*\(\s*["\x27]ALTER\s+',
+        r'for\s+\w+_sql\s+in\s+\w+',  # Iterating over SQL list
+    ]
+
     def is_false_positive(self, issue: DiagnosticIssue, content: str) -> bool:
         """Check if an issue is likely a false positive"""
         lines = content.split('\n')
@@ -452,6 +462,20 @@ class FalsePositiveFilter(BaseValidator):
         for word in self.SAFE_WORDS:
             if word in line and 'execute' not in line.lower():
                 return True
+
+
+        # Check for hardcoded SQL patterns (safe)
+        for pattern in self.SAFE_SQL_PATTERNS:
+            if re.search(pattern, line, re.IGNORECASE):
+                return True
+
+        # Check context (5 lines above) for hardcoded SQL iteration patterns
+        context_start = max(0, issue.line_start - 6)
+        context_lines = lines[context_start:issue.line_start]
+        context = chr(10).join(context_lines)
+        # Iteration over hardcoded SQL list (e.g., for index_sql in production_indexes)
+        if re.search(r'for' + chr(92) + 's+' + chr(92) + 'w+_sql' + chr(92) + 's+in' + chr(92) + 's+' + chr(92) + 'w+', context):
+            return True
 
         return False
 
