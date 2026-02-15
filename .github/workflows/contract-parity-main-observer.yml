@@ -61,6 +61,7 @@ jobs:
             const SCOPE_MARKER = "<!-- drift-rolling-issue: contracts -->";
             const ID_MARKER = "<!-- drift-rolling-issue-id: contracts:9d3f1a2c -->";
             const FIRST_DETECTED_PREFIX = "<!-- drift-first-detected: ";
+            const LAST_RESOLVED_PREFIX = "<!-- drift-last-resolved: ";
             const TAMPER_NOTE = "> \u26a0\ufe0f **Automation identity markers**: Do not remove or edit the hidden HTML markers at the top of this issue body. They are used to locate, reopen, and update this rolling issue automatically.\n";
 
             const reportPath = "drift_report.txt";
@@ -102,6 +103,13 @@ jobs:
               return m ? m[1] : null;
             }
 
+            function extractLastResolvedIso(body) {
+              const b = body || "";
+              const re = /<!--\s*drift-last-resolved:\s*([0-9T:\.\-Z]+)\s*-->/;
+              const m = b.match(re);
+              return m ? m[1] : null;
+            }
+
             function ensureFirstDetectedMarker(body, iso) {
               // If marker exists, keep it; else insert after ID marker line (top-of-body).
               const b = body || "";
@@ -117,6 +125,32 @@ jobs:
                 return lines.join("\n");
               }
               // Fallback: prepend everything.
+              return `${SCOPE_MARKER}\n${ID_MARKER}\n${markerLine}\n\n${b.trimStart()}`;
+            }
+
+            function ensureLastResolvedMarker(body, iso) {
+              // If marker exists, replace it with new iso; else insert right after first-detected if present,
+              // otherwise after ID marker line.
+              const b = body || "";
+              const markerLine = `<!-- drift-last-resolved: ${iso} -->`;
+
+              if (b.includes("<!-- drift-last-resolved:")) {
+                return b.replace(/<!--\s*drift-last-resolved:\s*([0-9T:\.\-Z]+)\s*-->/, markerLine);
+              }
+
+              const lines = b.split("\n");
+              // Try to insert after first-detected marker if present.
+              const fdIdx = lines.findIndex(l => l.includes("<!-- drift-first-detected:"));
+              if (fdIdx !== -1) {
+                lines.splice(fdIdx + 1, 0, markerLine);
+                return lines.join("\n");
+              }
+              // Else after ID marker (line 1) => insert at line 2
+              if (lines.length >= 2 && lines[0].includes("drift-rolling-issue") && lines[1].includes("drift-rolling-issue-id")) {
+                lines.splice(2, 0, markerLine);
+                return lines.join("\n");
+              }
+              // Fallback: prepend all markers.
               return `${SCOPE_MARKER}\n${ID_MARKER}\n${markerLine}\n\n${b.trimStart()}`;
             }
 
@@ -317,7 +351,26 @@ jobs:
               // keep "unknown"
             }
 
-            // Add "first detected" + "unresolved duration" just below the header section.
+            // Compute "time since last green" from drift-last-resolved marker if present.
+            let lastResolvedIso = null;
+            let sinceGreenStr = "n/a";
+            try {
+              lastResolvedIso = extractLastResolvedIso(existing && existing.body ? existing.body : "");
+              if (lastResolvedIso) {
+                const lrMs = Date.parse(lastResolvedIso);
+                const nowMs2 = Date.parse(now);
+                if (!Number.isNaN(lrMs) && !Number.isNaN(nowMs2) && nowMs2 >= lrMs) {
+                  sinceGreenStr = formatDuration(nowMs2 - lrMs);
+                } else if (!Number.isNaN(lrMs) && !Number.isNaN(nowMs2) && nowMs2 < lrMs) {
+                  // clock skew / edited marker; still surface iso
+                  sinceGreenStr = "0s";
+                }
+              }
+            } catch (e) {
+              // leave n/a
+            }
+
+            // Add lifecycle fields just below the header section.
             // We'll do this by inserting after the "## Contract parity drift detected" line.
             function injectDurationFields(bodyText) {
               const lines = (bodyText || "").split("\n");
@@ -328,12 +381,16 @@ jobs:
               const fields = [
                 `**First detected (UTC):** ${firstDetectedIso}`,
                 `**Unresolved drift duration:** ${durationStr}`,
+                `**Last resolved (UTC):** ${lastResolvedIso || "n/a"}`,
+                `**Time since last green:** ${sinceGreenStr}`,
                 ""
               ];
               // Avoid duplicating if rerun: remove existing lines with these prefixes first.
               const cleaned = lines.filter(l =>
                 !l.startsWith("**First detected (UTC):**") &&
-                !l.startsWith("**Unresolved drift duration:**")
+                !l.startsWith("**Unresolved drift duration:**") &&
+                !l.startsWith("**Last resolved (UTC):**") &&
+                !l.startsWith("**Time since last green:**")
               );
               cleaned.splice(insertAt, 0, ...fields);
               return cleaned.join("\n");
@@ -399,6 +456,7 @@ jobs:
             const ISSUE_TITLE = "Upstream contract drift detected";
             const SCOPE_MARKER = "<!-- drift-rolling-issue: contracts -->";
             const ID_MARKER = "<!-- drift-rolling-issue-id: contracts:9d3f1a2c -->";
+            const LAST_RESOLVED_PREFIX = "<!-- drift-last-resolved: ";
             const TAMPER_NOTE = "> \u26a0\ufe0f **Automation identity markers**: Do not remove or edit the hidden HTML markers at the top of this issue body. They are used to locate, reopen, and update this rolling issue automatically.\n";
             const now = new Date().toISOString();
             const runUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
@@ -425,6 +483,27 @@ jobs:
                 .replaceAll(ID_MARKER, "")
                 .trimStart();
               return `${SCOPE_MARKER}\n${ID_MARKER}\n\n${cleaned}`;
+            }
+
+            function ensureLastResolvedMarker(body, iso) {
+              const b = body || "";
+              const markerLine = `<!-- drift-last-resolved: ${iso} -->`;
+              if (b.includes("<!-- drift-last-resolved:")) {
+                return b.replace(/<!--\s*drift-last-resolved:\s*([0-9T:\.\-Z]+)\s*-->/, markerLine);
+              }
+              const lines = b.split("\n");
+              // Insert after ID marker (line 1) by default.
+              if (lines.length >= 2 && lines[0].includes("drift-rolling-issue") && lines[1].includes("drift-rolling-issue-id")) {
+                // If there's also a first-detected marker on line 2, insert after it.
+                const fdIdx = lines.findIndex(l => l.includes("<!-- drift-first-detected:"));
+                if (fdIdx !== -1) {
+                  lines.splice(fdIdx + 1, 0, markerLine);
+                } else {
+                  lines.splice(2, 0, markerLine);
+                }
+                return lines.join("\n");
+              }
+              return `${SCOPE_MARKER}\n${ID_MARKER}\n${markerLine}\n\n${b.trimStart()}`;
             }
 
             function bodyWithTamperWarning(bodyText) {
@@ -456,8 +535,9 @@ jobs:
               return;
             }
 
-            // Enforce dual markers (self-healing) before closing.
+            // Enforce markers (self-healing) before closing, and stamp last-resolved.
             let patchedBody = ensureDualMarkers(existing.body || "");
+            patchedBody = ensureLastResolvedMarker(patchedBody, now);
             patchedBody = bodyWithTamperWarning(patchedBody);
             if ((existing.body || "") !== patchedBody) {
               await github.rest.issues.update({
@@ -473,7 +553,7 @@ jobs:
                 "\u26a0\ufe0f **Marker tamper detected and repaired**",
                 "",
                 "This rolling issue is located and managed by hidden HTML markers in the issue body.",
-                "Those markers were missing or edited, so the observer workflow restored them automatically.",
+                "One or more identity markers and/or lifecycle markers were missing or edited, so the observer workflow restored them automatically.",
                 "",
                 "Please avoid editing or removing the hidden markers at the top of the issue body.",
                 `Workflow run: ${runUrl}`,
