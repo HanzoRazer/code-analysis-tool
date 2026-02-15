@@ -415,6 +415,16 @@ class CrossOriginValidator(BaseValidator):
             # Check if file has API_BASE defined
             has_api_base = "API_BASE" in content or "VITE_API_BASE" in content
 
+            # Skip API wrapper files (they implement the fetch wrapper itself)
+            is_api_wrapper = (
+                "apiBase" in file_path.name or
+                "api-base" in file_path.name or
+                ("export" in content and "async function api(" in content) or
+                ("export" in content and "function fetch" in content and "resolveApiUrl" in content)
+            )
+            if is_api_wrapper and has_api_base:
+                continue  # This file IS the API wrapper, not a consumer
+
             for pattern, message in config.cross_origin_patterns:
                 for match in re.finditer(pattern, content):
                     line = content[:match.start()].count("\n") + 1
