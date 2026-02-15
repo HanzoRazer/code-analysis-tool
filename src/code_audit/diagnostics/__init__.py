@@ -16,6 +16,8 @@ from .validation_suite import (
     SQLInjectionValidator,
     ShellInjectionValidator,
     ORMSchemaValidator,
+    MethodExistenceValidator,
+    TypoValidator,
     FalsePositiveFilter,
     run_diagnosis,
 )
@@ -32,6 +34,8 @@ __all__ = [
     "SQLInjectionValidator",
     "ShellInjectionValidator",
     "ORMSchemaValidator",
+    "MethodExistenceValidator",
+    "TypoValidator",
     "FalsePositiveFilter",
     "run_diagnosis",
 ]

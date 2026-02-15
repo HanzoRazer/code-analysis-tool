@@ -78,4 +78,17 @@ def __getattr__(name: str):
     if name == "fix_directory":
         from .sql_autofix import fix_directory
         return fix_directory
+    # Method checker exports
+    if name == "MethodExistenceAnalyzer":
+        from .method_checker import MethodExistenceAnalyzer
+        return MethodExistenceAnalyzer
+    if name == "TypoDetector":
+        from .method_checker import TypoDetector
+        return TypoDetector
+    if name == "MethodIssue":
+        from .method_checker import MethodIssue
+        return MethodIssue
+    if name == "analyze_project":
+        from .method_checker import analyze_project
+        return analyze_project
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

@@ -54,6 +54,8 @@ class IssueCategory(Enum):
     PERFORMANCE = "performance"
     CODE_QUALITY = "code_quality"
     FALSE_POSITIVE = "false_positive"
+    METHOD_ERROR = "method_error"
+    TYPO = "typo"
 
 
 class FixStatus(Enum):
@@ -414,6 +416,70 @@ class ORMSchemaValidator(BaseValidator):
         return (old_line + '\n', '\n'.join(new_lines) + '\n')
 
 
+class MethodExistenceValidator(BaseValidator):
+    """Validates that called methods exist on their objects"""
+
+    name = "method_existence"
+    category = IssueCategory.METHOD_ERROR
+
+    def validate(self, file_path: Path, content: str) -> List[DiagnosticIssue]:
+        issues = []
+
+        try:
+            from code_audit.analyzers.method_checker import MethodExistenceAnalyzer
+            analyzer = MethodExistenceAnalyzer()
+            method_issues = analyzer.analyze_file(file_path)
+
+            for mi in method_issues:
+                issues.append(DiagnosticIssue(
+                    file_path=file_path,
+                    line_start=mi.line_number,
+                    line_end=mi.line_number,
+                    severity=IssueSeverity.HIGH if mi.severity == "HIGH" else IssueSeverity.MEDIUM,
+                    category=IssueCategory.METHOD_ERROR if mi.issue_type == "missing_method" else IssueCategory.TYPO,
+                    description=mi.message,
+                    fixable=mi.suggestion is not None,
+                    suggested_fix=f"Replace with: {mi.suggestion}" if mi.suggestion else None,
+                    rule_id=f"method_{mi.issue_type}",
+                ))
+        except Exception as e:
+            logger.debug(f"Method existence check failed: {e}")
+
+        return issues
+
+
+class TypoValidator(BaseValidator):
+    """Detects potential typos in method and attribute names"""
+
+    name = "typo_detector"
+    category = IssueCategory.TYPO
+
+    def validate(self, file_path: Path, content: str) -> List[DiagnosticIssue]:
+        issues = []
+
+        try:
+            from code_audit.analyzers.method_checker import TypoDetector
+            detector = TypoDetector(threshold=0.8)
+            typo_issues = detector.find_typos_in_file(file_path)
+
+            for ti in typo_issues:
+                issues.append(DiagnosticIssue(
+                    file_path=file_path,
+                    line_start=ti.line_number,
+                    line_end=ti.line_number,
+                    severity=IssueSeverity.MEDIUM,
+                    category=IssueCategory.TYPO,
+                    description=ti.message,
+                    fixable=ti.suggestion is not None,
+                    suggested_fix=f"Replace with: {ti.suggestion}" if ti.suggestion else None,
+                    rule_id="typo_detected",
+                ))
+        except Exception as e:
+            logger.debug(f"Typo detection failed: {e}")
+
+        return issues
+
+
 class FalsePositiveFilter(BaseValidator):
     """Filters out false positives from other validators"""
 
@@ -505,6 +571,8 @@ class ValidationSuite:
             SQLInjectionValidator(),
             ShellInjectionValidator(),
             ORMSchemaValidator(),
+            MethodExistenceValidator(),
+            TypoValidator(),
         ]
         self.false_positive_filter = FalsePositiveFilter()
         self.report: Optional[DiagnosticReport] = None
