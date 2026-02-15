@@ -42,20 +42,21 @@ class TestDebtSnapshotParity:
         work = tmp_path / "repo"
         shutil.copytree(FIXTURE_DEBT, work)
 
-        out_file = tmp_path / "snapshot.json"
+        # CI mode requires relative paths inside artifacts/
+        (tmp_path / "artifacts").mkdir(exist_ok=True)
         cmd = [
             sys.executable, "-m", "code_audit",
             "debt", "snapshot", str(work),
             "--ci",
-            "--out", str(out_file),
+            "--out", "artifacts/snapshot.json",
         ]
-        r = subprocess.run(cmd, env=_cli_env(), text=True, capture_output=True)
+        r = subprocess.run(cmd, env=_cli_env(), cwd=tmp_path, text=True, capture_output=True)
         assert r.returncode == 0, (
             f"CLI debt snapshot failed with exit {r.returncode}\n"
             f"stdout: {r.stdout}\nstderr: {r.stderr}"
         )
 
-        cli_bytes = out_file.read_text(encoding="utf-8")
+        cli_bytes = (tmp_path / "artifacts" / "snapshot.json").read_text(encoding="utf-8")
 
         # API snapshot
         api_dict = snapshot_debt(work, ci_mode=True)
@@ -70,20 +71,20 @@ class TestDebtSnapshotParity:
         work = tmp_path / "repo"
         shutil.copytree(FIXTURE_DEBT, work)
 
-        out_a = tmp_path / "snap_a.json"
-        out_b = tmp_path / "snap_b.json"
-        for out_f in (out_a, out_b):
+        # CI mode requires relative paths inside artifacts/
+        (tmp_path / "artifacts").mkdir(exist_ok=True)
+        for name in ("snap_a.json", "snap_b.json"):
             r = subprocess.run(
                 [
                     sys.executable, "-m", "code_audit",
                     "debt", "snapshot", str(work),
-                    "--ci", "--out", str(out_f),
+                    "--ci", "--out", f"artifacts/{name}",
                 ],
-                env=_cli_env(), text=True, capture_output=True,
+                env=_cli_env(), cwd=tmp_path, text=True, capture_output=True,
             )
             assert r.returncode == 0
 
-        assert out_a.read_bytes() == out_b.read_bytes()
+        assert (tmp_path / "artifacts" / "snap_a.json").read_bytes() == (tmp_path / "artifacts" / "snap_b.json").read_bytes()
 
 
 # ── debt compare parity ─────────────────────────────────────────────
@@ -122,7 +123,7 @@ class TestDebtCompareParity:
             "--current", str(current_file),
             "--ci", "--json",
         ]
-        r = subprocess.run(cmd, env=_cli_env(), text=True, capture_output=True)
+        r = subprocess.run(cmd, env=_cli_env(), cwd=tmp_path, text=True, capture_output=True)
         assert r.returncode == 0, (
             f"CLI debt compare failed with exit {r.returncode}\n"
             f"stdout: {r.stdout}\nstderr: {r.stderr}"
@@ -174,7 +175,7 @@ class TestDebtCompareParity:
             "--baseline", str(baseline_file),
             "--ci", "--json",
         ]
-        r = subprocess.run(cmd, env=_cli_env(), text=True, capture_output=True)
+        r = subprocess.run(cmd, env=_cli_env(), cwd=tmp_path, text=True, capture_output=True)
         assert r.returncode == 1, (
             f"Expected exit 1 (new debt), got {r.returncode}\n"
             f"stdout: {r.stdout}\nstderr: {r.stderr}"
@@ -211,7 +212,7 @@ class TestDebtCompareParity:
             "--baseline", str(baseline_file),
             "--ci", "--json",
         ]
-        r = subprocess.run(cmd, env=_cli_env(), text=True, capture_output=True)
+        r = subprocess.run(cmd, env=_cli_env(), cwd=tmp_path, text=True, capture_output=True)
         api_result = compare_debt(baseline=baseline, root=work, ci_mode=True)
 
         assert r.returncode == 0
