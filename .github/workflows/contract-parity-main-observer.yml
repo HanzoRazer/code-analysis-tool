@@ -94,28 +94,30 @@ jobs:
               "_This issue is maintained automatically and will be updated on subsequent drift detections._"
             ].join("\n");
 
-            // Find existing issue (open OR closed) by exact title.
-            // We prefer:
-            //   1) an open issue with the title
-            //   2) otherwise a closed issue with the title (we'll reopen it)
-            // This prevents issue spam and keeps a single rolling issue forever.
-            async function findIssueByTitle(state) {
-              const { data } = await github.rest.issues.listForRepo({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                state,
-                per_page: 100
+            // Use GitHub Search API to find the rolling issue reliably without pagination.
+            // Strategy:
+            //  1) search open issues by exact title
+            //  2) else search closed issues by exact title and reopen
+            //  3) else create once
+            const repoQ = `repo:${context.repo.owner}/${context.repo.repo}`;
+
+            async function searchOne(state) {
+              const q = `${repoQ} is:issue in:title "${ISSUE_TITLE}" is:${state}`;
+              const res = await github.rest.search.issuesAndPullRequests({
+                q,
+                per_page: 5
               });
-              return data.find(i => i.title === ISSUE_TITLE) || null;
+              // Exact title match guard (search can return partial matches).
+              const items = res.data.items || [];
+              return items.find(i => i.title === ISSUE_TITLE) || null;
             }
 
-            let existing = await findIssueByTitle("open");
+            let existing = await searchOne("open");
             let reopened = false;
 
             if (!existing) {
-              existing = await findIssueByTitle("closed");
+              existing = await searchOne("closed");
               if (existing) {
-                // Reopen the closed rolling issue.
                 await github.rest.issues.update({
                   owner: context.repo.owner,
                   repo: context.repo.repo,
