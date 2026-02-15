@@ -6,6 +6,12 @@ __all__ = [
     "snapshot_debt",
     "compare_debt",
     "validate_instance",
+    # Drift monitoring
+    "DriftEvent",
+    "DriftTracker",
+    "DriftDetector",
+    "DriftMonitor",
+    "DriftScheduler",
 ]
 __version__ = "0.1.0"
 
@@ -15,4 +21,13 @@ from code_audit.api import (  # noqa: E402, F401
     scan_project,
     snapshot_debt,
     validate_instance,
+)
+
+# Drift monitoring exports
+from code_audit.drift import (  # noqa: E402, F401
+    DriftEvent,
+    DriftTracker,
+    DriftDetector,
+    DriftMonitor,
+    DriftScheduler,
 )
