@@ -19,3 +19,6 @@ jobs:
 
       - name: Check rule registry is in sync
         run: python scripts/sync_rule_registry.py
+
+      - name: Validate rule registry structure (schema)
+        run: python scripts/validate_rule_registry.py
