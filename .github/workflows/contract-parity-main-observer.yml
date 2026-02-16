@@ -39,8 +39,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-      - name: Verify oncall rotation manifest
-        run: python scripts/check_oncall_rotation_manifest.py
+      - name: Install jsonschema
+        run: python -m pip install --upgrade pip jsonschema
+      - name: Verify oncall rotation schema + manifest
+        run: |
+          python scripts/validate_oncall_rotation_schema.py
+          python scripts/check_oncall_rotation_manifest.py
 
       - name: Check parity against upstream main (observer)
         id: parity

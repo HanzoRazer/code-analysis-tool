@@ -1,12 +1,14 @@
-name: oncall-rotation-manifest
+name: oncall-rotation-contract
 
 on:
   pull_request:
     paths:
       - ".github/oncall_rotation.json"
       - ".github/oncall_rotation.manifest.json"
+      - ".github/oncall_rotation.schema.json"
       - "scripts/check_oncall_rotation_manifest.py"
       - "scripts/refresh_oncall_rotation_manifest.py"
+      - "scripts/validate_oncall_rotation_schema.py"
   workflow_dispatch: {}
 
 jobs:
@@ -17,5 +19,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-      - name: Validate oncall rotation + manifest
+      - name: Install deps
+        run: python -m pip install --upgrade pip jsonschema
+      - name: Validate schema
+        run: python scripts/validate_oncall_rotation_schema.py
+      - name: Validate manifest + invariants
         run: python scripts/check_oncall_rotation_manifest.py

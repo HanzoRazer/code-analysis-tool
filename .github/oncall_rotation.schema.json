@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "oncall_rotation.schema.json",
+  "title": "Oncall Rotation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "timezone", "strategy", "rotation"],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "timezone": {
+      "type": "string",
+      "const": "UTC"
+    },
+    "strategy": {
+      "type": "string",
+      "enum": ["daily", "weekly"]
+    },
+    "week_start": {
+      "type": "string",
+      "enum": ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+    },
+    "rotation": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9-]+$"
+      }
+    },
+    "exceptions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["start", "end", "assignee"],
+        "properties": {
+          "start": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          },
+          "end": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          },
+          "assignee": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9-]+$"
+          },
+          "priority": {
+            "type": "integer",
+            "minimum": 0,
+            "default": 1000
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "labels": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "triaged": { "type": "string", "minLength": 1 },
+        "needs_oncall": { "type": "string", "minLength": 1 },
+        "oncall_assigned": { "type": "string", "minLength": 1 }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "strategy": { "const": "weekly" } },
+        "required": ["strategy"]
+      },
+      "then": {
+        "required": ["week_start"]
+      }
+    }
+  ]
+}
