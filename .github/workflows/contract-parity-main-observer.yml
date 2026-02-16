@@ -1273,21 +1273,38 @@ jobs:
               : null;
 
             // Dedupe: only one resolved comment per drift episode (keyed by firstDetectedIso).
+            // Paginates to avoid false negatives on noisy issues; early-exits on first match.
             async function alreadyResolvedForThisPeriod() {
               if (!RESOLVED_PERIOD_MARKER) return false;
-              const { data: comments } = await github.rest.issues.listComments({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: existing.number,
-                per_page: 50
-              });
-              return (comments || []).some(c => {
-                const b = c.body || "";
-                return b.includes(RESOLVED_MARKER) && b.includes(RESOLVED_PERIOD_MARKER);
-              });
+              const PER_PAGE = 100;      // GitHub max
+              const MAX_PAGES = 20;      // hard cap (up to 2 000 comments scanned)
+              for (let page = 1; page <= MAX_PAGES; page++) {
+                const { data: comments } = await github.rest.issues.listComments({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: existing.number,
+                  per_page: PER_PAGE,
+                  page
+                });
+
+                const items = comments || [];
+                for (const c of items) {
+                  const b = c.body || "";
+                  if (b.includes(RESOLVED_MARKER) && b.includes(RESOLVED_PERIOD_MARKER)) {
+                    return true;
+                  }
+                }
+
+                // If we got fewer than PER_PAGE, we've hit the end.
+                if (items.length < PER_PAGE) return false;
+              }
+
+              // If we hit the cap, fail safe: assume it might exist to prevent spam.
+              core.info(`Resolved dedupe scan hit MAX_PAGES=${MAX_PAGES}; assuming resolved comment may already exist.`);
+              return true;
             }
 
-            const alreadyResolved = await alreadyResolvedForThisPeriod();
+            const already = await alreadyResolvedForThisPeriod();
 
             const comment = [
               CI_MARKER,
@@ -1304,7 +1321,7 @@ jobs:
               `_Rolling issue identity: dual-marker (fallback used: ${foundBy})._`
             ].filter(Boolean).join("\n");
 
-            if (!alreadyResolved) {
+            if (!already) {
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
