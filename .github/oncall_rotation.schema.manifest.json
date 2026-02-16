@@ -1,6 +1,9 @@
 {
+  "id_must_contain": null,
+  "id_policy": "stable",
   "schema": "oncall_rotation_schema_manifest_v1",
   "schema_version": "oncall_rotation_schema_v1",
   "sha256": "b365009a2e1784c8f0487a1760296be2d0e655f6a69156293a1d262725bcffaa",
+  "stable_id": "oncall_rotation.schema.json",
   "tracked_file": ".github\\oncall_rotation.schema.json"
 }

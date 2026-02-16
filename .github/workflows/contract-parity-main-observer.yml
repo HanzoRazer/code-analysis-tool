@@ -46,6 +46,11 @@ jobs:
           python scripts/validate_oncall_rotation_schema.py
           python scripts/check_oncall_rotation_manifest.py
 
+      - name: Require oncall provenance manifests
+        run: |
+          test -f .github/oncall_rotation.manifest.json
+          test -f .github/oncall_rotation.schema.manifest.json
+
       - name: Check parity against upstream main (observer)
         id: parity
         env:
@@ -78,6 +83,59 @@ jobs:
         with:
           script: |
             const fs = require('fs');
+
+            function safeReadJson(path) {
+              try {
+                if (!fs.existsSync(path)) return null;
+                return JSON.parse(fs.readFileSync(path, "utf8"));
+              } catch (e) {
+                core.info(`Could not read JSON ${path} (non-fatal): ${e}`);
+                return null;
+              }
+            }
+
+            function mustExist(path) {
+              if (!fs.existsSync(path)) {
+                throw new Error(`Missing required file for provenance: ${path}`);
+              }
+            }
+
+            function shortSha(sha) {
+              if (!sha || typeof sha !== "string") return null;
+              const s = sha.trim();
+              return s.length >= 12 ? s.slice(0, 12) : s;
+            }
+
+            // Provenance sources (manifest is the contract-locked sha)
+            const ROTATION_MANIFEST_PATH = ".github/oncall_rotation.manifest.json";
+            const ROTATION_SCHEMA_PATH = ".github/oncall_rotation.schema.json";
+            const ROTATION_SCHEMA_MANIFEST_PATH = ".github/oncall_rotation.schema.manifest.json";
+
+            // Enforce provenance prerequisites: manifests must exist.
+            mustExist(ROTATION_MANIFEST_PATH);
+            mustExist(ROTATION_SCHEMA_MANIFEST_PATH);
+
+            const rotationManifest = safeReadJson(ROTATION_MANIFEST_PATH);
+            const rotationSchema = safeReadJson(ROTATION_SCHEMA_PATH);
+            const schemaManifest = safeReadJson(ROTATION_SCHEMA_MANIFEST_PATH);
+
+            const rotationSha256 = rotationManifest && typeof rotationManifest.sha256 === "string"
+              ? rotationManifest.sha256.trim()
+              : null;
+            const rotationShaShort = shortSha(rotationSha256);
+
+            const schemaSha256 = schemaManifest && typeof schemaManifest.sha256 === "string"
+              ? schemaManifest.sha256.trim()
+              : null;
+            const schemaShaShort = shortSha(schemaSha256);
+
+            const rotationSchemaVersion = rotationSchema && typeof rotationSchema.schema_version === "string"
+              ? rotationSchema.schema_version.trim()
+              : null;
+
+            // Hard fail if manifests exist but don't contain sha256 fields.
+            if (!rotationSha256) throw new Error(`Missing sha256 in ${ROTATION_MANIFEST_PATH}`);
+            if (!schemaSha256) throw new Error(`Missing sha256 in ${ROTATION_SCHEMA_MANIFEST_PATH}`);
 
             const ISSUE_TITLE = "Upstream contract drift detected";
             const LABELS = ["contracts", "drift", "automation"];
@@ -515,10 +573,15 @@ jobs:
               const already = await alreadyCommentedForThisPeriod();
 
               // Pick an oncall assignee from .github/oncall_rotation.json.
-              function pickOncallAssignee(isoNow) {
+              function pickOncallDecision(isoNow) {
                 // Fixed assignee still supported for emergency overrides.
                 const fixed = (process.env.DRIFT_ONCALL_ASSIGNEE || "").trim().replace(/^@/, "");
-                if (fixed) return fixed;
+                if (fixed) {
+                  return {
+                    assignee: fixed,
+                    decision: { source: "env_fixed", assignee: fixed }
+                  };
+                }
 
                 const path = ".github/oncall_rotation.json";
                 if (!fs.existsSync(path)) return null;
@@ -538,7 +601,13 @@ jobs:
                 if (!cleaned.length) return null;
 
                 const t = Date.parse(isoNow);
-                if (Number.isNaN(t)) return cleaned[0];
+                if (Number.isNaN(t)) {
+                  const fallback = cleaned[0];
+                  return {
+                    assignee: fallback,
+                    decision: { source: "parse_error_fallback", assignee: fallback }
+                  };
+                }
 
                 // Compute today's UTC date as YYYY-MM-DD for exception matching.
                 function utcYmd(ms) {
@@ -563,6 +632,7 @@ jobs:
                   const priorityRaw = (typeof e.priority === "number" && Number.isFinite(e.priority))
                     ? Math.trunc(e.priority)
                     : 1000;
+                  const reason = typeof e.reason === "string" ? e.reason.trim() : "";
                   if (!start || !end || !assignee) continue;
                   if (today < start || today > end) continue;
 
@@ -571,7 +641,7 @@ jobs:
                   if (Number.isNaN(sMs) || Number.isNaN(eMs) || eMs < sMs) continue;
                   const days = Math.floor((eMs - sMs) / 86400000) + 1;
 
-                  candidates.push({ start, end, assignee, days, idx, priority: priorityRaw });
+                  candidates.push({ start, end, assignee, days, idx, priority: priorityRaw, reason });
                 }
 
                 if (candidates.length) {
@@ -585,15 +655,42 @@ jobs:
                     // 4) file order wins
                     return a.idx - b.idx;
                   });
-                  return candidates[0].assignee;
+                  const chosen = candidates[0];
+                  return {
+                    assignee: chosen.assignee,
+                    decision: {
+                      source: "exception",
+                      today,
+                      exception: {
+                        start: chosen.start,
+                        end: chosen.end,
+                        priority: chosen.priority,
+                        days: chosen.days,
+                        reason: chosen.reason || null,
+                        file_index: chosen.idx
+                      },
+                      assignee: chosen.assignee
+                    }
+                  };
                 }
 
                 const strategy = (cfg.strategy || "daily").toString().toLowerCase();
 
                 // Deterministic daily rotation by UTC day index.
                 function pickDaily(ms) {
-                  const day = Math.floor(ms / 86400000);
-                  return cleaned[day % cleaned.length];
+                  const dayIndex = Math.floor(ms / 86400000);
+                  const assignee = cleaned[dayIndex % cleaned.length];
+                  return {
+                    assignee,
+                    decision: {
+                      source: "rotation",
+                      strategy: "daily",
+                      today,
+                      dayIndex,
+                      rotation_size: cleaned.length,
+                      assignee
+                    }
+                  };
                 }
 
                 // Deterministic weekly rotation by week bucket with configurable week_start.
@@ -613,11 +710,58 @@ jobs:
                   const weekStartMidnight = midnight - delta * 86400000;
 
                   const weekIndex = Math.floor(weekStartMidnight / (7 * 86400000));
-                  return cleaned[weekIndex % cleaned.length];
+                  const assignee = cleaned[weekIndex % cleaned.length];
+                  return {
+                    assignee,
+                    decision: {
+                      source: "rotation",
+                      strategy: "weekly",
+                      week_start: weekStartRaw,
+                      today,
+                      weekIndex,
+                      rotation_size: cleaned.length,
+                      assignee
+                    }
+                  };
                 }
 
                 if (strategy === "weekly") return pickWeekly(t);
                 return pickDaily(t);
+              }
+
+              function formatDecision(dec) {
+                if (!dec) return "_(no decision data)_";
+                const lines = [];
+                lines.push("Rotation decision:");
+
+                // Provenance (stable audit linkage)
+                lines.push(`- Rotation config sha256: ${rotationSha256}${rotationShaShort ? ` (${rotationShaShort})` : ""}`);
+                lines.push(`- Rotation manifest: ${ROTATION_MANIFEST_PATH}`);
+                lines.push(`- Rotation schema sha256: ${schemaSha256}${schemaShaShort ? ` (${schemaShaShort})` : ""}`);
+                lines.push(`- Rotation schema manifest: ${ROTATION_SCHEMA_MANIFEST_PATH}`);
+
+                if (rotationSchemaVersion) {
+                  lines.push(`- Rotation schema_version: ${rotationSchemaVersion}`);
+                }
+
+                if (dec.source) lines.push(`- Source: ${dec.source}`);
+                if (dec.today) lines.push(`- Today (UTC): ${dec.today}`);
+                if (dec.strategy) lines.push(`- Strategy: ${dec.strategy}`);
+                if (dec.week_start) lines.push(`- Week start: ${dec.week_start}`);
+                if (typeof dec.dayIndex === "number") lines.push(`- Day index: ${dec.dayIndex}`);
+                if (typeof dec.weekIndex === "number") lines.push(`- Week index: ${dec.weekIndex}`);
+                if (typeof dec.rotation_size === "number") lines.push(`- Rotation size: ${dec.rotation_size}`);
+                if (dec.exception) {
+                  lines.push("- Exception matched: yes");
+                  lines.push(`  - Range: ${dec.exception.start} → ${dec.exception.end} (${dec.exception.days}d)`);
+                  lines.push(`  - Priority: ${dec.exception.priority}`);
+                  if (dec.exception.reason) lines.push(`  - Reason: ${dec.exception.reason}`);
+                  lines.push(`  - File index: ${dec.exception.file_index}`);
+                } else {
+                  if (dec.source === "rotation") lines.push("- Exception matched: no");
+                }
+                if (dec.assignee) lines.push(`- Final assignee: @${dec.assignee}`);
+                return lines.join("\n");
               }
 
               // Add issue to GitHub Projects v2 (optional).
@@ -648,30 +792,15 @@ jobs:
                 core.info(`Could not add budget labels (non-fatal): ${e}`);
               }
 
-              const escalation = [
-                BREACH_MARKER,
-                PERIOD_MARKER,
-                "",
-                "🚨 **Drift budget breached**",
-                "",
-                `Unresolved drift has exceeded the budget of **${budgetHours}h**.`,
-                `**Current unresolved duration:** ${durationStr}`,
-                "",
-                pingLine ? `Paging: ${pingLine}` : "(No DRIFT_BUDGET_PING configured.)",
-                "",
-                `Workflow run: ${runUrl}`,
-              ].join("\n");
-
               if (!already) {
-                await github.rest.issues.createComment({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  issue_number: existing.number,
-                  body: escalation
-                });
-
                 // Strong operator experience: assign oncall + add to project once per period.
-                const oncall = pickOncallAssignee(now);
+                const picked = pickOncallDecision(now);
+                const oncall = picked ? picked.assignee : null;
+                const oncallDecision = picked ? picked.decision : null;
+
+                let assignedOncall = null;
+                let decisionBlockForComment = null;
+
                 if (oncall) {
                   try {
                     const triagedLabel = (process.env.DRIFT_TRIAGED_LABEL || "triaged").trim() || "triaged";
@@ -707,6 +836,10 @@ jobs:
                         assignees: [oncall]
                       });
                       core.info(`Assigned oncall: @${oncall}`);
+                      assignedOncall = oncall;
+
+                      const DECISION_MARKER = "<!-- drift-oncall-decision -->";
+                      decisionBlockForComment = `${DECISION_MARKER}\n\`\`\`text\n${formatDecision(oncallDecision)}\n\`\`\``;
 
                       // Label to indicate automation assignment occurred.
                       try {
@@ -745,6 +878,32 @@ jobs:
                 } else {
                   core.info("No oncall configured (DRIFT_ONCALL_ASSIGNEE or DRIFT_ONCALL_ROTATION).");
                 }
+
+                // Post the (deduped) escalation comment once per period, including the oncall decision if any.
+                const escalationLines = [
+                  BREACH_MARKER,
+                  PERIOD_MARKER,
+                  "",
+                  "🚨 **Drift budget breached**",
+                  "",
+                  `Unresolved drift has exceeded the budget of **${budgetHours}h**.`,
+                  `**Current unresolved duration:** ${durationStr}`,
+                  rotationShaShort ? `**Rotation config:** ${rotationShaShort}` : "",
+                  schemaShaShort ? `**Rotation schema:** ${schemaShaShort}` : "",
+                  "",
+                  pingLine ? `Paging: ${pingLine}` : "(No DRIFT_BUDGET_PING configured.)",
+                  assignedOncall ? `Assigned oncall: @${assignedOncall}` : "",
+                  decisionBlockForComment || "",
+                  "",
+                  `Workflow run: ${runUrl}`,
+                ].filter(Boolean);
+
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: existing.number,
+                  body: escalationLines.join("\n")
+                });
 
                 const projectId = (process.env.DRIFT_PROJECT_NODE_ID || "").trim();
                 if (projectId) {
