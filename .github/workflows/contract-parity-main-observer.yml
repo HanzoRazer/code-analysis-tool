@@ -110,6 +110,13 @@ jobs:
               return m ? m[1] : null;
             }
 
+            function extractLastDurationStr(body) {
+              const b = body || "";
+              const re = /<!--\s*drift-last-duration:\s*([^>]+?)\s*-->/;
+              const m = b.match(re);
+              return m ? m[1].trim() : null;
+            }
+
             function ensureFirstDetectedMarker(body, iso) {
               // If marker exists, keep it; else insert after ID marker line (top-of-body).
               const b = body || "";
@@ -353,7 +360,7 @@ jobs:
 
             // Compute "time since last green" from drift-last-resolved marker if present.
             let lastResolvedIso = null;
-            let sinceGreenStr = "n/a";
+            let sinceGreenStr = null;
             try {
               lastResolvedIso = extractLastResolvedIso(existing && existing.body ? existing.body : "");
               if (lastResolvedIso) {
@@ -367,8 +374,16 @@ jobs:
                 }
               }
             } catch (e) {
-              // leave n/a
+              // leave nulls
             }
+            const hasLastResolved = !!lastResolvedIso;
+
+            // Previous resolved duration (from last green close), if present.
+            // This is stable during an unresolved drift period and helps prioritize chronic/slow-to-fix drift.
+            const prevResolvedAfterStr = extractLastDurationStr(
+              existing && existing.body ? existing.body : ""
+            );
+            const hasPrevResolved = !!prevResolvedAfterStr;
 
             // Add lifecycle fields just below the header section.
             // We'll do this by inserting after the "## Contract parity drift detected" line.
@@ -378,19 +393,32 @@ jobs:
               if (idx === -1) return bodyText;
               // Insert after the header and a blank line (header is followed by blank line currently).
               const insertAt = Math.min(idx + 2, lines.length);
+
               const fields = [
                 `**First detected (UTC):** ${firstDetectedIso}`,
                 `**Unresolved drift duration:** ${durationStr}`,
-                `**Last resolved (UTC):** ${lastResolvedIso || "n/a"}`,
-                `**Time since last green:** ${sinceGreenStr}`,
-                ""
               ];
-              // Avoid duplicating if rerun: remove existing lines with these prefixes first.
+
+              // Only include last-resolved fields if marker exists.
+              if (hasLastResolved) {
+                fields.push(`**Last resolved (UTC):** ${lastResolvedIso}`);
+                fields.push(`**Time since last green:** ${sinceGreenStr ?? "n/a"}`);
+              }
+
+              // Only include previous resolved duration if marker exists.
+              if (hasPrevResolved) {
+                fields.push(`**Previous resolved after:** ${prevResolvedAfterStr}`);
+              }
+
+              fields.push("");
+
+              // Avoid duplicating if rerun: remove existing lifecycle lines first.
               const cleaned = lines.filter(l =>
                 !l.startsWith("**First detected (UTC):**") &&
                 !l.startsWith("**Unresolved drift duration:**") &&
                 !l.startsWith("**Last resolved (UTC):**") &&
-                !l.startsWith("**Time since last green:**")
+                !l.startsWith("**Time since last green:**") &&
+                !l.startsWith("**Previous resolved after:**")
               );
               cleaned.splice(insertAt, 0, ...fields);
               return cleaned.join("\n");
