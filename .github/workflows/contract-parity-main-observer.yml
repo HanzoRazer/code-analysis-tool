@@ -39,6 +39,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
+      - name: Verify oncall rotation manifest
+        run: python scripts/check_oncall_rotation_manifest.py
 
       - name: Check parity against upstream main (observer)
         id: parity
@@ -508,22 +510,105 @@ jobs:
 
               const already = await alreadyCommentedForThisPeriod();
 
-              // Pick an oncall assignee (fixed or daily rotation).
+              // Pick an oncall assignee from .github/oncall_rotation.json.
               function pickOncallAssignee(isoNow) {
+                // Fixed assignee still supported for emergency overrides.
                 const fixed = (process.env.DRIFT_ONCALL_ASSIGNEE || "").trim().replace(/^@/, "");
                 if (fixed) return fixed;
 
-                const rotRaw = (process.env.DRIFT_ONCALL_ROTATION || "").trim();
-                if (!rotRaw) return null;
+                const path = ".github/oncall_rotation.json";
+                if (!fs.existsSync(path)) return null;
 
-                const users = rotRaw.split(",").map(s => s.trim().replace(/^@/, "")).filter(Boolean);
-                if (!users.length) return null;
+                let cfg;
+                try {
+                  cfg = JSON.parse(fs.readFileSync(path, "utf8"));
+                } catch (e) {
+                  core.info(`Invalid ${path} (non-fatal): ${e}`);
+                  return null;
+                }
 
-                // Deterministic daily rotation by UTC day number.
+                const users = Array.isArray(cfg.rotation) ? cfg.rotation : [];
+                const cleaned = users
+                  .map(s => (typeof s === "string" ? s.trim().replace(/^@/, "") : ""))
+                  .filter(Boolean);
+                if (!cleaned.length) return null;
+
                 const t = Date.parse(isoNow);
-                if (Number.isNaN(t)) return users[0];
-                const day = Math.floor(t / 86400000);
-                return users[day % users.length];
+                if (Number.isNaN(t)) return cleaned[0];
+
+                // Compute today's UTC date as YYYY-MM-DD for exception matching.
+                function utcYmd(ms) {
+                  const d = new Date(ms);
+                  const y = d.getUTCFullYear();
+                  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+                  const day = String(d.getUTCDate()).padStart(2, "0");
+                  return `${y}-${m}-${day}`;
+                }
+                const today = utcYmd(t);
+
+                // Exception override (vacations/coverage). Ranges inclusive.
+                // "Most specific wins": if multiple exceptions match, choose the shortest date range.
+                // Deterministic tie-break: smallest (end-start), then earliest start, then lexical assignee.
+                const exceptions = Array.isArray(cfg.exceptions) ? cfg.exceptions : [];
+                const candidates = [];
+                for (const e of exceptions) {
+                  if (!e || typeof e !== "object") continue;
+                  const start = typeof e.start === "string" ? e.start.trim() : "";
+                  const end = typeof e.end === "string" ? e.end.trim() : "";
+                  const assignee = typeof e.assignee === "string" ? e.assignee.trim().replace(/^@/, "") : "";
+                  if (!start || !end || !assignee) continue;
+                  if (today >= start && today <= end) {
+                    // Range length in days (inclusive). Use Date.parse on UTC midnight.
+                    const sMs = Date.parse(`${start}T00:00:00Z`);
+                    const eMs = Date.parse(`${end}T00:00:00Z`);
+                    if (!Number.isNaN(sMs) && !Number.isNaN(eMs) && eMs >= sMs) {
+                      const lenDays = Math.floor((eMs - sMs) / 86400000) + 1;
+                      candidates.push({ start, end, assignee, lenDays });
+                    }
+                  }
+                }
+
+                if (candidates.length) {
+                  candidates.sort((a, b) => {
+                    if (a.lenDays !== b.lenDays) return a.lenDays - b.lenDays;      // shortest range first
+                    if (a.start !== b.start) return a.start < b.start ? -1 : 1;     // earlier start
+                    if (a.end !== b.end) return a.end < b.end ? -1 : 1;             // earlier end
+                    if (a.assignee !== b.assignee) return a.assignee < b.assignee ? -1 : 1; // stable
+                    return 0;
+                  });
+                  return candidates[0].assignee;
+                }
+
+                const strategy = (cfg.strategy || "daily").toString().toLowerCase();
+
+                // Deterministic daily rotation by UTC day index.
+                function pickDaily(ms) {
+                  const day = Math.floor(ms / 86400000);
+                  return cleaned[day % cleaned.length];
+                }
+
+                // Deterministic weekly rotation by week bucket with configurable week_start.
+                function pickWeekly(ms) {
+                  const weekStartRaw = (cfg.week_start || "monday").toString().toLowerCase();
+                  const map = {
+                    sunday: 0, monday: 1, tuesday: 2, wednesday: 3,
+                    thursday: 4, friday: 5, saturday: 6
+                  };
+                  const desired = (weekStartRaw in map) ? map[weekStartRaw] : 1;
+
+                  const d = new Date(ms);
+                  const dow = d.getUTCDay();
+                  const delta = (dow - desired + 7) % 7;
+
+                  const midnight = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+                  const weekStartMidnight = midnight - delta * 86400000;
+
+                  const weekIndex = Math.floor(weekStartMidnight / (7 * 86400000));
+                  return cleaned[weekIndex % cleaned.length];
+                }
+
+                if (strategy === "weekly") return pickWeekly(t);
+                return pickDaily(t);
               }
 
               // Add issue to GitHub Projects v2 (optional).

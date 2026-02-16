@@ -1,0 +1,21 @@
+name: oncall-rotation-manifest
+
+on:
+  pull_request:
+    paths:
+      - ".github/oncall_rotation.json"
+      - ".github/oncall_rotation.manifest.json"
+      - "scripts/check_oncall_rotation_manifest.py"
+      - "scripts/refresh_oncall_rotation_manifest.py"
+  workflow_dispatch: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Validate oncall rotation + manifest
+        run: python scripts/check_oncall_rotation_manifest.py

@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "timezone": "UTC",
+  "strategy": "weekly",
+  "week_start": "monday",
+  "rotation": [
+    "alice",
+    "bob",
+    "carol"
+  ],
+  "exceptions": [
+    {
+      "start": "2026-02-16",
+      "end": "2026-02-20",
+      "assignee": "dave",
+      "reason": "Vacation coverage for alice"
+    },
+    {
+      "start": "2026-03-02",
+      "end": "2026-03-06",
+      "assignee": "erin",
+      "reason": "bob out"
+    }
+  ],
+  "labels": {
+    "triaged": "triaged",
+    "needs_oncall": "needs-oncall",
+    "oncall_assigned": "oncall-assigned"
+  }
+}
