@@ -1273,12 +1273,29 @@ jobs:
               : null;
 
             // Dedupe: only one resolved comment per drift episode (keyed by firstDetectedIso).
-            // Paginates to avoid false negatives on noisy issues; early-exits on first match.
+            // Scans newest→oldest pages, stops once comments are older than firstDetectedIso.
             async function alreadyResolvedForThisPeriod() {
               if (!RESOLVED_PERIOD_MARKER) return false;
-              const PER_PAGE = 100;      // GitHub max
-              const MAX_PAGES = 20;      // hard cap (up to 2 000 comments scanned)
-              for (let page = 1; page <= MAX_PAGES; page++) {
+              const PER_PAGE = 100; // GitHub max
+              const MAX_PAGES = 50; // hard cap (up to 5 000 comments worst-case)
+
+              const cutoff = Date.parse(firstDetectedIso);
+              if (Number.isNaN(cutoff)) {
+                throw new Error(`Invalid firstDetectedIso (cannot parse): ${firstDetectedIso}`);
+              }
+
+              // Use comment count from the search result to jump to the last page.
+              const totalComments = typeof existing.comments === "number" ? existing.comments : 0;
+              let startPage = Math.max(1, Math.floor((Math.max(0, totalComments - 1)) / PER_PAGE) + 1);
+
+              let pagesScanned = 0;
+              for (let page = startPage; page >= 1; page--) {
+                pagesScanned++;
+                if (pagesScanned > MAX_PAGES) {
+                  core.info(`Resolved dedupe scan hit MAX_PAGES=${MAX_PAGES}; assuming resolved comment may already exist.`);
+                  return true; // fail-safe: prevent spam
+                }
+
                 const { data: comments } = await github.rest.issues.listComments({
                   owner: context.repo.owner,
                   repo: context.repo.repo,
@@ -1288,20 +1305,31 @@ jobs:
                 });
 
                 const items = comments || [];
+                if (!items.length) {
+                  // Empty page while scanning backwards — continue (rare).
+                  continue;
+                }
+
+                // Items are oldest→newest within the page.
+                const newest = items[items.length - 1];
+                const newestTs = Date.parse(newest.created_at || "");
+                if (!Number.isNaN(newestTs) && newestTs < cutoff) {
+                  // Entire page is older than cutoff → earlier pages are even older.
+                  return false;
+                }
+
+                // Scan only comments that are >= cutoff.
                 for (const c of items) {
+                  const ts = Date.parse(c.created_at || "");
+                  if (!Number.isNaN(ts) && ts < cutoff) continue;
                   const b = c.body || "";
                   if (b.includes(RESOLVED_MARKER) && b.includes(RESOLVED_PERIOD_MARKER)) {
                     return true;
                   }
                 }
-
-                // If we got fewer than PER_PAGE, we've hit the end.
-                if (items.length < PER_PAGE) return false;
               }
 
-              // If we hit the cap, fail safe: assume it might exist to prevent spam.
-              core.info(`Resolved dedupe scan hit MAX_PAGES=${MAX_PAGES}; assuming resolved comment may already exist.`);
-              return true;
+              return false;
             }
 
             const already = await alreadyResolvedForThisPeriod();
