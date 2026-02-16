@@ -37,7 +37,7 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["start", "end", "assignee"],
+        "required": ["start", "end", "assignee", "reason"],
         "properties": {
           "start": {
             "type": "string",
@@ -58,7 +58,8 @@
             "default": 1000
           },
           "reason": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1
           }
         }
       }
