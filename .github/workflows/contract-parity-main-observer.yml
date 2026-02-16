@@ -506,11 +506,32 @@ jobs:
               return `${SCOPE_MARKER}\n${ID_MARKER}\n${markerLine}\n\n${b.trimStart()}`;
             }
 
+            function formatDuration(ms) {
+              const totalSec = Math.max(0, Math.floor(ms / 1000));
+              const days = Math.floor(totalSec / 86400);
+              const hours = Math.floor((totalSec % 86400) / 3600);
+              const mins = Math.floor((totalSec % 3600) / 60);
+              const secs = totalSec % 60;
+              const parts = [];
+              if (days) parts.push(`${days}d`);
+              if (days || hours) parts.push(`${hours}h`);
+              if (days || hours || mins) parts.push(`${mins}m`);
+              parts.push(`${secs}s`);
+              return parts.join(" ");
+            }
+
             function bodyWithTamperWarning(bodyText) {
               if ((bodyText || "").includes("Automation identity markers")) return bodyText;
               const lines = (bodyText || "").split("\n");
               lines.splice(3, 0, TAMPER_NOTE.trimEnd(), "");
               return lines.join("\n");
+            }
+
+            function extractFirstDetectedIso(body) {
+              const b = body || "";
+              const re = /<!--\s*drift-first-detected:\s*([0-9T:\.\-Z]+)\s*-->/;
+              const m = b.match(re);
+              return m ? m[1] : null;
             }
 
             // Prefer ID-marker identity; fall back to scope-marker, then exact title.
@@ -535,10 +556,46 @@ jobs:
               return;
             }
 
-            // Enforce markers (self-healing) before closing, and stamp last-resolved.
+            // Enforce markers (self-healing) before closing, stamp last-resolved,
+            // and surface last-resolved fields in the visible body.
             let patchedBody = ensureDualMarkers(existing.body || "");
             patchedBody = ensureLastResolvedMarker(patchedBody, now);
             patchedBody = bodyWithTamperWarning(patchedBody);
+
+            // Inject/refresh header-visible fields:
+            // - keep existing first-detected if present
+            // - set last-resolved to now
+            // - set time since last green to 0s
+            function injectLifecycleFields(bodyText) {
+              const lines = (bodyText || "").split("\n");
+              const idx = lines.findIndex(l => l.trim() === "## Contract parity drift detected");
+              if (idx === -1) return bodyText;
+
+              // Remove existing lifecycle lines (idempotent).
+              const cleaned = lines.filter(l =>
+                !l.startsWith("**First detected (UTC):**") &&
+                !l.startsWith("**Unresolved drift duration:**") &&
+                !l.startsWith("**Last resolved (UTC):**") &&
+                !l.startsWith("**Time since last green:**")
+              );
+
+              const fd = extractFirstDetectedIso(bodyText) || "n/a";
+
+              const fields = [
+                `**First detected (UTC):** ${fd}`,
+                `**Unresolved drift duration:** n/a`,
+                `**Last resolved (UTC):** ${now}`,
+                `**Time since last green:** 0s`,
+                ""
+              ];
+
+              const insertAt = Math.min(idx + 2, cleaned.length);
+              cleaned.splice(insertAt, 0, ...fields);
+              return cleaned.join("\n");
+            }
+
+            patchedBody = injectLifecycleFields(patchedBody);
+
             if ((existing.body || "") !== patchedBody) {
               await github.rest.issues.update({
                 owner: context.repo.owner,
