@@ -14,6 +14,14 @@ jobs:
   parity-observer:
     runs-on: ubuntu-latest
     continue-on-error: true
+    env:
+      # Drift budget (hours). If unresolved drift exceeds this, we escalate.
+      DRIFT_BUDGET_HOURS: "48"
+      # Escalation labels applied to the rolling issue when budget breached.
+      DRIFT_BUDGET_LABELS: "priority:high,drift-budget-breached"
+      # Optional: who to ping when budget is breached (comma-separated GitHub handles without @).
+      # Example: "HanzoRazer,platform-owner,oncall-eng"
+      DRIFT_BUDGET_PING: ""
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -348,15 +356,34 @@ jobs:
 
             // Compute unresolved duration and inject into the body we'll publish.
             let durationStr = "unknown";
+            let unresolvedMs = null;
             try {
               const fdMs = Date.parse(firstDetectedIso || "");
               const nowMs = Date.parse(now);
               if (!Number.isNaN(fdMs) && !Number.isNaN(nowMs)) {
-                durationStr = formatDuration(nowMs - fdMs);
+                unresolvedMs = Math.max(0, nowMs - fdMs);
+                durationStr = formatDuration(unresolvedMs);
               }
             } catch (e) {
               // keep "unknown"
             }
+
+            // Drift budget enforcement (non-blocking escalation signal).
+            const budgetHoursRaw = (process.env.DRIFT_BUDGET_HOURS || "").trim();
+            const budgetHours = budgetHoursRaw ? Number(budgetHoursRaw) : 0;
+            const budgetMs = (Number.isFinite(budgetHours) && budgetHours > 0) ? budgetHours * 3600 * 1000 : 0;
+            const budgetBreached = !!(budgetMs && unresolvedMs !== null && unresolvedMs >= budgetMs);
+
+            const budgetLabelsRaw = (process.env.DRIFT_BUDGET_LABELS || "").trim();
+            const budgetLabels = budgetLabelsRaw
+              ? budgetLabelsRaw.split(",").map(s => s.trim()).filter(Boolean)
+              : [];
+
+            const pingRaw = (process.env.DRIFT_BUDGET_PING || "").trim();
+            const pingHandles = pingRaw
+              ? pingRaw.split(",").map(s => s.trim().replace(/^@/, "")).filter(Boolean)
+              : [];
+            const pingLine = pingHandles.length ? pingHandles.map(h => `@${h}`).join(" ") : "";
 
             // Compute "time since last green" from drift-last-resolved marker if present.
             let lastResolvedIso = null;
@@ -446,6 +473,40 @@ jobs:
               });
             }
 
+            // If budget breached, add labels and a dedicated escalation comment.
+            if (budgetBreached) {
+              try {
+                if (budgetLabels.length) {
+                  await github.rest.issues.addLabels({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: existing.number,
+                    labels: budgetLabels
+                  });
+                }
+              } catch (e) {
+                core.info(`Could not add budget labels (non-fatal): ${e}`);
+              }
+
+              const escalation = [
+                "🚨 **Drift budget breached**",
+                "",
+                `Unresolved drift has exceeded the budget of **${budgetHours}h**.`,
+                `**Current unresolved duration:** ${durationStr}`,
+                "",
+                pingLine ? `Paging: ${pingLine}` : "(No DRIFT_BUDGET_PING configured.)",
+                "",
+                `Workflow run: ${runUrl}`,
+              ].join("\n");
+
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                body: escalation
+              });
+            }
+
             // Update body (keeps latest report visible)
             await github.rest.issues.update({
               owner: context.repo.owner,
@@ -461,6 +522,7 @@ jobs:
               "",
               `_Rolling issue identity: dual-marker (fallback used: ${foundBy})._`,
               `**Unresolved drift duration:** ${durationStr}`,
+              budgetBreached ? `🚨 **Budget breached:** ${budgetHours}h` : "",
               "",
               "```",
               clippedReport.trimEnd(),
