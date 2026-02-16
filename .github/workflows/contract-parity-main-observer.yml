@@ -457,6 +457,7 @@ jobs:
             const SCOPE_MARKER = "<!-- drift-rolling-issue: contracts -->";
             const ID_MARKER = "<!-- drift-rolling-issue-id: contracts:9d3f1a2c -->";
             const LAST_RESOLVED_PREFIX = "<!-- drift-last-resolved: ";
+            const LAST_DURATION_PREFIX = "<!-- drift-last-duration: ";
             const TAMPER_NOTE = "> \u26a0\ufe0f **Automation identity markers**: Do not remove or edit the hidden HTML markers at the top of this issue body. They are used to locate, reopen, and update this rolling issue automatically.\n";
             const now = new Date().toISOString();
             const runUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
@@ -562,6 +563,22 @@ jobs:
             patchedBody = ensureLastResolvedMarker(patchedBody, now);
             patchedBody = bodyWithTamperWarning(patchedBody);
 
+            // Compute "Resolved after" duration using first-detected -> now, if first-detected exists.
+            const firstDetectedIso = extractFirstDetectedIso(patchedBody) || null;
+            let resolvedAfterStr = "n/a";
+            if (firstDetectedIso) {
+              const fdMs = Date.parse(firstDetectedIso);
+              const nowMs = Date.parse(now);
+              if (!Number.isNaN(fdMs) && !Number.isNaN(nowMs) && nowMs >= fdMs) {
+                resolvedAfterStr = formatDuration(nowMs - fdMs);
+              } else if (!Number.isNaN(fdMs) && !Number.isNaN(nowMs) && nowMs < fdMs) {
+                resolvedAfterStr = "0s";
+              }
+            }
+
+            // Stamp last-duration marker (even if n/a, it's still explicit and stable).
+            patchedBody = ensureLastDurationMarker(patchedBody, resolvedAfterStr);
+
             // Inject/refresh header-visible fields:
             // - keep existing first-detected if present
             // - set last-resolved to now
@@ -576,7 +593,8 @@ jobs:
                 !l.startsWith("**First detected (UTC):**") &&
                 !l.startsWith("**Unresolved drift duration:**") &&
                 !l.startsWith("**Last resolved (UTC):**") &&
-                !l.startsWith("**Time since last green:**")
+                !l.startsWith("**Time since last green:**") &&
+                !l.startsWith("**Resolved after:**")
               );
 
               const fd = extractFirstDetectedIso(bodyText) || "n/a";
@@ -586,6 +604,7 @@ jobs:
                 `**Unresolved drift duration:** n/a`,
                 `**Last resolved (UTC):** ${now}`,
                 `**Time since last green:** 0s`,
+                `**Resolved after:** ${resolvedAfterStr}`,
                 ""
               ];
 
