@@ -1,5 +1,5 @@
 {
   "schema": "oncall_rotation_manifest_v1",
-  "sha256": "88d1338c584eb345319927f0f686bd8f9fa45741aaca8662c16a05188f70582b",
+  "sha256": "32275b1af83b6fc7a3aa0a41d594834dddca32442187fd6ea73c16260362cce7",
   "tracked_file": ".github\\oncall_rotation.json"
 }

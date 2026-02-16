@@ -83,6 +83,7 @@ def main() -> int:
             start = e.get("start")
             end = e.get("end")
             assignee = e.get("assignee")
+            priority = e.get("priority", 1000)
             if not isinstance(start, str) or not isinstance(end, str):
                 return die(f"exceptions[{i}] must include 'start' and 'end' as YYYY-MM-DD strings")
             ds = parse_ymd(start)
@@ -95,6 +96,8 @@ def main() -> int:
                 return die(f"exceptions[{i}] must include non-empty 'assignee'")
             if assignee.strip().startswith("@"):
                 return die(f"exceptions[{i}] assignee must not start with '@' (got {assignee.strip()})")
+            if not isinstance(priority, int):
+                return die(f"exceptions[{i}] priority must be an int if present (got {type(priority).__name__})")
             parsed_ranges.append((ds, de))
 
         # Overlaps allowed ("most specific wins"). Optional hygiene warning:

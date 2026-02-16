@@ -547,34 +547,39 @@ jobs:
                 const today = utcYmd(t);
 
                 // Exception override (vacations/coverage). Ranges inclusive.
-                // "Most specific wins": if multiple exceptions match, choose the shortest date range.
-                // Deterministic tie-break: smallest (end-start), then earliest start, then lexical assignee.
+                // Tie-break: priority (lower wins) → shortest range → earliest start → file order.
                 const exceptions = Array.isArray(cfg.exceptions) ? cfg.exceptions : [];
                 const candidates = [];
-                for (const e of exceptions) {
+                for (let idx = 0; idx < exceptions.length; idx++) {
+                  const e = exceptions[idx];
                   if (!e || typeof e !== "object") continue;
                   const start = typeof e.start === "string" ? e.start.trim() : "";
                   const end = typeof e.end === "string" ? e.end.trim() : "";
                   const assignee = typeof e.assignee === "string" ? e.assignee.trim().replace(/^@/, "") : "";
+                  const priorityRaw = (typeof e.priority === "number" && Number.isFinite(e.priority))
+                    ? Math.trunc(e.priority)
+                    : 1000;
                   if (!start || !end || !assignee) continue;
-                  if (today >= start && today <= end) {
-                    // Range length in days (inclusive). Use Date.parse on UTC midnight.
-                    const sMs = Date.parse(`${start}T00:00:00Z`);
-                    const eMs = Date.parse(`${end}T00:00:00Z`);
-                    if (!Number.isNaN(sMs) && !Number.isNaN(eMs) && eMs >= sMs) {
-                      const lenDays = Math.floor((eMs - sMs) / 86400000) + 1;
-                      candidates.push({ start, end, assignee, lenDays });
-                    }
-                  }
+                  if (today < start || today > end) continue;
+
+                  const sMs = Date.parse(`${start}T00:00:00Z`);
+                  const eMs = Date.parse(`${end}T00:00:00Z`);
+                  if (Number.isNaN(sMs) || Number.isNaN(eMs) || eMs < sMs) continue;
+                  const days = Math.floor((eMs - sMs) / 86400000) + 1;
+
+                  candidates.push({ start, end, assignee, days, idx, priority: priorityRaw });
                 }
 
                 if (candidates.length) {
                   candidates.sort((a, b) => {
-                    if (a.lenDays !== b.lenDays) return a.lenDays - b.lenDays;      // shortest range first
-                    if (a.start !== b.start) return a.start < b.start ? -1 : 1;     // earlier start
-                    if (a.end !== b.end) return a.end < b.end ? -1 : 1;             // earlier end
-                    if (a.assignee !== b.assignee) return a.assignee < b.assignee ? -1 : 1; // stable
-                    return 0;
+                    // 1) explicit priority wins (lower is higher priority)
+                    if (a.priority !== b.priority) return a.priority - b.priority;
+                    // 2) shortest range wins
+                    if (a.days !== b.days) return a.days - b.days;
+                    // 3) earliest start wins
+                    if (a.start !== b.start) return a.start < b.start ? -1 : 1;
+                    // 4) file order wins
+                    return a.idx - b.idx;
                   });
                   return candidates[0].assignee;
                 }
