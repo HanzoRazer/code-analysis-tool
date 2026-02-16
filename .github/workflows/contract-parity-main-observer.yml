@@ -45,6 +45,7 @@ jobs:
         run: |
           python scripts/validate_oncall_rotation_schema.py
           python scripts/check_oncall_rotation_manifest.py
+          python scripts/check_oncall_rotation_schema_manifest.py
 
       - name: Require oncall provenance manifests
         run: |
@@ -104,6 +105,23 @@ jobs:
               if (!sha || typeof sha !== "string") return null;
               const s = sha.trim();
               return s.length >= 12 ? s.slice(0, 12) : s;
+            }
+
+            function assertOncallDecision(picked) {
+              if (!picked || typeof picked !== "object") {
+                throw new Error("Oncall selection failed: pickOncallDecision() returned null/invalid");
+              }
+              const assignee = picked.assignee;
+              if (typeof assignee !== "string" || !assignee.trim()) {
+                throw new Error("Oncall selection failed: missing/empty assignee");
+              }
+              if (assignee.trim().startsWith("@")) {
+                throw new Error(`Oncall selection failed: assignee must not start with '@' (got ${assignee})`);
+              }
+              if (!picked.decision || typeof picked.decision !== "object") {
+                throw new Error("Oncall selection failed: missing decision object");
+              }
+              return { assignee: assignee.trim(), decision: picked.decision };
             }
 
             // Provenance sources (manifest is the contract-locked sha)
@@ -584,29 +602,28 @@ jobs:
                 }
 
                 const path = ".github/oncall_rotation.json";
-                if (!fs.existsSync(path)) return null;
+                if (!fs.existsSync(path)) {
+                  throw new Error(`Oncall rotation file missing: ${path}`);
+                }
 
                 let cfg;
                 try {
                   cfg = JSON.parse(fs.readFileSync(path, "utf8"));
                 } catch (e) {
-                  core.info(`Invalid ${path} (non-fatal): ${e}`);
-                  return null;
+                  throw new Error(`Oncall rotation file is invalid JSON: ${path}: ${e}`);
                 }
 
                 const users = Array.isArray(cfg.rotation) ? cfg.rotation : [];
                 const cleaned = users
                   .map(s => (typeof s === "string" ? s.trim().replace(/^@/, "") : ""))
                   .filter(Boolean);
-                if (!cleaned.length) return null;
+                if (!cleaned.length) {
+                  throw new Error(`Oncall rotation file has no valid users: ${path}`);
+                }
 
                 const t = Date.parse(isoNow);
                 if (Number.isNaN(t)) {
-                  const fallback = cleaned[0];
-                  return {
-                    assignee: fallback,
-                    decision: { source: "parse_error_fallback", assignee: fallback }
-                  };
+                  throw new Error(`Oncall selection failed: could not parse ISO timestamp: ${isoNow}`);
                 }
 
                 // Compute today's UTC date as YYYY-MM-DD for exception matching.
@@ -675,6 +692,9 @@ jobs:
                 }
 
                 const strategy = (cfg.strategy || "daily").toString().toLowerCase();
+                if (strategy !== "daily" && strategy !== "weekly") {
+                  throw new Error(`Oncall rotation: unsupported strategy '${strategy}' (expected 'daily' or 'weekly')`);
+                }
 
                 // Deterministic daily rotation by UTC day index.
                 function pickDaily(ms) {
@@ -696,11 +716,15 @@ jobs:
                 // Deterministic weekly rotation by week bucket with configurable week_start.
                 function pickWeekly(ms) {
                   const weekStartRaw = (cfg.week_start || "monday").toString().toLowerCase();
+                  const allowed = new Set(["sunday","monday","tuesday","wednesday","thursday","friday","saturday"]);
+                  if (!allowed.has(weekStartRaw)) {
+                    throw new Error(`Oncall rotation: unsupported week_start '${weekStartRaw}' (expected one of ${[...allowed].join(", ")})`);
+                  }
                   const map = {
                     sunday: 0, monday: 1, tuesday: 2, wednesday: 3,
                     thursday: 4, friday: 5, saturday: 6
                   };
-                  const desired = (weekStartRaw in map) ? map[weekStartRaw] : 1;
+                  const desired = map[weekStartRaw];
 
                   const d = new Date(ms);
                   const dow = d.getUTCDay();
@@ -794,15 +818,14 @@ jobs:
 
               if (!already) {
                 // Strong operator experience: assign oncall + add to project once per period.
-                const picked = pickOncallDecision(now);
-                const oncall = picked ? picked.assignee : null;
-                const oncallDecision = picked ? picked.decision : null;
+                const picked = assertOncallDecision(pickOncallDecision(now));
+                const oncall = picked.assignee;
+                const oncallDecision = picked.decision;
 
                 let assignedOncall = null;
                 let decisionBlockForComment = null;
 
-                if (oncall) {
-                  try {
+                try {
                     const triagedLabel = (process.env.DRIFT_TRIAGED_LABEL || "triaged").trim() || "triaged";
                     const needsOncallLabel = (process.env.DRIFT_NEEDS_ONCALL_LABEL || "needs-oncall").trim() || "needs-oncall";
                     const oncallAssignedLabel = (process.env.DRIFT_ONCALL_ASSIGNED_LABEL || "oncall-assigned").trim() || "oncall-assigned";
@@ -872,13 +895,9 @@ jobs:
                       if (hasTriaged && !hasNeedsOncall) reasons.push(`${triagedLabel} label present (no ${needsOncallLabel} override)`);
                       core.info(`Skipping oncall assignment; ${reasons.join(" + ")}`);
                     }
-                  } catch (e) {
-                    core.info(`Could not assign oncall (non-fatal): ${e}`);
-                  }
-                } else {
-                  core.info("No oncall configured (DRIFT_ONCALL_ASSIGNEE or DRIFT_ONCALL_ROTATION).");
+                } catch (e) {
+                  core.info(`Could not assign oncall (non-fatal): ${e}`);
                 }
-
                 // Post the (deduped) escalation comment once per period, including the oncall decision if any.
                 const escalationLines = [
                   BREACH_MARKER,
