@@ -108,6 +108,14 @@ jobs:
           script: |
             const fs = require('fs');
 
+            // Defense in depth: require explicit CI=true even inside the script.
+            const ciVal = (process.env.CI || "").trim();
+            if (ciVal !== "true") {
+              throw new Error(
+                `Observer script must run with CI=true explicitly (got CI='${ciVal || "(unset)"}').`
+              );
+            }
+
             function safeReadJson(path) {
               try {
                 if (!fs.existsSync(path)) return null;
@@ -128,6 +136,23 @@ jobs:
               if (!sha || typeof sha !== "string") return null;
               const s = sha.trim();
               return s.length >= 12 ? s.slice(0, 12) : s;
+            }
+
+            // Idempotently upsert a hidden marker line in the body.
+            // Example: upsertMarker(body, "drift-ci-mode", "true")
+            function upsertMarker(bodyText, key, value) {
+              const markerRe = new RegExp(`<!--\\s*${key}:\\s*[^>]*-->`, "g");
+              const marker = `<!-- ${key}: ${value} -->`;
+              const body = (bodyText || "");
+              if (markerRe.test(body)) {
+                return body.replace(markerRe, marker);
+              }
+              // Prefer inserting near the top, after the rolling-issue identity marker if present.
+              const lines = body.split("\n");
+              const idIdx = lines.findIndex(l => l.includes("drift-rolling-issue"));
+              const insertAt = idIdx >= 0 ? idIdx + 1 : 0;
+              lines.splice(insertAt, 0, marker);
+              return lines.join("\n");
             }
 
             function assertOncallDecision(picked) {
@@ -406,7 +431,7 @@ jobs:
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 title: ISSUE_TITLE,
-                body: ensureFirstDetectedMarker(body, firstDetectedIso),
+                body: upsertMarker(ensureFirstDetectedMarker(body, firstDetectedIso), "drift-ci-mode", "true"),
                 labels: LABELS
               });
               existing = created.data;
@@ -432,6 +457,7 @@ jobs:
               patchedBody = ensureFirstDetectedMarker(patchedBody, firstDetectedIso);
               // Also ensure the tamper warning exists.
               patchedBody = bodyWithTamperWarning(patchedBody);
+              patchedBody = upsertMarker(patchedBody, "drift-ci-mode", "true");
               if ((existing.body || "") !== patchedBody) {
                 await github.rest.issues.update({
                   owner: context.repo.owner,
@@ -980,11 +1006,13 @@ jobs:
             }
 
             // Update body (keeps latest report visible)
+            // Stamp CI mode for provenance (hidden marker).
+            const bodyWithCiMarker = upsertMarker(body, "drift-ci-mode", "true");
             await github.rest.issues.update({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: existing.number,
-              body
+              body: bodyWithCiMarker
             });
 
             // Add comment (keeps a timeline of drift detections)
@@ -1187,6 +1215,7 @@ jobs:
             }
 
             patchedBody = injectLifecycleFields(patchedBody);
+            patchedBody = upsertMarker(patchedBody, "drift-ci-mode", "true");
 
             if ((existing.body || "") !== patchedBody) {
               await github.rest.issues.update({
