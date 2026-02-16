@@ -1043,6 +1043,14 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
+            // Defense in depth: require explicit CI=true inside the green-path script.
+            const ciVal = (process.env.CI || "").trim();
+            if (ciVal !== "true") {
+              throw new Error(
+                `Observer green-path script must run with CI=true explicitly (got CI='${ciVal || "(unset)"}').`
+              );
+            }
+
             const ISSUE_TITLE = "Upstream contract drift detected";
             const SCOPE_MARKER = "<!-- drift-rolling-issue: contracts -->";
             const ID_MARKER = "<!-- drift-rolling-issue-id: contracts:9d3f1a2c -->";
@@ -1095,6 +1103,19 @@ jobs:
                 return lines.join("\n");
               }
               return `${SCOPE_MARKER}\n${ID_MARKER}\n${markerLine}\n\n${b.trimStart()}`;
+            }
+
+            // Idempotently upsert a hidden marker line in the body.
+            function upsertMarker(bodyText, key, value) {
+              const markerRe = new RegExp(`<!--\\s*${key}:\\s*[^>]*-->`, "g");
+              const marker = `<!-- ${key}: ${value} -->`;
+              const body = (bodyText || "");
+              if (markerRe.test(body)) return body.replace(markerRe, marker);
+              const lines = body.split("\n");
+              const idIdx = lines.findIndex(l => l.includes("drift-rolling-issue"));
+              const insertAt = idIdx >= 0 ? idIdx + 1 : 0;
+              lines.splice(insertAt, 0, marker);
+              return lines.join("\n");
             }
 
             function formatDuration(ms) {
