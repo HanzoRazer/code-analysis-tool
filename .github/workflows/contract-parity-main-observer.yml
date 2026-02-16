@@ -625,16 +625,27 @@ jobs:
                 !l.startsWith("**Resolved after:**")
               );
 
-              const fd = extractFirstDetectedIso(bodyText) || "n/a";
+              const fdIso = extractFirstDetectedIso(bodyText);
+              const hasFirstDetected = !!fdIso;
+              // On green, we always stamp last-resolved = now, but keep this conditional to avoid weird states.
+              const hasLastResolved = !!now;
 
-              const fields = [
-                `**First detected (UTC):** ${fd}`,
-                `**Unresolved drift duration:** n/a`,
-                `**Last resolved (UTC):** ${now}`,
-                `**Time since last green:** 0s`,
-                `**Resolved after:** ${resolvedAfterStr}`,
-                ""
-              ];
+              const fields = [];
+
+              // Only show first-detected-derived fields if marker exists.
+              if (hasFirstDetected) {
+                fields.push(`**First detected (UTC):** ${fdIso}`);
+                fields.push(`**Unresolved drift duration:** n/a`);
+                fields.push(`**Resolved after:** ${resolvedAfterStr}`);
+              }
+
+              // Always show last-resolved fields on green (we stamp them), but still guarded.
+              if (hasLastResolved) {
+                fields.push(`**Last resolved (UTC):** ${now}`);
+                fields.push(`**Time since last green:** 0s`);
+              }
+
+              fields.push("");
 
               const insertAt = Math.min(idx + 2, cleaned.length);
               cleaned.splice(insertAt, 0, ...fields);
