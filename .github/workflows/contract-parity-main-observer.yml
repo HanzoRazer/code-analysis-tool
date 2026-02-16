@@ -22,6 +22,10 @@ jobs:
       # Optional: who to ping when budget is breached (comma-separated GitHub handles without @).
       # Example: "HanzoRazer,platform-owner,oncall-eng"
       DRIFT_BUDGET_PING: ""
+      # Label conventions (configurable)
+      DRIFT_TRIAGED_LABEL: "triaged"
+      DRIFT_NEEDS_ONCALL_LABEL: "needs-oncall"
+      DRIFT_ONCALL_ASSIGNED_LABEL: "oncall-assigned"
       # Oncall assignment (choose one):
       # 1) Fixed assignee:
       DRIFT_ONCALL_ASSIGNEE: ""
@@ -576,6 +580,10 @@ jobs:
                 const oncall = pickOncallAssignee(now);
                 if (oncall) {
                   try {
+                    const triagedLabel = (process.env.DRIFT_TRIAGED_LABEL || "triaged").trim() || "triaged";
+                    const needsOncallLabel = (process.env.DRIFT_NEEDS_ONCALL_LABEL || "needs-oncall").trim() || "needs-oncall";
+                    const oncallAssignedLabel = (process.env.DRIFT_ONCALL_ASSIGNED_LABEL || "oncall-assigned").trim() || "oncall-assigned";
+
                     // Don't overwrite existing assignees (manual triage wins).
                     const issueResp = await github.rest.issues.get({
                       owner: context.repo.owner,
@@ -587,8 +595,8 @@ jobs:
                       .map(l => typeof l === "string" ? l : (l.name || ""))
                       .filter(Boolean);
 
-                    const hasTriaged = currentLabels.includes("triaged");
-                    const hasNeedsOncall = currentLabels.includes("needs-oncall");
+                    const hasTriaged = currentLabels.includes(triagedLabel);
+                    const hasNeedsOncall = currentLabels.includes(needsOncallLabel);
 
                     // Tight policy:
                     // - Only assign if no assignees AND (NOT triaged OR needs-oncall override).
@@ -612,10 +620,10 @@ jobs:
                           owner: context.repo.owner,
                           repo: context.repo.repo,
                           issue_number: existing.number,
-                          labels: ["oncall-assigned"]
+                          labels: [oncallAssignedLabel]
                         });
                       } catch (e) {
-                        core.info(`Could not add oncall-assigned label (non-fatal): ${e}`);
+                        core.info(`Could not add ${oncallAssignedLabel} label (non-fatal): ${e}`);
                       }
 
                       // If needs-oncall was present (override), clear it after assignment.
@@ -625,16 +633,16 @@ jobs:
                             owner: context.repo.owner,
                             repo: context.repo.repo,
                             issue_number: existing.number,
-                            name: "needs-oncall"
+                            name: needsOncallLabel
                           });
                         } catch (e) {
-                          core.info(`Could not remove needs-oncall label (non-fatal): ${e}`);
+                          core.info(`Could not remove ${needsOncallLabel} label (non-fatal): ${e}`);
                         }
                       }
                     } else {
                       const reasons = [];
                       if (currentAssignees.length !== 0) reasons.push(`assignees present (${currentAssignees.join(", ")})`);
-                      if (hasTriaged && !hasNeedsOncall) reasons.push("triaged label present (no needs-oncall override)");
+                      if (hasTriaged && !hasNeedsOncall) reasons.push(`${triagedLabel} label present (no ${needsOncallLabel} override)`);
                       core.info(`Skipping oncall assignment; ${reasons.join(" + ")}`);
                     }
                   } catch (e) {
