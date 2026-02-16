@@ -63,6 +63,7 @@ markers = [
   "integration: tests that touch filesystem or run scripts",
   "lint: copy/governance lint tests",
   "schema: json schema validation tests",
+  "contract: contract/parity tests that verify code matches specs",
 ]
 
 # Directories pytest should ignore during discovery
