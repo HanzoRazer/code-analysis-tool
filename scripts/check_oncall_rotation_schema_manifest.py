@@ -3,11 +3,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from pathlib import Path
 
 
 SCHEMA_PATH = Path(".github/oncall_rotation.schema.json")
 MANIFEST_PATH = Path(".github/oncall_rotation.schema.manifest.json")
+VERSION_RE = re.compile(r"^oncall_rotation_schema_v\d+$")
 
 
 def sha256_file(path: Path) -> str:
@@ -37,6 +39,8 @@ def main() -> int:
     schema_version = schema.get("schema_version")
     if not isinstance(schema_version, str) or not schema_version.strip():
         return die("Schema must contain non-empty string: schema_version")
+    if not VERSION_RE.match(schema_version.strip()):
+        return die(f"Invalid schema_version '{schema_version}'. Must match ^oncall_rotation_schema_v\\d+$")
 
     try:
         manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))

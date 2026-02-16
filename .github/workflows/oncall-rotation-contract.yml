@@ -7,6 +7,7 @@ on:
       - ".github/oncall_rotation.manifest.json"
       - ".github/oncall_rotation.schema.json"
       - ".github/oncall_rotation.schema.manifest.json"
+      - ".github/ONCALL_ROTATION_SCHEMA_COMPATIBILITY.md"
       - "scripts/check_oncall_rotation_manifest.py"
       - "scripts/refresh_oncall_rotation_manifest.py"
       - "scripts/validate_oncall_rotation_schema.py"
