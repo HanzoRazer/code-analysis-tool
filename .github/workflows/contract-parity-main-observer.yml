@@ -22,6 +22,14 @@ jobs:
       # Optional: who to ping when budget is breached (comma-separated GitHub handles without @).
       # Example: "HanzoRazer,platform-owner,oncall-eng"
       DRIFT_BUDGET_PING: ""
+      # Oncall assignment (choose one):
+      # 1) Fixed assignee:
+      DRIFT_ONCALL_ASSIGNEE: ""
+      # 2) Daily rotation (comma-separated, no @). Example: "alice,bob,carol"
+      DRIFT_ONCALL_ROTATION: ""
+      # If set, add the issue to this GitHub Projects v2 project (node id).
+      # Example: "PVT_kwDOA...": ProjectV2 node_id.
+      DRIFT_PROJECT_NODE_ID: ""
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -475,6 +483,60 @@ jobs:
 
             // If budget breached, add labels and a dedicated escalation comment.
             if (budgetBreached) {
+              // Dedupe: one breach comment per unresolved period (firstDetectedIso).
+              const BREACH_MARKER = "<!-- drift-budget-breached -->";
+              const periodKey = firstDetectedIso || "unknown";
+              const PERIOD_MARKER = `<!-- drift-budget-period: ${periodKey} -->`;
+
+              async function alreadyCommentedForThisPeriod() {
+                // Fetch recent comments (enough for typical issue activity).
+                const { data: comments } = await github.rest.issues.listComments({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: existing.number,
+                  per_page: 50,
+                });
+                return (comments || []).some(c => {
+                  const b = c.body || "";
+                  return b.includes(BREACH_MARKER) && b.includes(PERIOD_MARKER);
+                });
+              }
+
+              const already = await alreadyCommentedForThisPeriod();
+
+              // Pick an oncall assignee (fixed or daily rotation).
+              function pickOncallAssignee(isoNow) {
+                const fixed = (process.env.DRIFT_ONCALL_ASSIGNEE || "").trim().replace(/^@/, "");
+                if (fixed) return fixed;
+
+                const rotRaw = (process.env.DRIFT_ONCALL_ROTATION || "").trim();
+                if (!rotRaw) return null;
+
+                const users = rotRaw.split(",").map(s => s.trim().replace(/^@/, "")).filter(Boolean);
+                if (!users.length) return null;
+
+                // Deterministic daily rotation by UTC day number.
+                const t = Date.parse(isoNow);
+                if (Number.isNaN(t)) return users[0];
+                const day = Math.floor(t / 86400000);
+                return users[day % users.length];
+              }
+
+              // Add issue to GitHub Projects v2 (optional).
+              async function addIssueToProjectV2(projectNodeId, issueNodeId) {
+                const mutation = `
+                  mutation($projectId: ID!, $contentId: ID!) {
+                    addProjectV2ItemById(input: { projectId: $projectId, contentId: $contentId }) {
+                      item { id }
+                    }
+                  }
+                `;
+                return await github.graphql(mutation, {
+                  projectId: projectNodeId,
+                  contentId: issueNodeId
+                });
+              }
+
               try {
                 if (budgetLabels.length) {
                   await github.rest.issues.addLabels({
@@ -489,6 +551,9 @@ jobs:
               }
 
               const escalation = [
+                BREACH_MARKER,
+                PERIOD_MARKER,
+                "",
                 "🚨 **Drift budget breached**",
                 "",
                 `Unresolved drift has exceeded the budget of **${budgetHours}h**.`,
@@ -499,12 +564,78 @@ jobs:
                 `Workflow run: ${runUrl}`,
               ].join("\n");
 
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: existing.number,
-                body: escalation
-              });
+              if (!already) {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: existing.number,
+                  body: escalation
+                });
+
+                // Strong operator experience: assign oncall + add to project once per period.
+                const oncall = pickOncallAssignee(now);
+                if (oncall) {
+                  try {
+                    // Don't overwrite existing assignees (manual triage wins).
+                    const issueResp = await github.rest.issues.get({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      issue_number: existing.number
+                    });
+                    const currentAssignees = (issueResp.data.assignees || []).map(a => a.login);
+
+                    if (currentAssignees.length === 0) {
+                      await github.rest.issues.addAssignees({
+                        owner: context.repo.owner,
+                        repo: context.repo.repo,
+                        issue_number: existing.number,
+                        assignees: [oncall]
+                      });
+                      core.info(`Assigned oncall: @${oncall}`);
+
+                      // Label to indicate automation assignment occurred.
+                      try {
+                        await github.rest.issues.addLabels({
+                          owner: context.repo.owner,
+                          repo: context.repo.repo,
+                          issue_number: existing.number,
+                          labels: ["oncall-assigned"]
+                        });
+                      } catch (e) {
+                        core.info(`Could not add oncall-assigned label (non-fatal): ${e}`);
+                      }
+                    } else {
+                      core.info(`Skipping oncall assignment; existing assignees present: ${currentAssignees.join(", ")}`);
+                    }
+                  } catch (e) {
+                    core.info(`Could not assign oncall (non-fatal): ${e}`);
+                  }
+                } else {
+                  core.info("No oncall configured (DRIFT_ONCALL_ASSIGNEE or DRIFT_ONCALL_ROTATION).");
+                }
+
+                const projectId = (process.env.DRIFT_PROJECT_NODE_ID || "").trim();
+                if (projectId) {
+                  try {
+                    // Reuse the fetched issue if available; otherwise fetch.
+                    const issueNodeId = (typeof issueResp !== "undefined" && issueResp.data && issueResp.data.node_id)
+                      ? issueResp.data.node_id
+                      : (await github.rest.issues.get({
+                          owner: context.repo.owner,
+                          repo: context.repo.repo,
+                          issue_number: existing.number
+                        })).data.node_id;
+                    await addIssueToProjectV2(projectId, issueNodeId);
+                    core.info(`Added issue #${existing.number} to ProjectV2 ${projectId}`);
+                  } catch (e) {
+                    core.info(`Could not add to ProjectV2 (non-fatal): ${e}`);
+                  }
+                } else {
+                  core.info("No project configured (DRIFT_PROJECT_NODE_ID).");
+                }
+              } else {
+                core.info(`Budget breach already recorded for this period (${periodKey}); skipping comment.`);
+              }
             }
 
             // Update body (keeps latest report visible)
