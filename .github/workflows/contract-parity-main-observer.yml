@@ -1265,16 +1265,22 @@ jobs:
               });
             }
 
-            // Comment "Resolved" with context.
+            // Comment "Resolved" with context and CI provenance markers.
+            const CI_MARKER = "<!-- drift-ci-mode: true -->";
+            const RESOLVED_MARKER = "<!-- drift-event: resolved -->";
             const comment = [
+              CI_MARKER,
+              RESOLVED_MARKER,
+              "",
               `✅ Resolved at **${now}**.`,
               `Parity is green against upstream \`main\`.`,
+              resolvedAfterStr ? `Resolved after: ${resolvedAfterStr}` : "",
               `Workflow run: ${runUrl}`,
               "",
               "If drift reappears, this issue will be reopened automatically by the observer.",
               "",
               `_Rolling issue identity: dual-marker (fallback used: ${foundBy})._`
-            ].join("\n");
+            ].filter(Boolean).join("\n");
 
             await github.rest.issues.createComment({
               owner: context.repo.owner,
