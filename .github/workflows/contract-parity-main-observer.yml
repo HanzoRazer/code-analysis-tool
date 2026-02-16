@@ -583,8 +583,21 @@ jobs:
                       issue_number: existing.number
                     });
                     const currentAssignees = (issueResp.data.assignees || []).map(a => a.login);
+                    const currentLabels = (issueResp.data.labels || [])
+                      .map(l => typeof l === "string" ? l : (l.name || ""))
+                      .filter(Boolean);
 
-                    if (currentAssignees.length === 0) {
+                    const hasTriaged = currentLabels.includes("triaged");
+                    const hasNeedsOncall = currentLabels.includes("needs-oncall");
+
+                    // Tight policy:
+                    // - Only assign if no assignees AND (NOT triaged OR needs-oncall override).
+                    // - If triaged and no override, skip.
+                    const shouldAssign =
+                      currentAssignees.length === 0 &&
+                      (!hasTriaged || hasNeedsOncall);
+
+                    if (shouldAssign) {
                       await github.rest.issues.addAssignees({
                         owner: context.repo.owner,
                         repo: context.repo.repo,
@@ -604,8 +617,25 @@ jobs:
                       } catch (e) {
                         core.info(`Could not add oncall-assigned label (non-fatal): ${e}`);
                       }
+
+                      // If needs-oncall was present (override), clear it after assignment.
+                      if (hasNeedsOncall) {
+                        try {
+                          await github.rest.issues.removeLabel({
+                            owner: context.repo.owner,
+                            repo: context.repo.repo,
+                            issue_number: existing.number,
+                            name: "needs-oncall"
+                          });
+                        } catch (e) {
+                          core.info(`Could not remove needs-oncall label (non-fatal): ${e}`);
+                        }
+                      }
                     } else {
-                      core.info(`Skipping oncall assignment; existing assignees present: ${currentAssignees.join(", ")}`);
+                      const reasons = [];
+                      if (currentAssignees.length !== 0) reasons.push(`assignees present (${currentAssignees.join(", ")})`);
+                      if (hasTriaged && !hasNeedsOncall) reasons.push("triaged label present (no needs-oncall override)");
+                      core.info(`Skipping oncall assignment; ${reasons.join(" + ")}`);
                     }
                   } catch (e) {
                     core.info(`Could not assign oncall (non-fatal): ${e}`);
