@@ -39,6 +39,19 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
+      - name: Forbid DRIFT_ONCALL_ASSIGNEE override in CI
+        shell: bash
+        env:
+          DRIFT_ONCALL_ASSIGNEE: ${{ env.DRIFT_ONCALL_ASSIGNEE }}
+          CI: ${{ env.CI }}
+          GITHUB_ACTIONS: ${{ env.GITHUB_ACTIONS }}
+        run: |
+          if [[ "${CI:-}" == "true" || "${GITHUB_ACTIONS:-}" == "true" ]]; then
+            if [[ -n "${DRIFT_ONCALL_ASSIGNEE:-}" ]]; then
+              echo "DRIFT_ONCALL_ASSIGNEE override is forbidden in CI. Use .github/oncall_rotation.json instead."
+              exit 1
+            fi
+          fi
       - name: Install jsonschema
         run: python -m pip install --upgrade pip jsonschema
       - name: Verify oncall rotation schema + manifest
@@ -592,9 +605,17 @@ jobs:
 
               // Pick an oncall assignee from .github/oncall_rotation.json.
               function pickOncallDecision(isoNow) {
+                const isCI = ((process.env.CI || "").trim() === "true") || ((process.env.GITHUB_ACTIONS || "").trim() === "true");
+
                 // Fixed assignee still supported for emergency overrides.
                 const fixed = (process.env.DRIFT_ONCALL_ASSIGNEE || "").trim().replace(/^@/, "");
                 if (fixed) {
+                  if (isCI) {
+                    throw new Error(
+                      "DRIFT_ONCALL_ASSIGNEE override is forbidden in CI. " +
+                      "Use governed .github/oncall_rotation.json rotation instead."
+                    );
+                  }
                   return {
                     assignee: fixed,
                     decision: { source: "env_fixed", assignee: fixed }
