@@ -6,9 +6,12 @@ on:
       - ".github/oncall_rotation.json"
       - ".github/oncall_rotation.manifest.json"
       - ".github/oncall_rotation.schema.json"
+      - ".github/oncall_rotation.schema.manifest.json"
       - "scripts/check_oncall_rotation_manifest.py"
       - "scripts/refresh_oncall_rotation_manifest.py"
       - "scripts/validate_oncall_rotation_schema.py"
+      - "scripts/check_oncall_rotation_schema_manifest.py"
+      - "scripts/refresh_oncall_rotation_schema_manifest.py"
   workflow_dispatch: {}
 
 jobs:
@@ -23,5 +26,7 @@ jobs:
         run: python -m pip install --upgrade pip jsonschema
       - name: Validate schema
         run: python scripts/validate_oncall_rotation_schema.py
+      - name: Validate schema version + hash manifest
+        run: python scripts/check_oncall_rotation_schema_manifest.py
       - name: Validate manifest + invariants
         run: python scripts/check_oncall_rotation_manifest.py
