@@ -1249,25 +1249,39 @@ jobs:
 
             core.info(`Updated and commented on issue #${existing.number}`);
 
-            // Write episode state to disk for the drift budget signal generator.
+            // Write structured handoff for the drift budget signal generator.
             const unresolvedSec = unresolvedMs !== null ? Math.floor(unresolvedMs / 1000) : 0;
             const breachSec = budgetBreached ? Math.max(0, unresolvedSec - budgetHours * 3600) : 0;
-            const episodeEnv = {
-              DRIFT_GROUP_KEY: "contracts",
-              DRIFT_FIRST_DETECTED_ISO: firstDetectedIso || "unknown",
-              DRIFT_LAST_RESOLVED_ISO: lastResolvedIso || "",
-              DRIFT_STATUS: "unresolved",
-              DRIFT_UNRESOLVED_SECONDS: String(unresolvedSec),
-              DRIFT_UNRESOLVED_HUMAN: durationStr || "0s",
-              DRIFT_BUDGET_HOURS: String(budgetHours || 48),
-              DRIFT_BREACHED: budgetBreached ? "true" : "false",
-              DRIFT_BREACH_SECONDS: String(breachSec),
-              DRIFT_ROTATION_SHA12: rotationShaShort || "000000000000",
-              DRIFT_SCHEMA_SHA12: schemaShaShort || "000000000000",
-              DRIFT_ROTATION_SCHEMA_VERSION: rotationSchemaVersion || "oncall_rotation_schema_v1"
+            const handoff = {
+              producer: {
+                repo: process.env.GITHUB_REPOSITORY || "unknown/unknown",
+                workflow: "contract-parity-main-observer",
+                run_id: process.env.GITHUB_RUN_ID || "0",
+                run_attempt: parseInt(process.env.GITHUB_RUN_ATTEMPT || "1", 10),
+                run_url: `${process.env.GITHUB_SERVER_URL || "https://github.com"}/${process.env.GITHUB_REPOSITORY || "unknown/unknown"}/actions/runs/${process.env.GITHUB_RUN_ID || "0"}`,
+                sha: process.env.GITHUB_SHA || "0000000"
+              },
+              episode: {
+                group_key: "contracts",
+                first_detected_iso: firstDetectedIso || "unknown",
+                last_resolved_iso: lastResolvedIso || null,
+                status: "unresolved",
+                unresolved_seconds: unresolvedSec,
+                budget_hours: budgetHours || 48,
+                breached: budgetBreached,
+                breach_seconds: breachSec
+              },
+              provenance: {
+                ci_mode: true,
+                rotation: {
+                  config_sha12: rotationShaShort || "000000000000",
+                  schema_sha12: schemaShaShort || "000000000000",
+                  schema_version: rotationSchemaVersion || "oncall_rotation_schema_v1"
+                }
+              }
             };
-            fs.writeFileSync("artifacts/drift_budget_signal_env.json", JSON.stringify(episodeEnv, null, 2) + "\n");
-            core.info("Wrote artifacts/drift_budget_signal_env.json (red-path)");
+            fs.writeFileSync("artifacts/drift_budget_handoff.json", JSON.stringify(handoff, null, 2) + "\n");
+            core.info("Wrote artifacts/drift_budget_handoff.json (red-path)");
 
       - name: Auto-close rolling drift issue when parity returns to green
         if: steps.parity.outcome == 'success'
@@ -1813,7 +1827,7 @@ jobs:
 
             core.info(`Closed drift issue #${existing.number}`);
 
-            // Write episode state to disk for the drift budget signal generator.
+            // Write structured handoff for the drift budget signal generator.
             const unresolvedSec = resolvedAfterStr !== "n/a" ? (() => {
               const fdMs = Date.parse(firstDetectedIso || "");
               const nowMs = Date.parse(now);
@@ -1822,66 +1836,61 @@ jobs:
               }
               return 0;
             })() : 0;
-            const episodeEnv = {
-              DRIFT_GROUP_KEY: "contracts",
-              DRIFT_FIRST_DETECTED_ISO: firstDetectedIso || "unknown",
-              DRIFT_LAST_RESOLVED_ISO: now,
-              DRIFT_STATUS: "resolved",
-              DRIFT_UNRESOLVED_SECONDS: String(unresolvedSec),
-              DRIFT_UNRESOLVED_HUMAN: resolvedAfterStr !== "n/a" ? resolvedAfterStr : "0s",
-              DRIFT_BUDGET_HOURS: "48",
-              DRIFT_BREACHED: "false",
-              DRIFT_BREACH_SECONDS: "0",
-              DRIFT_ROTATION_SHA12: "000000000000",
-              DRIFT_SCHEMA_SHA12: "000000000000",
-              DRIFT_ROTATION_SCHEMA_VERSION: "oncall_rotation_schema_v1"
+            const handoff = {
+              producer: {
+                repo: process.env.GITHUB_REPOSITORY || "unknown/unknown",
+                workflow: "contract-parity-main-observer",
+                run_id: process.env.GITHUB_RUN_ID || "0",
+                run_attempt: parseInt(process.env.GITHUB_RUN_ATTEMPT || "1", 10),
+                run_url: `${process.env.GITHUB_SERVER_URL || "https://github.com"}/${process.env.GITHUB_REPOSITORY || "unknown/unknown"}/actions/runs/${process.env.GITHUB_RUN_ID || "0"}`,
+                sha: process.env.GITHUB_SHA || "0000000"
+              },
+              episode: {
+                group_key: "contracts",
+                first_detected_iso: firstDetectedIso || "unknown",
+                last_resolved_iso: now,
+                status: "resolved",
+                unresolved_seconds: unresolvedSec,
+                budget_hours: 48,
+                breached: false,
+                breach_seconds: 0
+              },
+              provenance: {
+                ci_mode: true,
+                rotation: {
+                  config_sha12: "000000000000",
+                  schema_sha12: "000000000000",
+                  schema_version: "oncall_rotation_schema_v1"
+                }
+              }
             };
             const gfs = require('fs');
-            gfs.writeFileSync("artifacts/drift_budget_signal_env.json", JSON.stringify(episodeEnv, null, 2) + "\n");
-            core.info("Wrote artifacts/drift_budget_signal_env.json (green-path)");
+            gfs.writeFileSync("artifacts/drift_budget_handoff.json", JSON.stringify(handoff, null, 2) + "\n");
+            core.info("Wrote artifacts/drift_budget_handoff.json (green-path)");
 
       - name: Generate drift budget signal
         if: always()
         shell: bash
         run: |
           set -euo pipefail
-          ENV_FILE="artifacts/drift_budget_signal_env.json"
-          if [[ ! -f "$ENV_FILE" ]]; then
-            echo "No episode env file found — observer scripts may have been skipped."
-            echo "Generating a no-op signal with status=resolved."
-            cat > "$ENV_FILE" <<'FALLBACK'
-          {
-            "DRIFT_GROUP_KEY": "contracts",
-            "DRIFT_FIRST_DETECTED_ISO": "unknown",
-            "DRIFT_LAST_RESOLVED_ISO": "",
-            "DRIFT_STATUS": "resolved",
-            "DRIFT_UNRESOLVED_SECONDS": "0",
-            "DRIFT_UNRESOLVED_HUMAN": "0s",
-            "DRIFT_BUDGET_HOURS": "48",
-            "DRIFT_BREACHED": "false",
-            "DRIFT_BREACH_SECONDS": "0",
-            "DRIFT_ROTATION_SHA12": "000000000000",
-            "DRIFT_SCHEMA_SHA12": "000000000000",
-            "DRIFT_ROTATION_SCHEMA_VERSION": "oncall_rotation_schema_v1"
-          }
-          FALLBACK
+          HANDOFF="artifacts/drift_budget_handoff.json"
+          if [[ ! -f "$HANDOFF" ]]; then
+            echo "No handoff file found — skipping signal generation."
+            exit 0
           fi
-
-          # Load env vars from the JSON env file.
-          while IFS='=' read -r key value; do
-            export "$key=$value"
-          done < <(python3 -c "
-import json, sys
-data = json.load(open('$ENV_FILE'))
-for k, v in data.items():
-    print(f'{k}={v}')
-")
-
-          python scripts/generate_drift_budget_signal.py --out artifacts/drift_budget_signal.json
+          python scripts/generate_drift_budget_signal.py \
+            --in  "$HANDOFF" \
+            --out artifacts/drift_budget_signal.json
 
       - name: Validate drift budget signal schema
         if: always()
-        run: python scripts/validate_drift_budget_signal.py artifacts/drift_budget_signal.json
+        shell: bash
+        run: |
+          if [ -f artifacts/drift_budget_signal.json ]; then
+            python scripts/validate_drift_budget_signal.py artifacts/drift_budget_signal.json
+          else
+            echo "No signal to validate — skipped."
+          fi
 
       - name: Upload drift budget signal artifact
         if: always()
@@ -1889,6 +1898,7 @@ for k, v in data.items():
         with:
           name: drift-budget-signal
           path: artifacts/drift_budget_signal.json
+          if-no-files-found: warn
 
       - name: Summary
         if: always()

@@ -3,7 +3,6 @@
 Hashes the governance surfaces:
   - schemas/drift_budget_signal.schema.json
   - scripts/generate_drift_budget_signal.py
-  - scripts/validate_drift_budget_signal.py
 
 Locks them behind the current signal_logic_version.
 
@@ -26,7 +25,6 @@ OUT = REPO_ROOT / "tests" / "contracts" / "drift_budget_signal_manifest.json"
 GOVERNED_FILES = [
     REPO_ROOT / "schemas" / "drift_budget_signal.schema.json",
     REPO_ROOT / "scripts" / "generate_drift_budget_signal.py",
-    REPO_ROOT / "scripts" / "validate_drift_budget_signal.py",
 ]
 
 
@@ -50,20 +48,12 @@ def _find_signal_logic_version() -> str:
 
 
 def _file_hash(p: Path) -> str:
-    """SHA-256 of a file's contents."""
-    content = p.read_bytes()
-    return hashlib.sha256(content).hexdigest()
+    return hashlib.sha256(p.read_bytes()).hexdigest()
 
 
-def _composite_hash(files: list[Path]) -> str:
-    """Deterministic composite hash of multiple files (sorted by relative path)."""
-    h = hashlib.sha256()
-    for f in sorted(files, key=lambda p: str(p.relative_to(REPO_ROOT))):
-        h.update(str(f.relative_to(REPO_ROOT)).encode("utf-8"))
-        h.update(b"\x00")
-        h.update(f.read_bytes())
-        h.update(b"\x00")
-    return f"sha256:{h.hexdigest()}"
+def _rel(p: Path) -> str:
+    """Relative path with forward slashes (portable across OS)."""
+    return str(p.relative_to(REPO_ROOT)).replace("\\", "/")
 
 
 def main() -> int:
@@ -75,11 +65,11 @@ def main() -> int:
 
     OUT.parent.mkdir(parents=True, exist_ok=True)
     payload = {
+        "manifest_version": 1,
         "signal_logic_version": _find_signal_logic_version(),
-        "composite_hash": _composite_hash(GOVERNED_FILES),
         "files": {
-            str(f.relative_to(REPO_ROOT)): f"sha256:{_file_hash(f)}"
-            for f in sorted(GOVERNED_FILES, key=lambda p: str(p.relative_to(REPO_ROOT)))
+            _rel(f): f"sha256:{_file_hash(f)}"
+            for f in sorted(GOVERNED_FILES, key=lambda p: _rel(p))
         },
     }
     OUT.write_text(json.dumps(payload, indent=2, sort_keys=False) + "\n", encoding="utf-8")

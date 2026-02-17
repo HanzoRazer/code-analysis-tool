@@ -3,7 +3,6 @@
 Guards:
   - schemas/drift_budget_signal.schema.json
   - scripts/generate_drift_budget_signal.py
-  - scripts/validate_drift_budget_signal.py
 
 If any governed file changes, signal_logic_version must be bumped and the
 manifest refreshed:
@@ -26,7 +25,6 @@ _MANIFEST = _REPO_ROOT / "tests" / "contracts" / "drift_budget_signal_manifest.j
 _GOVERNED_FILES = [
     _REPO_ROOT / "schemas" / "drift_budget_signal.schema.json",
     _REPO_ROOT / "scripts" / "generate_drift_budget_signal.py",
-    _REPO_ROOT / "scripts" / "validate_drift_budget_signal.py",
 ]
 
 
@@ -53,91 +51,57 @@ def _find_signal_logic_version() -> str:
 
 
 def _load_manifest() -> dict[str, Any]:
-    if not _MANIFEST.exists():
-        raise AssertionError(
-            f"Missing drift budget signal manifest: {_MANIFEST}\n"
-            "Generate it with:\n"
-            "  python scripts/refresh_drift_budget_signal_manifest.py\n"
-        )
+    assert _MANIFEST.exists(), (
+        f"Missing drift budget signal manifest: {_MANIFEST}\n"
+        "Generate it with:\n"
+        "  python scripts/refresh_drift_budget_signal_manifest.py\n"
+    )
     return json.loads(_read_text(_MANIFEST))
 
 
-def _composite_hash(files: list[Path]) -> str:
-    h = hashlib.sha256()
-    for f in sorted(files, key=lambda p: str(p.relative_to(_REPO_ROOT))):
-        h.update(str(f.relative_to(_REPO_ROOT)).encode("utf-8"))
-        h.update(b"\x00")
-        h.update(f.read_bytes())
-        h.update(b"\x00")
-    return f"sha256:{h.hexdigest()}"
+def _file_hash(p: Path) -> str:
+    return f"sha256:{hashlib.sha256(p.read_bytes()).hexdigest()}"
 
 
-def test_drift_budget_signal_schema_exists() -> None:
-    """Schema file must exist in schemas/."""
-    schema_path = _REPO_ROOT / "schemas" / "drift_budget_signal.schema.json"
-    assert schema_path.exists(), f"missing schema: {schema_path}"
-    schema = json.loads(_read_text(schema_path))
-    assert schema.get("$id") == "drift_budget_signal_v1", (
-        f"Schema $id must be 'drift_budget_signal_v1', got {schema.get('$id')!r}"
-    )
+def _rel(p: Path) -> str:
+    """Relative path with forward slashes (portable across OS)."""
+    return str(p.relative_to(_REPO_ROOT)).replace("\\", "/")
 
 
-def test_drift_budget_signal_example_validates() -> None:
-    """Example file must validate against the schema."""
-    schema_path = _REPO_ROOT / "schemas" / "drift_budget_signal.schema.json"
-    example_path = _REPO_ROOT / "schemas" / "drift_budget_signal.example.json"
-    if not example_path.exists():
-        return  # not required, but if present it must validate
-    try:
-        import jsonschema
-    except ImportError:
-        return  # soft skip if jsonschema not installed in test env
-    schema = json.loads(_read_text(schema_path))
-    example = json.loads(_read_text(example_path))
-    jsonschema.validate(instance=example, schema=schema)
-
-
-def test_drift_budget_signal_changes_require_signal_logic_version_bump() -> None:
-    """
-    Pre-emptive gate:
-      - if any drift budget signal governance surface changes,
-        signal_logic_version must be bumped and manifest refreshed.
-    """
+def test_drift_budget_signal_surface_requires_signal_logic_bump() -> None:
+    """Per-file drift detection with bidirectional enforcement."""
     missing = [f for f in _GOVERNED_FILES if not f.exists()]
-    assert not missing, (
-        f"Missing governed files: {[str(f) for f in missing]}"
-    )
+    assert not missing, f"Missing governed files: {[str(f) for f in missing]}"
 
-    current_signal_logic = _find_signal_logic_version()
     manifest = _load_manifest()
+    current_ver = _find_signal_logic_version()
+    manifest_ver = manifest.get("signal_logic_version", "")
+    manifest_files = manifest.get("files", {})
 
-    manifest_ver = manifest.get("signal_logic_version")
-    manifest_hash = manifest.get("composite_hash")
+    # Detect per-file drift.
+    drifted: list[str] = []
+    for f in _GOVERNED_FILES:
+        rel = _rel(f)
+        current_hash = _file_hash(f)
+        manifest_hash = manifest_files.get(rel, "")
+        if current_hash != manifest_hash:
+            drifted.append(rel)
 
-    assert isinstance(manifest_ver, str) and manifest_ver, (
-        "Manifest missing non-empty 'signal_logic_version'"
-    )
-    assert isinstance(manifest_hash, str) and manifest_hash, (
-        "Manifest missing non-empty 'composite_hash'"
-    )
-
-    current_hash = _composite_hash(_GOVERNED_FILES)
-
-    # If version bumped, manifest must be refreshed too.
-    assert manifest_ver == current_signal_logic, (
-        "Drift budget signal manifest out of date for current signal_logic_version.\n"
-        f"  current signal_logic_version: {current_signal_logic!r}\n"
-        f"  manifest signal_logic_version: {manifest_ver!r}\n"
-        "Fix:\n"
-        "  python scripts/refresh_drift_budget_signal_manifest.py\n"
-    )
-
-    # Core enforcement: if hash changed, version must bump.
-    if current_hash != manifest_hash:
+    # Bidirectional enforcement:
+    # 1. Files drifted → signal_logic_version must bump + manifest refresh.
+    if drifted:
         raise AssertionError(
             "Drift budget signal governance surface changed.\n"
-            f"  manifest composite_hash: {manifest_hash}\n"
-            f"  current  composite_hash: {current_hash}\n\n"
+            f"  drifted files: {drifted}\n\n"
             "Hard rule: bump signal_logic_version, then refresh manifest:\n"
             "  python scripts/refresh_drift_budget_signal_manifest.py\n"
         )
+
+    # 2. Version bumped but manifest not refreshed.
+    assert manifest_ver == current_ver, (
+        "signal_logic_version bumped but manifest not refreshed.\n"
+        f"  code:     {current_ver!r}\n"
+        f"  manifest: {manifest_ver!r}\n"
+        "Fix:\n"
+        "  python scripts/refresh_drift_budget_signal_manifest.py\n"
+    )

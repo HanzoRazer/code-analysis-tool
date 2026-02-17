@@ -1,0 +1,30 @@
+{
+  "episode": {
+    "breach_seconds": 3660,
+    "breached": true,
+    "budget_hours": 48,
+    "first_detected_iso": "2025-01-15T00:00:00Z",
+    "group_key": "contracts",
+    "last_resolved_iso": null,
+    "status": "unresolved",
+    "unresolved_human": "2d 1h 1m",
+    "unresolved_seconds": 176460
+  },
+  "producer": {
+    "repo": "test-org/test-repo",
+    "run_attempt": 1,
+    "run_id": "123456",
+    "run_url": "https://github.com/test-org/test-repo/actions/runs/123456",
+    "sha": "abc1234",
+    "workflow": "contract-parity-main-observer"
+  },
+  "provenance": {
+    "ci_mode": true,
+    "rotation": {
+      "config_sha12": "aabbccddeeff",
+      "schema_sha12": "112233445566",
+      "schema_version": "oncall_rotation_schema_v1"
+    }
+  },
+  "schema_version": "drift_budget_signal_v1"
+}
