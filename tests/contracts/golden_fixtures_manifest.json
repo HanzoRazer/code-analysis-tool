@@ -1,5 +1,11 @@
 {
   "files": {
+    "tests/fixtures/confidence/cases.json": "sha256:6146ea5a974d5145a11140ae47810acc354a674bc18edb67bea8a0be2483a283",
+    "tests/fixtures/confidence/expected/many_low_dead_code.json": "sha256:2936224bcd27d744329af0d756d7cf7acad006fce1ffdebfacc877103936a9ef",
+    "tests/fixtures/confidence/expected/mixed_severity_sanity.json": "sha256:3ff2bc8bde4969ad03987e5f74e8ec9f70121cd5ff47e9d49c6375ddccb65295",
+    "tests/fixtures/confidence/expected/no_findings.json": "sha256:7c7bba5db92d41e175e8a62cfa92bfc1d52cc125a035b76206fdf23407e18a9d",
+    "tests/fixtures/confidence/expected/one_critical_security.json": "sha256:5a337e84ef845c56562ba74230ab82c280e6b77ecbc343c9f8e0e877f2852a67",
+    "tests/fixtures/confidence/expected/overwhelm_threshold_crossing.json": "sha256:7a8b31b80939bc8594471d05d05c413ed3c7011ad5ce034cf7b282df0897c431",
     "tests/fixtures/expected/clean_project_run_result.json": "sha256:8697a8e8c931e19241e8d3a1948bfd1aca1758f58b4081fa325333636364fe53",
     "tests/fixtures/expected/complexity_hot_run_result.json": "sha256:8697a8e8c931e19241e8d3a1948bfd1aca1758f58b4081fa325333636364fe53",
     "tests/fixtures/expected/dead_code_clean_run_result.json": "sha256:8697a8e8c931e19241e8d3a1948bfd1aca1758f58b4081fa325333636364fe53",

@@ -47,7 +47,8 @@ def _sha256_file(p: Path) -> str:
 
 def _compute_expected_hashes() -> dict[str, str]:
     """
-    Compute deterministic hashes for all golden expected outputs.
+    Compute deterministic hashes for all golden expected outputs,
+    including confidence golden fixtures when present.
     Keys are repo-relative POSIX paths.
     """
     if not _EXPECTED_DIR.exists():
@@ -58,6 +59,21 @@ def _compute_expected_hashes() -> dict[str, str]:
     for p in files:
         rel = p.relative_to(_REPO_ROOT).as_posix()
         hashes[rel] = _sha256_file(p)
+
+    # Include confidence golden fixtures if cases.json exists
+    confidence_dir = _REPO_ROOT / "tests" / "fixtures" / "confidence"
+    cases_path = confidence_dir / "cases.json"
+    confidence_expected_dir = confidence_dir / "expected"
+
+    if cases_path.exists():
+        rel = cases_path.relative_to(_REPO_ROOT).as_posix()
+        hashes[rel] = _sha256_file(cases_path)
+
+        if confidence_expected_dir.exists():
+            for ef in sorted(confidence_expected_dir.glob("*.json")):
+                rel = ef.relative_to(_REPO_ROOT).as_posix()
+                hashes[rel] = _sha256_file(ef)
+
     return hashes
 
 

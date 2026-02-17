@@ -41,11 +41,84 @@ def main() -> int:
     if not EXPECTED_DIR.exists():
         raise SystemExit(f"error: missing expected dir: {EXPECTED_DIR}")
 
+    # ── Confidence golden fixture integrity check ────────────────
+    confidence_dir = REPO_ROOT / "tests" / "fixtures" / "confidence"
+    cases_path = confidence_dir / "cases.json"
+    confidence_expected_dir = confidence_dir / "expected"
+
+    if cases_path.exists():
+        # cases.json exists → expected/ dir and per-case files MUST exist
+        if not confidence_expected_dir.exists():
+            raise SystemExit(
+                "Confidence golden contract incomplete:\n"
+                "  cases.json exists but expected/ directory is missing.\n"
+                "Run: python scripts/refresh_golden_confidence.py\n"
+            )
+
+        # Load and validate cases.json
+        try:
+            cases_data = json.loads(cases_path.read_bytes())
+        except Exception as e:
+            raise SystemExit(f"Invalid JSON in cases.json: {e}")
+
+        case_names = [c["name"] for c in cases_data.get("cases", [])]
+        if not case_names:
+            raise SystemExit(
+                "cases.json contains no cases — cannot build golden contract.\n"
+                "Add at least one case or remove the file.\n"
+            )
+
+        # Every case must have a corresponding expected file
+        for name in case_names:
+            expected_file = confidence_expected_dir / f"{name}.json"
+            if not expected_file.exists():
+                raise SystemExit(
+                    f"Confidence golden contract incomplete:\n"
+                    f"  Case {name!r} in cases.json has no expected file:\n"
+                    f"    {expected_file.relative_to(REPO_ROOT)}\n"
+                    f"Run: python scripts/refresh_golden_confidence.py\n"
+                )
+
+            # Validate each expected file structure
+            try:
+                payload = json.loads(expected_file.read_bytes())
+            except Exception as e:
+                raise SystemExit(
+                    f"Invalid JSON in {expected_file.relative_to(REPO_ROOT)}: {e}"
+                )
+
+            score = payload.get("expected_score")
+            if score is None:
+                raise SystemExit(
+                    f"Confidence expected file has null expected_score:\n"
+                    f"  {expected_file.relative_to(REPO_ROOT)}\n"
+                    f"Run: python scripts/refresh_golden_confidence.py\n"
+                )
+
+            if not isinstance(score, int):
+                raise SystemExit(
+                    f"Confidence expected_score must be int, got {type(score).__name__}:\n"
+                    f"  {expected_file.relative_to(REPO_ROOT)}\n"
+                    f"Run: python scripts/refresh_golden_confidence.py\n"
+                )
+
+    # ── Hash golden fixture files ────────────────────────────────
     files = sorted(EXPECTED_DIR.glob("*.json"))
     mapping: dict[str, str] = {}
     for p in files:
         rel = p.relative_to(REPO_ROOT).as_posix()
         mapping[rel] = _sha256_file(p)
+
+    # Include confidence golden fixtures in the manifest
+    if cases_path.exists():
+        # Hash cases.json itself
+        rel = cases_path.relative_to(REPO_ROOT).as_posix()
+        mapping[rel] = _sha256_file(cases_path)
+
+        # Hash each per-case expected file
+        for ef in sorted(confidence_expected_dir.glob("*.json")):
+            rel = ef.relative_to(REPO_ROOT).as_posix()
+            mapping[rel] = _sha256_file(ef)
 
     payload = {
         "signal_logic_version": _find_signal_logic_version(),
@@ -54,7 +127,7 @@ def main() -> int:
 
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    print(f"wrote {OUT} ({len(files)} files)")
+    print(f"wrote {OUT} ({len(mapping)} files)")
     return 0
 
 
