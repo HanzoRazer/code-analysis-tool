@@ -179,6 +179,46 @@ jobs:
               return out;
             }
 
+            // --- Marker tamper / duplicate detection ---
+            // Count full-line marker occurrences for a given key: <!-- key: ... -->
+            function countMarkerOccurrences(bodyText, key) {
+              const body = (bodyText || "");
+              const re = new RegExp(`^\\s*<!--\\s*${key}:\\s*[^>]*-->\\s*$`, "gm");
+              const matches = body.match(re);
+              return matches ? matches.length : 0;
+            }
+
+            // Assert that each marker key is present at most once.
+            // If requirePresent is true for a key, assert it exists exactly once.
+            function assertMarkerUniqueness(bodyText, keys, requirePresent = []) {
+              const dupes = [];
+              const missing = [];
+              for (const key of keys) {
+                const n = countMarkerOccurrences(bodyText, key);
+                if (n > 1) dupes.push({ key, count: n });
+              }
+              for (const key of (requirePresent || [])) {
+                const n = countMarkerOccurrences(bodyText, key);
+                if (n !== 1) missing.push({ key, count: n });
+              }
+              if (dupes.length || missing.length) {
+                const lines = [];
+                lines.push("Marker contract violation detected in rolling issue body.");
+                if (dupes.length) {
+                  lines.push("Duplicate markers:");
+                  for (const d of dupes) lines.push(`- ${d.key}: ${d.count}`);
+                }
+                if (missing.length) {
+                  lines.push("Missing/invalid markers (expected exactly one):");
+                  for (const m of missing) lines.push(`- ${m.key}: ${m.count}`);
+                }
+                lines.push("");
+                lines.push("This usually indicates manual edits or marker tampering.");
+                lines.push("The workflow will not proceed until the body marker set is canonical.");
+                throw new Error(lines.join("\n"));
+              }
+            }
+
             function assertOncallDecision(picked) {
               if (!picked || typeof picked !== "object") {
                 throw new Error("Oncall selection failed: pickOncallDecision() returned null/invalid");
@@ -1032,6 +1072,20 @@ jobs:
             // Update body (keeps latest report visible)
             // Stamp CI mode for provenance (hidden marker).
             const bodyWithCiMarker = upsertUniqueMarker(body, "drift-ci-mode", "true");
+
+            // Tamper detection: fail if duplicates exist even after auto-heal.
+            // Keep this list tight: only markers used by automation logic.
+            const MARKER_KEYS = [
+              "drift-rolling-issue",
+              "drift-ci-mode",
+              "drift-first-detected",
+              "drift-last-resolved",
+              "drift-last-duration"
+            ];
+            // Require identity + CI mode to be present exactly once.
+            const REQUIRED_ONCE = ["drift-rolling-issue", "drift-ci-mode"];
+            assertMarkerUniqueness(bodyWithCiMarker, MARKER_KEYS, REQUIRED_ONCE);
+
             await github.rest.issues.update({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -1168,6 +1222,43 @@ jobs:
               return out;
             }
 
+            // --- Marker tamper / duplicate detection ---
+            function countMarkerOccurrences(bodyText, key) {
+              const body = (bodyText || "");
+              const re = new RegExp(`^\\s*<!--\\s*${key}:\\s*[^>]*-->\\s*$`, "gm");
+              const matches = body.match(re);
+              return matches ? matches.length : 0;
+            }
+
+            function assertMarkerUniqueness(bodyText, keys, requirePresent = []) {
+              const dupes = [];
+              const missing = [];
+              for (const key of keys) {
+                const n = countMarkerOccurrences(bodyText, key);
+                if (n > 1) dupes.push({ key, count: n });
+              }
+              for (const key of (requirePresent || [])) {
+                const n = countMarkerOccurrences(bodyText, key);
+                if (n !== 1) missing.push({ key, count: n });
+              }
+              if (dupes.length || missing.length) {
+                const lines = [];
+                lines.push("Marker contract violation detected in rolling issue body.");
+                if (dupes.length) {
+                  lines.push("Duplicate markers:");
+                  for (const d of dupes) lines.push(`- ${d.key}: ${d.count}`);
+                }
+                if (missing.length) {
+                  lines.push("Missing/invalid markers (expected exactly one):");
+                  for (const m of missing) lines.push(`- ${m.key}: ${m.count}`);
+                }
+                lines.push("");
+                lines.push("This usually indicates manual edits or marker tampering.");
+                lines.push("The workflow will not proceed until the body marker set is canonical.");
+                throw new Error(lines.join("\n"));
+              }
+            }
+
             function formatDuration(ms) {
               const totalSec = Math.max(0, Math.floor(ms / 1000));
               const days = Math.floor(totalSec / 86400);
@@ -1287,6 +1378,17 @@ jobs:
 
             patchedBody = injectLifecycleFields(patchedBody);
             patchedBody = upsertUniqueMarker(patchedBody, "drift-ci-mode", "true");
+
+            // Tamper detection: fail if duplicates exist even after auto-heal.
+            const MARKER_KEYS = [
+              "drift-rolling-issue",
+              "drift-ci-mode",
+              "drift-first-detected",
+              "drift-last-resolved",
+              "drift-last-duration"
+            ];
+            const REQUIRED_ONCE = ["drift-rolling-issue", "drift-ci-mode"];
+            assertMarkerUniqueness(patchedBody, MARKER_KEYS, REQUIRED_ONCE);
 
             if ((existing.body || "") !== patchedBody) {
               await github.rest.issues.update({
