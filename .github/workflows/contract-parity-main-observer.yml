@@ -1326,9 +1326,9 @@ jobs:
                   if (!Number.isNaN(ts) && ts < cutoff) continue;
                   const b = c.body || "";
 
-                  // Episode boundary: if we hit a resolved-for-period marker for a
-                  // DIFFERENT period, we've crossed into an older episode. Since we
-                  // scan newest→oldest, this is the first such boundary → safe to stop.
+                  // Episode boundary: if we encounter *any* drift-resolved-for-period
+                  // marker for a DIFFERENT period, we've crossed into an older episode.
+                  // Since we scan newest→oldest, this is the first such boundary → safe to stop.
                   const pm = b.match(RESOLVED_FOR_PERIOD_RE);
                   if (pm) {
                     const seenPeriod = (pm[1] || "").trim();
@@ -1337,6 +1337,7 @@ jobs:
                     }
                   }
 
+                  // Dedupe condition for current period: requires both markers.
                   if (b.includes(RESOLVED_MARKER) && b.includes(RESOLVED_PERIOD_MARKER)) {
                     return true;
                   }
