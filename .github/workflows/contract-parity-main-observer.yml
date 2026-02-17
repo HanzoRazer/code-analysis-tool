@@ -116,6 +116,86 @@ jobs:
               );
             }
 
+            // --- Canonical marker block (ultra-tier integrity) ---
+            const BLOCK_BEGIN = "<!-- drift-marker-block: begin -->";
+            const BLOCK_END = "<!-- drift-marker-block: end -->";
+
+            function canonicalMarkerBlock(fields) {
+              const orderedKeys = [
+                "drift-rolling-issue",
+                "drift-ci-mode",
+                "drift-first-detected",
+                "drift-last-resolved",
+                "drift-last-duration",
+                "drift-last-duration-seconds",
+                "drift-budget-hours",
+                "drift-rotation-config-sha",
+                "drift-rotation-schema-sha",
+                "drift-rotation-schema-version"
+              ];
+              const lines = [BLOCK_BEGIN];
+              for (const key of orderedKeys) {
+                const v = fields[key];
+                if (typeof v === "string" && v.trim()) {
+                  lines.push(`<!-- ${key}: ${v.trim()} -->`);
+                }
+              }
+              lines.push(BLOCK_END);
+              return lines.join("\n") + "\n";
+            }
+
+            function findMarkerBlockSpan(bodyText) {
+              const body = bodyText || "";
+              const begin = body.indexOf(BLOCK_BEGIN);
+              const end = body.indexOf(BLOCK_END);
+              if (begin === -1 || end === -1) return null;
+              if (end < begin) return null;
+              return { begin, end: end + BLOCK_END.length };
+            }
+
+            function rewriteMarkerBlock(bodyText, fields) {
+              const body = (bodyText || "");
+              const block = canonicalMarkerBlock(fields);
+              const span = findMarkerBlockSpan(body);
+              if (!span) {
+                const trimmed = body.replace(/^\s+/, "");
+                return block + "\n" + trimmed;
+              }
+              const before = body.slice(0, span.begin).trimEnd();
+              const after = body.slice(span.end).replace(/^\s*\n?/, "");
+              const rebuilt = (before ? before + "\n" : "") + block + "\n" + after;
+              return rebuilt.trimEnd() + "\n";
+            }
+
+            function assertSingleMarkerBlock(bodyText) {
+              const body = bodyText || "";
+              const beginCount = (body.match(/<!--\s*drift-marker-block:\s*begin\s*-->/g) || []).length;
+              const endCount = (body.match(/<!--\s*drift-marker-block:\s*end\s*-->/g) || []).length;
+              if (beginCount !== 1 || endCount !== 1) {
+                throw new Error(
+                  `Marker block multiplicity violation: begin=${beginCount} end=${endCount} (expected exactly 1 each)`
+                );
+              }
+              const span = findMarkerBlockSpan(body);
+              if (!span) {
+                throw new Error("Marker block malformed: cannot locate valid begin/end span");
+              }
+            }
+
+            function assertNoStrayMarkerLinesOutsideBlock(bodyText) {
+              const body = bodyText || "";
+              const span = findMarkerBlockSpan(body);
+              if (!span) return;
+              const outside = body.slice(0, span.begin) + "\n" + body.slice(span.end);
+              const stray = outside.match(/<!--\s*drift-[^>]*-->/g) || [];
+              if (stray.length) {
+                throw new Error(
+                  `Stray drift markers outside canonical block (${stray.length}). ` +
+                  `Move them into the marker block or delete them.`
+                );
+              }
+            }
+
             function safeReadJson(path) {
               try {
                 if (!fs.existsSync(path)) return null;
@@ -521,11 +601,19 @@ jobs:
             if (!existing) {
               // Still not found: create it once.
               firstDetectedIso = now; // new unresolved period starts now
+              const createBody = rewriteMarkerBlock(
+                ensureFirstDetectedMarker(body, firstDetectedIso),
+                {
+                  "drift-rolling-issue": "contracts",
+                  "drift-ci-mode": "true",
+                  "drift-first-detected": firstDetectedIso || ""
+                }
+              );
               const created = await github.rest.issues.create({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 title: ISSUE_TITLE,
-                body: upsertUniqueMarker(ensureFirstDetectedMarker(body, firstDetectedIso), "drift-ci-mode", "true"),
+                body: createBody,
                 labels: LABELS
               });
               existing = created.data;
@@ -551,7 +639,11 @@ jobs:
               patchedBody = ensureFirstDetectedMarker(patchedBody, firstDetectedIso);
               // Also ensure the tamper warning exists.
               patchedBody = bodyWithTamperWarning(patchedBody);
-              patchedBody = upsertUniqueMarker(patchedBody, "drift-ci-mode", "true");
+              patchedBody = rewriteMarkerBlock(patchedBody, {
+                "drift-rolling-issue": "contracts",
+                "drift-ci-mode": "true",
+                "drift-first-detected": firstDetectedIso || ""
+              });
               if ((existing.body || "") !== patchedBody) {
                 await github.rest.issues.update({
                   owner: context.repo.owner,
@@ -1108,27 +1200,28 @@ jobs:
             }
 
             // Update body (keeps latest report visible)
-            // Stamp CI mode for provenance (hidden marker).
-            const bodyWithCiMarker = upsertUniqueMarker(body, "drift-ci-mode", "true");
+            // Canonical marker block rewrite (overwrites any manual edits inside the block).
+            body = rewriteMarkerBlock(body, {
+              "drift-rolling-issue": "contracts",
+              "drift-ci-mode": "true",
+              "drift-first-detected": firstDetectedIso || "",
+              "drift-last-resolved": lastResolvedIso || "",
+              "drift-last-duration": prevResolvedAfterStr || "",
+              "drift-last-duration-seconds": "",
+              "drift-budget-hours": budgetHours ? String(budgetHours) : "",
+              "drift-rotation-config-sha": rotationShaShort || "",
+              "drift-rotation-schema-sha": schemaShaShort || "",
+              "drift-rotation-schema-version": rotationSchemaVersion || ""
+            });
 
-            // Tamper detection: fail if duplicates exist even after auto-heal.
-            // Keep this list tight: only markers used by automation logic.
-            const MARKER_KEYS = [
-              "drift-rolling-issue",
-              "drift-ci-mode",
-              "drift-first-detected",
-              "drift-last-resolved",
-              "drift-last-duration"
-            ];
-            // Require identity + CI mode to be present exactly once.
-            const REQUIRED_ONCE = ["drift-rolling-issue", "drift-ci-mode"];
-            assertMarkerUniqueness(bodyWithCiMarker, MARKER_KEYS, REQUIRED_ONCE);
+            // Ultra-tier validation: exactly one block + no drift markers elsewhere.
+            assertSingleMarkerBlock(body);
 
             await github.rest.issues.update({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: existing.number,
-              body: bodyWithCiMarker
+              body: body
             });
 
             // Add comment (keeps a timeline of drift detections)
@@ -1165,6 +1258,86 @@ jobs:
               throw new Error(
                 `Observer green-path script must run with CI=true explicitly (got CI='${ciVal || "(unset)"}').`
               );
+            }
+
+            // --- Canonical marker block (ultra-tier integrity) ---
+            const BLOCK_BEGIN = "<!-- drift-marker-block: begin -->";
+            const BLOCK_END = "<!-- drift-marker-block: end -->";
+
+            function canonicalMarkerBlock(fields) {
+              const orderedKeys = [
+                "drift-rolling-issue",
+                "drift-ci-mode",
+                "drift-first-detected",
+                "drift-last-resolved",
+                "drift-last-duration",
+                "drift-last-duration-seconds",
+                "drift-budget-hours",
+                "drift-rotation-config-sha",
+                "drift-rotation-schema-sha",
+                "drift-rotation-schema-version"
+              ];
+              const lines = [BLOCK_BEGIN];
+              for (const key of orderedKeys) {
+                const v = fields[key];
+                if (typeof v === "string" && v.trim()) {
+                  lines.push(`<!-- ${key}: ${v.trim()} -->`);
+                }
+              }
+              lines.push(BLOCK_END);
+              return lines.join("\n") + "\n";
+            }
+
+            function findMarkerBlockSpan(bodyText) {
+              const body = bodyText || "";
+              const begin = body.indexOf(BLOCK_BEGIN);
+              const end = body.indexOf(BLOCK_END);
+              if (begin === -1 || end === -1) return null;
+              if (end < begin) return null;
+              return { begin, end: end + BLOCK_END.length };
+            }
+
+            function rewriteMarkerBlock(bodyText, fields) {
+              const body = (bodyText || "");
+              const block = canonicalMarkerBlock(fields);
+              const span = findMarkerBlockSpan(body);
+              if (!span) {
+                const trimmed = body.replace(/^\s+/, "");
+                return block + "\n" + trimmed;
+              }
+              const before = body.slice(0, span.begin).trimEnd();
+              const after = body.slice(span.end).replace(/^\s*\n?/, "");
+              const rebuilt = (before ? before + "\n" : "") + block + "\n" + after;
+              return rebuilt.trimEnd() + "\n";
+            }
+
+            function assertSingleMarkerBlock(bodyText) {
+              const body = bodyText || "";
+              const beginCount = (body.match(/<!--\s*drift-marker-block:\s*begin\s*-->/g) || []).length;
+              const endCount = (body.match(/<!--\s*drift-marker-block:\s*end\s*-->/g) || []).length;
+              if (beginCount !== 1 || endCount !== 1) {
+                throw new Error(
+                  `Marker block multiplicity violation: begin=${beginCount} end=${endCount} (expected exactly 1 each)`
+                );
+              }
+              const span = findMarkerBlockSpan(body);
+              if (!span) {
+                throw new Error("Marker block malformed: cannot locate valid begin/end span");
+              }
+            }
+
+            function assertNoStrayMarkerLinesOutsideBlock(bodyText) {
+              const body = bodyText || "";
+              const span = findMarkerBlockSpan(body);
+              if (!span) return;
+              const outside = body.slice(0, span.begin) + "\n" + body.slice(span.end);
+              const stray = outside.match(/<!--\s*drift-[^>]*-->/g) || [];
+              if (stray.length) {
+                throw new Error(
+                  `Stray drift markers outside canonical block (${stray.length}). ` +
+                  `Move them into the marker block or delete them.`
+                );
+              }
             }
 
             const ISSUE_TITLE = "Upstream contract drift detected";
@@ -1445,18 +1618,23 @@ jobs:
             }
 
             patchedBody = injectLifecycleFields(patchedBody);
-            patchedBody = upsertUniqueMarker(patchedBody, "drift-ci-mode", "true");
 
-            // Tamper detection: fail if duplicates exist even after auto-heal.
-            const MARKER_KEYS = [
-              "drift-rolling-issue",
-              "drift-ci-mode",
-              "drift-first-detected",
-              "drift-last-resolved",
-              "drift-last-duration"
-            ];
-            const REQUIRED_ONCE = ["drift-rolling-issue", "drift-ci-mode"];
-            assertMarkerUniqueness(patchedBody, MARKER_KEYS, REQUIRED_ONCE);
+            // Canonical marker block rewrite (overwrites any manual edits inside the block).
+            patchedBody = rewriteMarkerBlock(patchedBody, {
+              "drift-rolling-issue": "contracts",
+              "drift-ci-mode": "true",
+              "drift-first-detected": firstDetectedIso || "",
+              "drift-last-resolved": now,
+              "drift-last-duration": resolvedAfterStr || "",
+              "drift-last-duration-seconds": "",
+              "drift-budget-hours": "",
+              "drift-rotation-config-sha": "",
+              "drift-rotation-schema-sha": "",
+              "drift-rotation-schema-version": ""
+            });
+
+            // Ultra-tier validation: exactly one block.
+            assertSingleMarkerBlock(patchedBody);
 
             if ((existing.body || "") !== patchedBody) {
               await github.rest.issues.update({
