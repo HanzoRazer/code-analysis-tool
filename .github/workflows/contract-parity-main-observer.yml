@@ -219,6 +219,36 @@ jobs:
               }
             }
 
+            // Assert that a marker key occurs exactly once in a text payload.
+            function assertMarkerExactlyOnce(text, key, contextLabel) {
+              const n = countMarkerOccurrences(text, key);
+              if (n !== 1) {
+                throw new Error(
+                  `${contextLabel}: marker '${key}' must appear exactly once (found ${n}).`
+                );
+              }
+            }
+
+            // For drift-budget-period, also validate the value matches expected period.
+            function assertBudgetPeriodMarkerExactlyOnce(text, expectedIso, contextLabel) {
+              const re = /^\s*<!--\s*drift-budget-period:\s*([^>]+)\s*-->\s*$/gm;
+              const matches = [];
+              let m;
+              while ((m = re.exec(text || "")) !== null) {
+                matches.push((m[1] || "").trim());
+              }
+              if (matches.length !== 1) {
+                throw new Error(
+                  `${contextLabel}: 'drift-budget-period' must appear exactly once (found ${matches.length}).`
+                );
+              }
+              if (matches[0] !== expectedIso) {
+                throw new Error(
+                  `${contextLabel}: drift-budget-period mismatch. Expected '${expectedIso}', got '${matches[0]}'.`
+                );
+              }
+            }
+
             function assertOncallDecision(picked) {
               if (!picked || typeof picked !== "object") {
                 throw new Error("Oncall selection failed: pickOncallDecision() returned null/invalid");
@@ -1020,9 +1050,10 @@ jobs:
                   core.info(`Could not assign oncall (non-fatal): ${e}`);
                 }
                 // Post the (deduped) escalation comment once per period, including the oncall decision if any.
-                const escalationLines = [
+                const escalationLines = uniqueMarkerLines([
                   BREACH_MARKER,
                   PERIOD_MARKER,
+                  "<!-- drift-ci-mode: true -->",
                   "",
                   "🚨 **Drift budget breached**",
                   "",
@@ -1036,13 +1067,20 @@ jobs:
                   decisionBlockForComment || "",
                   "",
                   `Workflow run: ${runUrl}`,
-                ].filter(Boolean);
+                ]).filter(Boolean);
+
+                const escalationComment = escalationLines.join("\n");
+
+                // Enforce uniqueness contract for breach comment.
+                const COMMENT_CTX = "Breach comment payload";
+                assertMarkerExactlyOnce(escalationComment, "drift-ci-mode", COMMENT_CTX);
+                assertBudgetPeriodMarkerExactlyOnce(escalationComment, periodKey, COMMENT_CTX);
 
                 await github.rest.issues.createComment({
                   owner: context.repo.owner,
                   repo: context.repo.repo,
                   issue_number: existing.number,
-                  body: escalationLines.join("\n")
+                  body: escalationComment
                 });
 
                 const projectId = (process.env.DRIFT_PROJECT_NODE_ID || "").trim();
