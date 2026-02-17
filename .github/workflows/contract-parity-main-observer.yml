@@ -138,21 +138,45 @@ jobs:
               return s.length >= 12 ? s.slice(0, 12) : s;
             }
 
-            // Idempotently upsert a hidden marker line in the body.
-            // Example: upsertMarker(body, "drift-ci-mode", "true")
-            function upsertMarker(bodyText, key, value) {
-              const markerRe = new RegExp(`<!--\\s*${key}:\\s*[^>]*-->`, "g");
-              const marker = `<!-- ${key}: ${value} -->`;
+            // Remove ALL instances of a given marker key (even if duplicates exist).
+            function stripAllMarkers(bodyText, key) {
               const body = (bodyText || "");
-              if (markerRe.test(body)) {
-                return body.replace(markerRe, marker);
-              }
-              // Prefer inserting near the top, after the rolling-issue identity marker if present.
-              const lines = body.split("\n");
+              const re = new RegExp(`^\\s*<!--\\s*${key}:\\s*[^>]*-->\\s*$`, "gm");
+              const stripped = body.replace(re, "").replace(/\n{3,}/g, "\n\n");
+              return stripped.trimEnd() + "\n";
+            }
+
+            // Insert exactly ONE marker in a canonical position.
+            // 1) strip all existing instances (dedupe)
+            // 2) insert once after drift-rolling-issue marker if present, else at top
+            function upsertUniqueMarker(bodyText, key, value) {
+              const marker = `<!-- ${key}: ${value} -->`;
+              const cleaned = stripAllMarkers(bodyText, key);
+              const lines = cleaned.split("\n");
               const idIdx = lines.findIndex(l => l.includes("drift-rolling-issue"));
               const insertAt = idIdx >= 0 ? idIdx + 1 : 0;
+              if (lines.length === 1 && lines[0] === "") {
+                return marker + "\n";
+              }
               lines.splice(insertAt, 0, marker);
-              return lines.join("\n");
+              return lines.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd() + "\n";
+            }
+
+            // Ensure marker lines are unique within a comment payload.
+            function uniqueMarkerLines(lines) {
+              const seen = new Set();
+              const out = [];
+              for (const l of (lines || [])) {
+                if (typeof l !== "string") continue;
+                const s = l.trimEnd();
+                if (!s) { out.push(l); continue; }
+                if (s.startsWith("<!--") && s.endsWith("-->")) {
+                  if (seen.has(s)) continue;
+                  seen.add(s);
+                }
+                out.push(l);
+              }
+              return out;
             }
 
             function assertOncallDecision(picked) {
@@ -431,7 +455,7 @@ jobs:
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 title: ISSUE_TITLE,
-                body: upsertMarker(ensureFirstDetectedMarker(body, firstDetectedIso), "drift-ci-mode", "true"),
+                body: upsertUniqueMarker(ensureFirstDetectedMarker(body, firstDetectedIso), "drift-ci-mode", "true"),
                 labels: LABELS
               });
               existing = created.data;
@@ -457,7 +481,7 @@ jobs:
               patchedBody = ensureFirstDetectedMarker(patchedBody, firstDetectedIso);
               // Also ensure the tamper warning exists.
               patchedBody = bodyWithTamperWarning(patchedBody);
-              patchedBody = upsertMarker(patchedBody, "drift-ci-mode", "true");
+              patchedBody = upsertUniqueMarker(patchedBody, "drift-ci-mode", "true");
               if ((existing.body || "") !== patchedBody) {
                 await github.rest.issues.update({
                   owner: context.repo.owner,
@@ -1007,7 +1031,7 @@ jobs:
 
             // Update body (keeps latest report visible)
             // Stamp CI mode for provenance (hidden marker).
-            const bodyWithCiMarker = upsertMarker(body, "drift-ci-mode", "true");
+            const bodyWithCiMarker = upsertUniqueMarker(body, "drift-ci-mode", "true");
             await github.rest.issues.update({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -1105,17 +1129,43 @@ jobs:
               return `${SCOPE_MARKER}\n${ID_MARKER}\n${markerLine}\n\n${b.trimStart()}`;
             }
 
-            // Idempotently upsert a hidden marker line in the body.
-            function upsertMarker(bodyText, key, value) {
-              const markerRe = new RegExp(`<!--\\s*${key}:\\s*[^>]*-->`, "g");
-              const marker = `<!-- ${key}: ${value} -->`;
+            // Remove ALL instances of a given marker key (even if duplicates exist).
+            function stripAllMarkers(bodyText, key) {
               const body = (bodyText || "");
-              if (markerRe.test(body)) return body.replace(markerRe, marker);
-              const lines = body.split("\n");
+              const re = new RegExp(`^\\s*<!--\\s*${key}:\\s*[^>]*-->\\s*$`, "gm");
+              const stripped = body.replace(re, "").replace(/\n{3,}/g, "\n\n");
+              return stripped.trimEnd() + "\n";
+            }
+
+            // Insert exactly ONE marker in a canonical position.
+            function upsertUniqueMarker(bodyText, key, value) {
+              const marker = `<!-- ${key}: ${value} -->`;
+              const cleaned = stripAllMarkers(bodyText, key);
+              const lines = cleaned.split("\n");
               const idIdx = lines.findIndex(l => l.includes("drift-rolling-issue"));
               const insertAt = idIdx >= 0 ? idIdx + 1 : 0;
+              if (lines.length === 1 && lines[0] === "") {
+                return marker + "\n";
+              }
               lines.splice(insertAt, 0, marker);
-              return lines.join("\n");
+              return lines.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd() + "\n";
+            }
+
+            // Ensure marker lines are unique within a comment payload.
+            function uniqueMarkerLines(lines) {
+              const seen = new Set();
+              const out = [];
+              for (const l of (lines || [])) {
+                if (typeof l !== "string") continue;
+                const s = l.trimEnd();
+                if (!s) { out.push(l); continue; }
+                if (s.startsWith("<!--") && s.endsWith("-->")) {
+                  if (seen.has(s)) continue;
+                  seen.add(s);
+                }
+                out.push(l);
+              }
+              return out;
             }
 
             function formatDuration(ms) {
@@ -1236,7 +1286,7 @@ jobs:
             }
 
             patchedBody = injectLifecycleFields(patchedBody);
-            patchedBody = upsertMarker(patchedBody, "drift-ci-mode", "true");
+            patchedBody = upsertUniqueMarker(patchedBody, "drift-ci-mode", "true");
 
             if ((existing.body || "") !== patchedBody) {
               await github.rest.issues.update({
@@ -1350,7 +1400,7 @@ jobs:
 
             const already = await alreadyResolvedForThisPeriod();
 
-            const comment = [
+            const comment = uniqueMarkerLines([
               CI_MARKER,
               RESOLVED_MARKER,
               RESOLVED_PERIOD_MARKER,
@@ -1363,7 +1413,7 @@ jobs:
               "If drift reappears, this issue will be reopened automatically by the observer.",
               "",
               `_Rolling issue identity: dual-marker (fallback used: ${foundBy})._`
-            ].filter(Boolean).join("\n");
+            ]).filter(Boolean).join("\n");
 
             if (!already) {
               await github.rest.issues.createComment({
