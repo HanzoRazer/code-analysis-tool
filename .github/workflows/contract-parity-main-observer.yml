@@ -1271,6 +1271,7 @@ jobs:
             const RESOLVED_PERIOD_MARKER = firstDetectedIso
               ? `<!-- drift-resolved-for-period: ${firstDetectedIso} -->`
               : null;
+            const RESOLVED_FOR_PERIOD_RE = /<!--\s*drift-resolved-for-period:\s*([^>]+)\s*-->/;
 
             // Dedupe: only one resolved comment per drift episode (keyed by firstDetectedIso).
             // Scans newest→oldest pages, stops once comments are older than firstDetectedIso.
@@ -1318,11 +1319,24 @@ jobs:
                   return false;
                 }
 
-                // Scan only comments that are >= cutoff.
-                for (const c of items) {
+                // Scan comments newest→oldest within the page for correct boundary detection.
+                for (let i = items.length - 1; i >= 0; i--) {
+                  const c = items[i];
                   const ts = Date.parse(c.created_at || "");
                   if (!Number.isNaN(ts) && ts < cutoff) continue;
                   const b = c.body || "";
+
+                  // Episode boundary: if we hit a resolved-for-period marker for a
+                  // DIFFERENT period, we've crossed into an older episode. Since we
+                  // scan newest→oldest, this is the first such boundary → safe to stop.
+                  const pm = b.match(RESOLVED_FOR_PERIOD_RE);
+                  if (pm) {
+                    const seenPeriod = (pm[1] || "").trim();
+                    if (seenPeriod && seenPeriod !== firstDetectedIso) {
+                      return false;
+                    }
+                  }
+
                   if (b.includes(RESOLVED_MARKER) && b.includes(RESOLVED_PERIOD_MARKER)) {
                     return true;
                   }
