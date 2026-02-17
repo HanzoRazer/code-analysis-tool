@@ -1337,8 +1337,9 @@ jobs:
                     }
                   }
 
-                  // Dedupe condition for current period: requires both markers.
-                  if (b.includes(RESOLVED_MARKER) && b.includes(RESOLVED_PERIOD_MARKER)) {
+                  // Dedupe condition for current period: period marker alone is authoritative.
+                  // This prevents spam even if other markers/text are edited or omitted.
+                  if (b.includes(RESOLVED_PERIOD_MARKER)) {
                     return true;
                   }
                 }
