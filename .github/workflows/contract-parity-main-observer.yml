@@ -1259,6 +1259,36 @@ jobs:
               }
             }
 
+            // Assert that a marker key occurs exactly once in a text payload.
+            function assertMarkerExactlyOnce(text, key, contextLabel) {
+              const n = countMarkerOccurrences(text, key);
+              if (n !== 1) {
+                throw new Error(
+                  `${contextLabel}: marker '${key}' must appear exactly once (found ${n}).`
+                );
+              }
+            }
+
+            // For drift-resolved-for-period, also validate the value matches expected period.
+            function assertResolvedPeriodMarkerExactlyOnce(text, expectedPeriodIso, contextLabel) {
+              const re = /^\s*<!--\s*drift-resolved-for-period:\s*([^>]+)\s*-->\s*$/gm;
+              const matches = [];
+              let m;
+              while ((m = re.exec(text || "")) !== null) {
+                matches.push((m[1] || "").trim());
+              }
+              if (matches.length !== 1) {
+                throw new Error(
+                  `${contextLabel}: 'drift-resolved-for-period' must appear exactly once (found ${matches.length}).`
+                );
+              }
+              if (matches[0] !== expectedPeriodIso) {
+                throw new Error(
+                  `${contextLabel}: drift-resolved-for-period value mismatch. Expected '${expectedPeriodIso}', got '${matches[0]}'.`
+                );
+              }
+            }
+
             function formatDuration(ms) {
               const totalSec = Math.max(0, Math.floor(ms / 1000));
               const days = Math.floor(totalSec / 86400);
@@ -1516,6 +1546,13 @@ jobs:
               "",
               `_Rolling issue identity: dual-marker (fallback used: ${foundBy})._`
             ]).filter(Boolean).join("\n");
+
+            // Comment marker uniqueness contract (tightest):
+            // prevent posting malformed/duplicated markers.
+            const COMMENT_CTX = "Resolved comment payload";
+            assertMarkerExactlyOnce(comment, "drift-ci-mode", COMMENT_CTX);
+            assertMarkerExactlyOnce(comment, "drift-event", COMMENT_CTX);
+            assertResolvedPeriodMarkerExactlyOnce(comment, firstDetectedIso, COMMENT_CTX);
 
             if (!already) {
               await github.rest.issues.createComment({
