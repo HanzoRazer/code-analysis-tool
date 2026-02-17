@@ -1,0 +1,30 @@
+{
+  "episode": {
+    "breach_seconds": 0,
+    "breached": false,
+    "budget_hours": 48,
+    "first_detected_iso": "2026-02-14T09:20:00Z",
+    "group_key": "contracts",
+    "last_resolved_iso": null,
+    "status": "unresolved",
+    "unresolved_human": "1d 0m",
+    "unresolved_seconds": 86400
+  },
+  "producer": {
+    "repo": "code-analysis-tool",
+    "run_attempt": 1,
+    "run_id": "case-1d0m",
+    "run_url": "https://example.invalid/actions/runs/case-1d0m",
+    "sha": "fbf34e1",
+    "workflow": "contract-parity-main-observer"
+  },
+  "provenance": {
+    "ci_mode": true,
+    "rotation": {
+      "config_sha12": "a1b2c3d4e5f6",
+      "schema_sha12": "0f1e2d3c4b5a",
+      "schema_version": "oncall_rotation_schema_v1"
+    }
+  },
+  "schema_version": "drift_budget_signal_v1"
+}
