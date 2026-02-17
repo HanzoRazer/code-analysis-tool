@@ -3,10 +3,10 @@
 **Date:** 2026-02-14  
 **Repo:** `github.com/HanzoRazer/code-analysis-tool`  
 **Branch:** `main`  
-**HEAD:** `fbf34e1` (latest), `8476a28` (contract gate shipment)  
+**HEAD:** `82b93ef` (canonical marker block), `8476a28` (contract gate shipment)  
 **Python:** 3.13.7  
 **Package:** `code_audit` (installable from `src/`)  
-**Test count:** 56 test files, **611+ test cases** (all green at time of shipment)
+**Test count:** 59+ test files, **714+ test cases** (all green at time of shipment)
 
 ---
 
@@ -50,17 +50,22 @@ code-analysis-tool/
 ├── i18n/en/                              # Copy governance locale files
 ├── schemas/
 │   ├── debt_snapshot.schema.json
+│   ├── drift_budget_signal.schema.json    # ← NEW (drift budget signal v1)
+│   ├── drift_budget_signal.example.json   # ← NEW (example artifact)
 │   ├── run_result.schema.json
 │   ├── signals_latest.schema.json
 │   └── user_event.schema.json
 ├── scripts/
 │   ├── copy_lint.py                      # i18n copy linter
 │   ├── copy_lint_vibe_saas.py            # SaaS copy linter
+│   ├── generate_drift_budget_signal.py   # ← NEW (signal generator)
 │   ├── locale_parity.py
 │   ├── refresh_baseline.py
+│   ├── refresh_drift_budget_signal_manifest.py  # ← NEW (signal manifest)
 │   ├── refresh_golden_manifest.py        # ← NEW (contract gate)
 │   ├── refresh_logic_manifest.py         # ← NEW (contract gate)
 │   ├── refresh_translator_policy_manifest.py  # ← NEW (contract gate)
+│   ├── validate_drift_budget_signal.py   # ← NEW (signal validator)
 │   └── validate_schema.py
 ├── src/code_audit/                       # ★ THE PACKAGE
 │   ├── analyzers/                        # 8 analyzers (see §2)
@@ -185,22 +190,35 @@ Six new CI contract gates were added. Each test is a **hard gate** — if it fai
 | **Enforcement** | Runs both paths against `sample_repo_exceptions`, deep-compares dicts |
 | **When it fails** | API and CLI diverge on output shape, ordering, or values |
 
+### 3.7 Drift Budget Signal Gate
+
+| | |
+|---|---|
+| **Test** | `tests/test_drift_budget_signal_requires_signal_logic_bump.py` |
+| **Manifest** | `tests/contracts/drift_budget_signal_manifest.json` |
+| **Refresh** | `python scripts/refresh_drift_budget_signal_manifest.py` |
+| **What it guards** | Schema, generator, and validator for the `drift_budget_signal_v1` CI artifact |
+| **Enforcement** | Composite SHA-256 of `schemas/drift_budget_signal.schema.json`, `scripts/generate_drift_budget_signal.py`, `scripts/validate_drift_budget_signal.py` |
+| **When it fails** | Changing the signal schema, generator logic, or validator without bumping `signal_logic_version` |
+
 ---
 
 ## 4. Key Versioning Anchors
 
 | Anchor | Location | Current Value |
 |---|---|---|
-| `signal_logic_version` | `src/code_audit/model/run_result.py:32` | `"signals_v1"` |
+| `signal_logic_version` | `src/code_audit/model/run_result.py:32` | `"signals_v2"` |
 | `engine_version` | `src/code_audit/model/run_result.py:31` | `"engine_v1"` |
 | `tool_version` (package) | `pyproject.toml` | `"0.1.0"` |
 | Schema: `run_result` | `schemas/run_result.schema.json` | `run_result_v1` |
 | Schema: `debt_snapshot` | `schemas/debt_snapshot.schema.json` | `debt_snapshot_v1` |
+| Schema: `drift_budget_signal` | `schemas/drift_budget_signal.schema.json` | `drift_budget_signal_v1` |
 
 **Bump rules:**
 
 - Editing analyzer logic → bump analyzer `.version` + refresh logic manifest
 - Editing signal generation, severity mapping, copy keys → bump `signal_logic_version` + refresh ALL manifests
+- Editing drift budget signal schema/generator/validator → bump `signal_logic_version` + refresh drift budget signal manifest
 - Editing output shape → bump schema version + update golden fixtures
 
 ---
@@ -276,7 +294,7 @@ Moved to `docs/archive/` with historical-artifact banner. Original files referen
 | **copy-lint** | `.github/workflows/copy-lint.yml` | i18n copy governance linter |
 | **ratchet** | `.github/workflows/ratchet.yml` | Debt snapshot + compare vs `baselines/main.json` |
 | **rule-registry-sync** | `.github/workflows/rule-registry-sync.yml` | Rule registry schema + parity enforcement |
-| **contract-parity-main-observer** | `.github/workflows/contract-parity-main-observer.yml` | Nightly drift detector against upstream `main` (non-blocking). Opens/reopens a rolling GitHub Issue on drift; auto-closes on green. |
+| **contract-parity-main-observer** | `.github/workflows/contract-parity-main-observer.yml` | Nightly drift detector against upstream `main` (non-blocking). Opens/reopens a rolling GitHub Issue on drift; auto-closes on green. Emits `drift_budget_signal_v1` artifact. |
 
 CI enforcement shell scripts in `ci/`:
 - `enforce_fallback_schema_sync.sh`
@@ -399,4 +417,17 @@ python scripts/refresh_baseline.py
 
 ---
 
-*This document was generated on 2026-02-14 and updated on 2026-02-15. It supplements (does not replace) `DEVELOPER_HANDOFF.md` (2026-02-11) and `docs/CONTRACT.md`.*
+## 12. Subsequent Shipments (Session: 2026-02-16)
+
+| Shipment | Files Created/Modified | Commit |
+|---|---|---|
+| Enforce unique marker insertion (Patch 13) | `.github/workflows/contract-parity-main-observer.yml` — `stripAllMarkers`, `upsertUniqueMarker`, `uniqueMarkerLines` | `677111f` |
+| Tamper detection for duplicate markers (Patch 14) | Same workflow — `countMarkerOccurrences`, `assertMarkerUniqueness` on both paths | `d1cdd74` |
+| Resolved comment marker uniqueness (Patch 15) | Same workflow — `assertMarkerExactlyOnce`, `assertResolvedPeriodMarkerExactlyOnce` | `cd76cff` |
+| Breach comment marker uniqueness (Patch 16) | Same workflow — `assertBudgetPeriodMarkerExactlyOnce`, CI marker on breach comment | `8e140fc` |
+| Canonical marker block (Patch 17) | Same workflow — `canonicalMarkerBlock`, `rewriteMarkerBlock`, `assertSingleMarkerBlock`, `assertNoStrayMarkerLinesOutsideBlock` | `82b93ef` |
+| Drift budget signal promotion | `schemas/drift_budget_signal.schema.json`, `schemas/drift_budget_signal.example.json`, `scripts/generate_drift_budget_signal.py`, `scripts/validate_drift_budget_signal.py`, `scripts/refresh_drift_budget_signal_manifest.py`, `tests/contracts/drift_budget_signal_manifest.json`, `tests/test_drift_budget_signal_requires_signal_logic_bump.py`, workflow wiring | (pending) |
+
+---
+
+*This document was generated on 2026-02-14 and updated on 2026-02-16. It supplements (does not replace) `DEVELOPER_HANDOFF.md` (2026-02-11) and `docs/CONTRACT.md`.*

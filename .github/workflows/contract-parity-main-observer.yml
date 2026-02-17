@@ -49,6 +49,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
+      - name: Create artifacts dir
+        run: mkdir -p artifacts
       - name: Forbid DRIFT_ONCALL_ASSIGNEE override in CI
         shell: bash
         env:
@@ -1247,6 +1249,26 @@ jobs:
 
             core.info(`Updated and commented on issue #${existing.number}`);
 
+            // Write episode state to disk for the drift budget signal generator.
+            const unresolvedSec = unresolvedMs !== null ? Math.floor(unresolvedMs / 1000) : 0;
+            const breachSec = budgetBreached ? Math.max(0, unresolvedSec - budgetHours * 3600) : 0;
+            const episodeEnv = {
+              DRIFT_GROUP_KEY: "contracts",
+              DRIFT_FIRST_DETECTED_ISO: firstDetectedIso || "unknown",
+              DRIFT_LAST_RESOLVED_ISO: lastResolvedIso || "",
+              DRIFT_STATUS: "unresolved",
+              DRIFT_UNRESOLVED_SECONDS: String(unresolvedSec),
+              DRIFT_UNRESOLVED_HUMAN: durationStr || "0s",
+              DRIFT_BUDGET_HOURS: String(budgetHours || 48),
+              DRIFT_BREACHED: budgetBreached ? "true" : "false",
+              DRIFT_BREACH_SECONDS: String(breachSec),
+              DRIFT_ROTATION_SHA12: rotationShaShort || "000000000000",
+              DRIFT_SCHEMA_SHA12: schemaShaShort || "000000000000",
+              DRIFT_ROTATION_SCHEMA_VERSION: rotationSchemaVersion || "oncall_rotation_schema_v1"
+            };
+            fs.writeFileSync("artifacts/drift_budget_signal_env.json", JSON.stringify(episodeEnv, null, 2) + "\n");
+            core.info("Wrote artifacts/drift_budget_signal_env.json (red-path)");
+
       - name: Auto-close rolling drift issue when parity returns to green
         if: steps.parity.outcome == 'success'
         uses: actions/github-script@v7
@@ -1791,12 +1813,115 @@ jobs:
 
             core.info(`Closed drift issue #${existing.number}`);
 
+            // Write episode state to disk for the drift budget signal generator.
+            const unresolvedSec = resolvedAfterStr !== "n/a" ? (() => {
+              const fdMs = Date.parse(firstDetectedIso || "");
+              const nowMs = Date.parse(now);
+              if (!Number.isNaN(fdMs) && !Number.isNaN(nowMs) && nowMs >= fdMs) {
+                return Math.floor((nowMs - fdMs) / 1000);
+              }
+              return 0;
+            })() : 0;
+            const episodeEnv = {
+              DRIFT_GROUP_KEY: "contracts",
+              DRIFT_FIRST_DETECTED_ISO: firstDetectedIso || "unknown",
+              DRIFT_LAST_RESOLVED_ISO: now,
+              DRIFT_STATUS: "resolved",
+              DRIFT_UNRESOLVED_SECONDS: String(unresolvedSec),
+              DRIFT_UNRESOLVED_HUMAN: resolvedAfterStr !== "n/a" ? resolvedAfterStr : "0s",
+              DRIFT_BUDGET_HOURS: "48",
+              DRIFT_BREACHED: "false",
+              DRIFT_BREACH_SECONDS: "0",
+              DRIFT_ROTATION_SHA12: "000000000000",
+              DRIFT_SCHEMA_SHA12: "000000000000",
+              DRIFT_ROTATION_SCHEMA_VERSION: "oncall_rotation_schema_v1"
+            };
+            const gfs = require('fs');
+            gfs.writeFileSync("artifacts/drift_budget_signal_env.json", JSON.stringify(episodeEnv, null, 2) + "\n");
+            core.info("Wrote artifacts/drift_budget_signal_env.json (green-path)");
+
+      - name: Generate drift budget signal
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          ENV_FILE="artifacts/drift_budget_signal_env.json"
+          if [[ ! -f "$ENV_FILE" ]]; then
+            echo "No episode env file found — observer scripts may have been skipped."
+            echo "Generating a no-op signal with status=resolved."
+            cat > "$ENV_FILE" <<'FALLBACK'
+          {
+            "DRIFT_GROUP_KEY": "contracts",
+            "DRIFT_FIRST_DETECTED_ISO": "unknown",
+            "DRIFT_LAST_RESOLVED_ISO": "",
+            "DRIFT_STATUS": "resolved",
+            "DRIFT_UNRESOLVED_SECONDS": "0",
+            "DRIFT_UNRESOLVED_HUMAN": "0s",
+            "DRIFT_BUDGET_HOURS": "48",
+            "DRIFT_BREACHED": "false",
+            "DRIFT_BREACH_SECONDS": "0",
+            "DRIFT_ROTATION_SHA12": "000000000000",
+            "DRIFT_SCHEMA_SHA12": "000000000000",
+            "DRIFT_ROTATION_SCHEMA_VERSION": "oncall_rotation_schema_v1"
+          }
+          FALLBACK
+          fi
+
+          # Load env vars from the JSON env file.
+          while IFS='=' read -r key value; do
+            export "$key=$value"
+          done < <(python3 -c "
+import json, sys
+data = json.load(open('$ENV_FILE'))
+for k, v in data.items():
+    print(f'{k}={v}')
+")
+
+          python scripts/generate_drift_budget_signal.py --out artifacts/drift_budget_signal.json
+
+      - name: Validate drift budget signal schema
+        if: always()
+        run: python scripts/validate_drift_budget_signal.py artifacts/drift_budget_signal.json
+
+      - name: Upload drift budget signal artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: drift-budget-signal
+          path: artifacts/drift_budget_signal.json
+
       - name: Summary
         if: always()
+        shell: bash
         run: |
           echo "Observer workflow complete."
           if [[ "${{ steps.parity.outcome }}" == "failure" ]]; then
             echo "Parity failed: drift issue opened/updated."
           else
             echo "Parity OK: drift issue (if any) auto-closed."
+          fi
+
+          # Append drift budget signal summary to GITHUB_STEP_SUMMARY
+          SIGNAL="artifacts/drift_budget_signal.json"
+          if [[ -f "$SIGNAL" ]]; then
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "### Drift Budget Signal" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            python3 -c "
+          import json, sys
+          s = json.load(open('$SIGNAL'))
+          ep = s.get('episode', {})
+          prov = s.get('provenance', {})
+          rot = prov.get('rotation', {})
+          print(f'| Field | Value |')
+          print(f'|---|---|')
+          print(f'| Status | **{ep.get(\"status\", \"unknown\")}** |')
+          print(f'| Breached | {ep.get(\"breached\", False)} |')
+          print(f'| Unresolved duration | {ep.get(\"unresolved_human\", \"n/a\")} |')
+          print(f'| Budget hours | {ep.get(\"budget_hours\", \"n/a\")} |')
+          print(f'| First detected | {ep.get(\"first_detected_iso\", \"n/a\")} |')
+          print(f'| Last resolved | {ep.get(\"last_resolved_iso\", \"n/a\")} |')
+          print(f'| Rotation config SHA12 | \`{rot.get(\"config_sha12\", \"n/a\")}\` |')
+          print(f'| Rotation schema SHA12 | \`{rot.get(\"schema_sha12\", \"n/a\")}\` |')
+          " >> "$GITHUB_STEP_SUMMARY"
           fi

@@ -1,0 +1,9 @@
+{
+  "signal_logic_version": "signals_v2",
+  "composite_hash": "sha256:584d5702038ecddfc7a80cddba1052280eedc4eba5f71670197545419f80f52b",
+  "files": {
+    "schemas\\drift_budget_signal.schema.json": "sha256:e35d3c5a626f93d903d2eb5a4b462577abe82e07994792e1e39536a3d7ef6258",
+    "scripts\\generate_drift_budget_signal.py": "sha256:da7a862e448dea9ad4febe2d3d2e6746be4a08fb91f1a3c523e5019aa4908fb7",
+    "scripts\\validate_drift_budget_signal.py": "sha256:78d031e6acf98db0ba118b73d6d47ae98cef7fea91b6fe4f330d3c30c3d0ebcc"
+  }
+}
