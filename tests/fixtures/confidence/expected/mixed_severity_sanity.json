@@ -1,0 +1,6 @@
+{
+  "case": "mixed_severity_sanity",
+  "description": "1\u00d7 HIGH/SECURITY + 2\u00d7 MEDIUM/EXCEPTIONS + 3\u00d7 LOW/COMPLEXITY \u2014 multi-category, suppresses recovery.",
+  "finding_count": 6,
+  "expected_score": 68
+}

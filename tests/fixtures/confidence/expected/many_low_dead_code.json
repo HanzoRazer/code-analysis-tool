@@ -1,0 +1,6 @@
+{
+  "case": "many_low_dead_code",
+  "description": "10\u00d7 LOW/DEAD_CODE \u2014 exercises volume scaling with minimal weight, recovery bonus active.",
+  "finding_count": 10,
+  "expected_score": 81
+}

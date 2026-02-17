@@ -1,0 +1,6 @@
+{
+  "case": "one_critical_security",
+  "description": "Single CRITICAL/SECURITY finding \u2014 exercises type-weight \u00d7 severity-factor path, suppresses recovery.",
+  "finding_count": 1,
+  "expected_score": 77
+}

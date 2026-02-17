@@ -1,0 +1,86 @@
+{
+  "meta": {
+    "purpose": "Golden confidence-score scenarios — each exercises a distinct scoring branch.",
+    "refresh": "python scripts/refresh_golden_confidence.py"
+  },
+  "cases": [
+    {
+      "name": "no_findings",
+      "description": "Empty findings list — should return BASE + RECOVERY_BONUS = 83.",
+      "findings": []
+    },
+    {
+      "name": "one_critical_security",
+      "description": "Single CRITICAL/SECURITY finding — exercises type-weight × severity-factor path, suppresses recovery.",
+      "findings": [
+        {
+          "finding_id": "SEC-001",
+          "type": "security",
+          "severity": "critical",
+          "confidence": 1.0,
+          "message": "Hardcoded secret in source",
+          "path": "app/config.py",
+          "line_start": 10,
+          "line_end": 10,
+          "rule_id": "SEC001",
+          "symbol": "API_KEY",
+          "snippet": "API_KEY = 'sk-live-abc123'"
+        }
+      ]
+    },
+    {
+      "name": "many_low_dead_code",
+      "description": "10× LOW/DEAD_CODE — exercises volume scaling with minimal weight, recovery bonus active.",
+      "findings": [
+        {"finding_id": "DC-001", "type": "dead_code", "severity": "low", "confidence": 0.9, "message": "Unused function foo_1", "path": "app/utils.py", "line_start": 10, "line_end": 15, "rule_id": "DC001", "symbol": "foo_1", "snippet": "def foo_1(): pass"},
+        {"finding_id": "DC-002", "type": "dead_code", "severity": "low", "confidence": 0.9, "message": "Unused function foo_2", "path": "app/utils.py", "line_start": 20, "line_end": 25, "rule_id": "DC001", "symbol": "foo_2", "snippet": "def foo_2(): pass"},
+        {"finding_id": "DC-003", "type": "dead_code", "severity": "low", "confidence": 0.9, "message": "Unused function foo_3", "path": "app/utils.py", "line_start": 30, "line_end": 35, "rule_id": "DC001", "symbol": "foo_3", "snippet": "def foo_3(): pass"},
+        {"finding_id": "DC-004", "type": "dead_code", "severity": "low", "confidence": 0.9, "message": "Unused function foo_4", "path": "app/utils.py", "line_start": 40, "line_end": 45, "rule_id": "DC001", "symbol": "foo_4", "snippet": "def foo_4(): pass"},
+        {"finding_id": "DC-005", "type": "dead_code", "severity": "low", "confidence": 0.9, "message": "Unused function foo_5", "path": "app/utils.py", "line_start": 50, "line_end": 55, "rule_id": "DC001", "symbol": "foo_5", "snippet": "def foo_5(): pass"},
+        {"finding_id": "DC-006", "type": "dead_code", "severity": "low", "confidence": 0.9, "message": "Unused function foo_6", "path": "app/utils.py", "line_start": 60, "line_end": 65, "rule_id": "DC001", "symbol": "foo_6", "snippet": "def foo_6(): pass"},
+        {"finding_id": "DC-007", "type": "dead_code", "severity": "low", "confidence": 0.9, "message": "Unused function foo_7", "path": "app/utils.py", "line_start": 70, "line_end": 75, "rule_id": "DC001", "symbol": "foo_7", "snippet": "def foo_7(): pass"},
+        {"finding_id": "DC-008", "type": "dead_code", "severity": "low", "confidence": 0.9, "message": "Unused function foo_8", "path": "app/utils.py", "line_start": 80, "line_end": 85, "rule_id": "DC001", "symbol": "foo_8", "snippet": "def foo_8(): pass"},
+        {"finding_id": "DC-009", "type": "dead_code", "severity": "low", "confidence": 0.9, "message": "Unused function foo_9", "path": "app/utils.py", "line_start": 90, "line_end": 95, "rule_id": "DC001", "symbol": "foo_9", "snippet": "def foo_9(): pass"},
+        {"finding_id": "DC-010", "type": "dead_code", "severity": "low", "confidence": 0.9, "message": "Unused function foo_10", "path": "app/utils.py", "line_start": 100, "line_end": 105, "rule_id": "DC001", "symbol": "foo_10", "snippet": "def foo_10(): pass"}
+      ]
+    },
+    {
+      "name": "overwhelm_threshold_crossing",
+      "description": "20× MEDIUM/COMPLEXITY — crosses _OVERWHELM_THRESHOLD (15), exercises overwhelm penalty path.",
+      "findings": [
+        {"finding_id": "CX-001", "type": "complexity", "severity": "medium", "confidence": 0.8, "message": "High cyclomatic complexity fn_1", "path": "app/core.py", "line_start": 10, "line_end": 30, "rule_id": "CX001", "symbol": "fn_1", "snippet": "def fn_1(): ..."},
+        {"finding_id": "CX-002", "type": "complexity", "severity": "medium", "confidence": 0.8, "message": "High cyclomatic complexity fn_2", "path": "app/core.py", "line_start": 35, "line_end": 55, "rule_id": "CX001", "symbol": "fn_2", "snippet": "def fn_2(): ..."},
+        {"finding_id": "CX-003", "type": "complexity", "severity": "medium", "confidence": 0.8, "message": "High cyclomatic complexity fn_3", "path": "app/core.py", "line_start": 60, "line_end": 80, "rule_id": "CX001", "symbol": "fn_3", "snippet": "def fn_3(): ..."},
+        {"finding_id": "CX-004", "type": "complexity", "severity": "medium", "confidence": 0.8, "message": "High cyclomatic complexity fn_4", "path": "app/core.py", "line_start": 85, "line_end": 105, "rule_id": "CX001", "symbol": "fn_4", "snippet": "def fn_4(): ..."},
+        {"finding_id": "CX-005", "type": "complexity", "severity": "medium", "confidence": 0.8, "message": "High cyclomatic complexity fn_5", "path": "app/core.py", "line_start": 110, "line_end": 130, "rule_id": "CX001", "symbol": "fn_5", "snippet": "def fn_5(): ..."},
+        {"finding_id": "CX-006", "type": "complexity", "severity": "medium", "confidence": 0.8, "message": "High cyclomatic complexity fn_6", "path": "app/core.py", "line_start": 135, "line_end": 155, "rule_id": "CX001", "symbol": "fn_6", "snippet": "def fn_6(): ..."},
+        {"finding_id": "CX-007", "type": "complexity", "severity": "medium", "confidence": 0.8, "message": "High cyclomatic complexity fn_7", "path": "app/core.py", "line_start": 160, "line_end": 180, "rule_id": "CX001", "symbol": "fn_7", "snippet": "def fn_7(): ..."},
+        {"finding_id": "CX-008", "type": "complexity", "severity": "medium", "confidence": 0.8, "message": "High cyclomatic complexity fn_8", "path": "app/core.py", "line_start": 185, "line_end": 205, "rule_id": "CX001", "symbol": "fn_8", "snippet": "def fn_8(): ..."},
+        {"finding_id": "CX-009", "type": "complexity", "severity": "medium", "confidence": 0.8, "message": "High cyclomatic complexity fn_9", "path": "app/core.py", "line_start": 210, "line_end": 230, "rule_id": "CX001", "symbol": "fn_9", "snippet": "def fn_9(): ..."},
+        {"finding_id": "CX-010", "type": "complexity", "severity": "medium", "confidence": 0.8, "message": "High cyclomatic complexity fn_10", "path": "app/core.py", "line_start": 235, "line_end": 255, "rule_id": "CX001", "symbol": "fn_10", "snippet": "def fn_10(): ..."},
+        {"finding_id": "CX-011", "type": "complexity", "severity": "medium", "confidence": 0.8, "message": "High cyclomatic complexity fn_11", "path": "app/core.py", "line_start": 260, "line_end": 280, "rule_id": "CX001", "symbol": "fn_11", "snippet": "def fn_11(): ..."},
+        {"finding_id": "CX-012", "type": "complexity", "severity": "medium", "confidence": 0.8, "message": "High cyclomatic complexity fn_12", "path": "app/core.py", "line_start": 285, "line_end": 305, "rule_id": "CX001", "symbol": "fn_12", "snippet": "def fn_12(): ..."},
+        {"finding_id": "CX-013", "type": "complexity", "severity": "medium", "confidence": 0.8, "message": "High cyclomatic complexity fn_13", "path": "app/core.py", "line_start": 310, "line_end": 330, "rule_id": "CX001", "symbol": "fn_13", "snippet": "def fn_13(): ..."},
+        {"finding_id": "CX-014", "type": "complexity", "severity": "medium", "confidence": 0.8, "message": "High cyclomatic complexity fn_14", "path": "app/core.py", "line_start": 335, "line_end": 355, "rule_id": "CX001", "symbol": "fn_14", "snippet": "def fn_14(): ..."},
+        {"finding_id": "CX-015", "type": "complexity", "severity": "medium", "confidence": 0.8, "message": "High cyclomatic complexity fn_15", "path": "app/core.py", "line_start": 360, "line_end": 380, "rule_id": "CX001", "symbol": "fn_15", "snippet": "def fn_15(): ..."},
+        {"finding_id": "CX-016", "type": "complexity", "severity": "medium", "confidence": 0.8, "message": "High cyclomatic complexity fn_16", "path": "app/core.py", "line_start": 385, "line_end": 405, "rule_id": "CX001", "symbol": "fn_16", "snippet": "def fn_16(): ..."},
+        {"finding_id": "CX-017", "type": "complexity", "severity": "medium", "confidence": 0.8, "message": "High cyclomatic complexity fn_17", "path": "app/core.py", "line_start": 410, "line_end": 430, "rule_id": "CX001", "symbol": "fn_17", "snippet": "def fn_17(): ..."},
+        {"finding_id": "CX-018", "type": "complexity", "severity": "medium", "confidence": 0.8, "message": "High cyclomatic complexity fn_18", "path": "app/core.py", "line_start": 435, "line_end": 455, "rule_id": "CX001", "symbol": "fn_18", "snippet": "def fn_18(): ..."},
+        {"finding_id": "CX-019", "type": "complexity", "severity": "medium", "confidence": 0.8, "message": "High cyclomatic complexity fn_19", "path": "app/core.py", "line_start": 460, "line_end": 480, "rule_id": "CX001", "symbol": "fn_19", "snippet": "def fn_19(): ..."},
+        {"finding_id": "CX-020", "type": "complexity", "severity": "medium", "confidence": 0.8, "message": "High cyclomatic complexity fn_20", "path": "app/core.py", "line_start": 485, "line_end": 505, "rule_id": "CX001", "symbol": "fn_20", "snippet": "def fn_20(): ..."}
+      ]
+    },
+    {
+      "name": "mixed_severity_sanity",
+      "description": "1× HIGH/SECURITY + 2× MEDIUM/EXCEPTIONS + 3× LOW/COMPLEXITY — multi-category, suppresses recovery.",
+      "findings": [
+        {"finding_id": "SEC-010", "type": "security", "severity": "high", "confidence": 0.95, "message": "SQL injection vector", "path": "app/db.py", "line_start": 44, "line_end": 44, "rule_id": "SEC010", "symbol": "query_user", "snippet": "cursor.execute(f'SELECT * FROM users WHERE id={uid}')"},
+        {"finding_id": "EXC-001", "type": "exceptions", "severity": "medium", "confidence": 0.85, "message": "Bare except swallows errors", "path": "app/handlers.py", "line_start": 22, "line_end": 25, "rule_id": "EXC001", "symbol": "handle_request", "snippet": "except: pass"},
+        {"finding_id": "EXC-002", "type": "exceptions", "severity": "medium", "confidence": 0.85, "message": "Bare except swallows errors", "path": "app/handlers.py", "line_start": 55, "line_end": 58, "rule_id": "EXC001", "symbol": "handle_upload", "snippet": "except: pass"},
+        {"finding_id": "CX-050", "type": "complexity", "severity": "low", "confidence": 0.7, "message": "Function too complex", "path": "app/logic.py", "line_start": 100, "line_end": 150, "rule_id": "CX001", "symbol": "process_data", "snippet": "def process_data(): ..."},
+        {"finding_id": "CX-051", "type": "complexity", "severity": "low", "confidence": 0.7, "message": "Function too complex", "path": "app/logic.py", "line_start": 200, "line_end": 250, "rule_id": "CX001", "symbol": "transform_records", "snippet": "def transform_records(): ..."},
+        {"finding_id": "CX-052", "type": "complexity", "severity": "low", "confidence": 0.7, "message": "Function too complex", "path": "app/logic.py", "line_start": 300, "line_end": 350, "rule_id": "CX001", "symbol": "validate_inputs", "snippet": "def validate_inputs(): ..."}
+      ]
+    }
+  ]
+}

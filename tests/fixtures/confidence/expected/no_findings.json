@@ -1,0 +1,6 @@
+{
+  "case": "no_findings",
+  "description": "Empty findings list \u2014 should return BASE + RECOVERY_BONUS = 83.",
+  "finding_count": 0,
+  "expected_score": 83
+}

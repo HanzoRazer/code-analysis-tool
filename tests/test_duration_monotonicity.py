@@ -1,8 +1,11 @@
-"""Brute-force monotonicity test for _human_duration() over 0–10,000 seconds.
+"""Brute-force monotonicity test for _human_duration() over 0–90,000 seconds.
 
 Locks the duration formatting contract mathematically:
   - total minutes == floor(seconds / 60) exactly
   - monotonic non-decreasing minute transitions
+  - grammar-shape regex enforcement per band
+  - idempotence invariant (roundtrip)
+  - second-leak prevention ("s" never appears in output)
   - no hours below 3600s, no days below 86400s
   - minute always present in output
 """
@@ -32,6 +35,11 @@ _MINUTES_ONLY_RE = re.compile(r"^(\d+)m$")
 _HOURS_MINUTES_RE = re.compile(r"^(\d+)h (\d+)m$")
 _DAYS_RE = re.compile(r"^(\d+)d(?: (\d+)h)? (\d+)m$")
 
+# ── grammar-shape regexes (fullmatch enforcement) ──────────────────
+_SHAPE_MINUTES_ONLY = re.compile(r"\d+m")
+_SHAPE_HOURS_MINUTES = re.compile(r"\d+h \d+m")
+_SHAPE_DAYS = re.compile(r"\d+d(?: \d+h)? \d+m")
+
 
 def _parse_minutes(output: str) -> int:
     """Parse formatter output and return total minutes."""
@@ -57,18 +65,25 @@ def _parse_minutes(output: str) -> int:
     raise AssertionError(f"Unrecognized duration format: {output!r}")
 
 
-def test_human_duration_bruteforce_monotonic_minutes_0_to_10000() -> None:
-    """Over 0–10000s: floor minutes, monotonic, correct grammar bands."""
+def test_human_duration_bruteforce_monotonic_minutes_0_to_90000() -> None:
+    """Over 0–90000s: floor minutes, monotonic, grammar shape, idempotence, no second-leak."""
     human = _import_human_duration()
 
     prev_minutes = None
     prev_s = None
 
-    for s in range(0, 10001):
+    for s in range(0, 90001):
         out = human(s)
         minutes = _parse_minutes(out)
 
-        # Total minutes MUST equal floor(seconds / 60).
+        # ── second-leak prevention ───────────────────────────────
+        assert "s" not in out, (
+            "Second-leak detected — raw seconds leaked into output:\n"
+            f"  seconds={s}\n"
+            f"  output={out!r}\n"
+        )
+
+        # ── total minutes == floor(seconds / 60) ────────────────
         expected = s // 60
         assert minutes == expected, (
             "Duration formatter minute math drift:\n"
@@ -78,21 +93,41 @@ def test_human_duration_bruteforce_monotonic_minutes_0_to_10000() -> None:
             f"  expected_floor_minutes={expected}\n"
         )
 
-        # Grammar band checks.
+        # ── grammar-shape regex enforcement per band ─────────────
         if s < 3600:
-            assert "h" not in out and "d" not in out, (
-                "Formatter emitted hours/days below 3600 seconds:\n"
+            assert _SHAPE_MINUTES_ONLY.fullmatch(out), (
+                "Grammar shape violation (expected \\d+m):\n"
+                f"  seconds={s}\n"
+                f"  output={out!r}\n"
+            )
+        elif s < 86400:
+            assert _SHAPE_HOURS_MINUTES.fullmatch(out), (
+                "Grammar shape violation (expected \\d+h \\d+m):\n"
                 f"  seconds={s}\n"
                 f"  output={out!r}\n"
             )
         else:
-            assert "d" not in out, (
-                "Formatter emitted days below 86400 seconds:\n"
+            assert _SHAPE_DAYS.fullmatch(out), (
+                "Grammar shape violation (expected \\d+d [\\d+h] \\d+m):\n"
                 f"  seconds={s}\n"
                 f"  output={out!r}\n"
             )
 
-        # Monotonicity (non-decreasing).
+        # ── idempotence invariant (roundtrip) ────────────────────
+        roundtrip_seconds = minutes * 60
+        roundtrip_output = human(roundtrip_seconds)
+        roundtrip_minutes = _parse_minutes(roundtrip_output)
+        assert roundtrip_minutes == minutes, (
+            "Idempotence violation — roundtrip changed minute count:\n"
+            f"  seconds={s}\n"
+            f"  output={out!r}\n"
+            f"  parsed_minutes={minutes}\n"
+            f"  roundtrip_seconds={roundtrip_seconds}\n"
+            f"  roundtrip_output={roundtrip_output!r}\n"
+            f"  roundtrip_minutes={roundtrip_minutes}\n"
+        )
+
+        # ── monotonicity (non-decreasing) ────────────────────────
         if prev_minutes is not None:
             assert minutes >= prev_minutes, (
                 "Non-monotonic minute transitions detected:\n"

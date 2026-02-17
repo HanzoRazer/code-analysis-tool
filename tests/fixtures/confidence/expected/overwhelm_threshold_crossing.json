@@ -1,0 +1,6 @@
+{
+  "case": "overwhelm_threshold_crossing",
+  "description": "20\u00d7 MEDIUM/COMPLEXITY \u2014 crosses _OVERWHELM_THRESHOLD (15), exercises overwhelm penalty path.",
+  "finding_count": 20,
+  "expected_score": 58
+}
