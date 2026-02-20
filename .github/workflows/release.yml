@@ -97,6 +97,12 @@ jobs:
         run: |
           python scripts/check_semver_breaking_gate.py --tag "$TAG"
 
+      - name: Release gate — changelog truth enforcement
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          python scripts/check_changelog_truth.py --tag "$TAG"
+
       - name: Install build + test deps
         run: |
           python -m pip install --upgrade pip
