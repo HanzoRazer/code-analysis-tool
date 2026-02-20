@@ -16,6 +16,7 @@ def _run(cmd: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
     env["PYTHONHASHSEED"] = "0"
     env["CODE_AUDIT_DETERMINISTIC"] = "1"
     env["PYTHONPATH"] = str(REPO_ROOT / "src")
+    env["CI"] = "true"
     return subprocess.run(cmd, cwd=str(cwd), env=env, text=True, capture_output=True)
 
 

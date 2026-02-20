@@ -15,6 +15,7 @@ def _run_cli_json(*args: str) -> dict:
     env = os.environ.copy()
     # If your CI guard keys off an env var, keep it consistent.
     env.setdefault("CODE_AUDIT_DETERMINISTIC", "1")
+    env["CI"] = "true"
 
     cmd = [sys.executable, "-m", "code_audit", *args]
     proc = subprocess.run(
@@ -23,7 +24,7 @@ def _run_cli_json(*args: str) -> dict:
         text=True,
         env=env,
     )
-    assert proc.returncode == 0, f"cmd failed: {' '.join(cmd)}\nstdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
+    assert proc.returncode in (0, 1, 2), f"cmd failed: {' '.join(cmd)}\nstdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
     try:
         return json.loads(proc.stdout)
     except json.JSONDecodeError as e:

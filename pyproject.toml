@@ -85,6 +85,10 @@ pythonpath = [".", "src"]
 target-version = "py311"
 line-length = 100
 
+[tool.code_audit.confidence]
+# Governed section — changes here require confidence_logic_version bump.
+# Empty is fine; the section's existence ensures future config has a place.
+
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
 

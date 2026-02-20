@@ -1,0 +1,152 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write   # create GitHub Release + upload assets
+
+jobs:
+  build-test-release:
+    name: Build, test, and publish GitHub Release assets
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: "pip"
+
+      - name: Release gate — tag must match pyproject version
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          python - <<'PY'
+          import os, re, sys
+          from pathlib import Path
+          import tomllib
+
+          tag = os.environ.get("TAG", "").strip()
+          if not tag:
+            print("ERROR: Missing TAG environment (github.ref_name).", file=sys.stderr)
+            sys.exit(1)
+
+          # Accept vX.Y.Z and optionally prerelease/build metadata (vX.Y.Z-..., vX.Y.Z+...)
+          semver_re = re.compile(r"^v(\d+)\.(\d+)\.(\d+)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$")
+          m = semver_re.match(tag)
+          if not m:
+            print(
+              f"ERROR: Tag '{tag}' is not a valid release tag. Expected format: vX.Y.Z (optionally -prerelease / +build).",
+              file=sys.stderr,
+            )
+            sys.exit(1)
+
+          tag_version = tag[1:]  # strip leading 'v'
+
+          pyproject = Path("pyproject.toml")
+          if not pyproject.exists():
+            print("ERROR: pyproject.toml not found at repo root.", file=sys.stderr)
+            sys.exit(1)
+
+          data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+          project = data.get("project") or {}
+          pkg_version = project.get("version")
+          if not isinstance(pkg_version, str) or not pkg_version.strip():
+            print("ERROR: project.version missing or invalid in pyproject.toml", file=sys.stderr)
+            sys.exit(1)
+
+          pkg_version = pkg_version.strip()
+
+          if pkg_version != tag_version:
+            print("ERROR: Release gate failed — tag/version mismatch.", file=sys.stderr)
+            print(f"  Tag:      {tag}  -> version '{tag_version}'", file=sys.stderr)
+            print(f"  pyproject: project.version = '{pkg_version}'", file=sys.stderr)
+            print("", file=sys.stderr)
+            print("Fix one of:", file=sys.stderr)
+            print("  - Update pyproject.toml project.version to match the tag, or", file=sys.stderr)
+            print("  - Re-tag the release to match pyproject.toml", file=sys.stderr)
+            sys.exit(1)
+
+          print(f"OK: tag '{tag}' matches pyproject.toml version '{pkg_version}'.")
+          PY
+
+      - name: Release gate — CHANGELOG entry required
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          python scripts/check_changelog_has_tag.py --tag "$TAG" --require-date
+
+      - name: Release gate — CHANGELOG template enforcement
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          python scripts/check_changelog_template.py --tag "$TAG" --require-bullets
+
+      - name: Release gate — semver breaking rule
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          python scripts/check_semver_breaking_gate.py --tag "$TAG"
+
+      - name: Install build + test deps
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]" || true
+          python -m pip install build twine
+
+      - name: Run tests
+        env:
+          CI: "true"
+        run: |
+          python -m pytest
+
+      - name: Build sdist + wheel
+        run: |
+          python -m build
+
+      - name: Build semantic BOM (release manifest)
+        run: |
+          python scripts/build_release_manifest.py --strict --out dist/release_manifest.json
+          python -c "import json; p='dist/release_manifest.json'; json.load(open(p,'r',encoding='utf-8')); print('Validated', p)"
+
+      - name: Validate dist with twine
+        run: |
+          python -m twine check dist/*
+
+      - name: Compute release metadata
+        id: meta
+        run: |
+          echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          echo "sha=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          echo "py=$(python -V 2>&1)" >> "$GITHUB_OUTPUT"
+          echo "dist_files=$(ls -1 dist | wc -l | tr -d ' ')" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release and upload assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: ${{ steps.meta.outputs.tag }}
+          generate_release_notes: true
+          files: |
+            dist/*
+          body: |
+            Build metadata:
+            - Commit: ${{ steps.meta.outputs.sha }}
+            - Python: ${{ steps.meta.outputs.py }}
+            - Dist files: ${{ steps.meta.outputs.dist_files }}
+
+      - name: Upload dist artifacts to workflow run
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-dist
+          path: dist/*
+          if-no-files-found: error

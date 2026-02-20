@@ -29,6 +29,7 @@ def _cli_env() -> dict[str, str]:
     env["PYTHONHASHSEED"] = "0"
     env["CODE_AUDIT_DETERMINISTIC"] = "1"
     env["PYTHONPATH"] = str(REPO_ROOT / "src")
+    env["CI"] = "true"
     return env
 
 

@@ -46,6 +46,7 @@ def test_ci_debt_snapshot_is_byte_identical_via_subprocess(tmp_path: Path) -> No
         [src_dir, env.get("PYTHONPATH", "")]
     ).strip(os.pathsep)
     env["PYTHONHASHSEED"] = "0"
+    env["CI"] = "true"
 
     cmd_a = ("debt", "snapshot", ".", "--ci", "--out", "artifacts/current_a.json")
     r1 = _run_cli(*cmd_a, cwd=project, env=env)

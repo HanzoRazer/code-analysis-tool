@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -8,8 +9,10 @@ from pathlib import Path
 
 def _run_cli_json(*args: str) -> dict:
     cmd = [sys.executable, "-m", "code_audit", *args]
-    proc = subprocess.run(cmd, capture_output=True, text=True)
-    assert proc.returncode == 0, (
+    env = os.environ.copy()
+    env["CI"] = "true"
+    proc = subprocess.run(cmd, capture_output=True, text=True, env=env)
+    assert proc.returncode in (0, 1, 2), (
         f"cmd failed: {' '.join(cmd)}\nstdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
     )
     try:

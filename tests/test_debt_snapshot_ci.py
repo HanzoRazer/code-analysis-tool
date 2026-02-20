@@ -14,6 +14,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 def _run(*args: str) -> subprocess.CompletedProcess[str]:
     env = dict(**os.environ)
     env["PYTHONPATH"] = str(REPO_ROOT / "src") + (":" + env.get("PYTHONPATH","") if env.get("PYTHONPATH") else "")
+    env["CI"] = "true"
     return subprocess.run(
         [sys.executable, "-m", "code_audit", *args],
         capture_output=True,

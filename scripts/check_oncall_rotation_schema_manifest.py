@@ -42,6 +42,10 @@ def main() -> int:
     if not VERSION_RE.match(schema_version.strip()):
         return die(f"Invalid schema_version '{schema_version}'. Must match ^oncall_rotation_schema_v\\d+$")
 
+    schema_id = schema.get("$id")
+    if not isinstance(schema_id, str) or not schema_id.strip():
+        return die("Schema must contain non-empty string: $id")
+
     try:
         manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
     except Exception as e:
@@ -54,6 +58,42 @@ def main() -> int:
             f"manifest.schema_version={manifest.get('schema_version')}\n"
             "Fix: bump schema_version in schema and run scripts/refresh_oncall_rotation_schema_manifest.py"
         )
+
+    # Enforce schema identity policy ($id governance)
+    id_policy = (manifest.get("id_policy") or "stable").strip()
+    stable_id = manifest.get("stable_id")
+    id_must_contain = manifest.get("id_must_contain")
+
+    if id_policy not in ("stable", "versioned"):
+        return die("schema manifest id_policy must be 'stable' or 'versioned'")
+
+    if id_policy == "stable":
+        if not isinstance(stable_id, str) or not stable_id.strip():
+            return die("schema manifest must include non-empty stable_id when id_policy='stable'")
+        if schema_id.strip() != stable_id.strip():
+            return die(
+                "Schema $id changed but id_policy='stable'.\n"
+                f"Expected $id={stable_id.strip()}\n"
+                f"Actual   $id={schema_id.strip()}\n"
+                "Fix: revert $id or switch id_policy to 'versioned' intentionally."
+            )
+    else:
+        # versioned policy: $id must include the exact schema_version
+        if schema_version.strip() not in schema_id:
+            return die(
+                "Schema $id must include schema_version when id_policy='versioned'.\n"
+                f"schema_version={schema_version.strip()}\n"
+                f"$id={schema_id.strip()}"
+            )
+        if id_must_contain is not None:
+            if not isinstance(id_must_contain, str) or not id_must_contain.strip():
+                return die("id_must_contain must be a non-empty string or null")
+            if id_must_contain.strip() not in schema_id:
+                return die(
+                    "Schema $id missing required substring (id_must_contain).\n"
+                    f"id_must_contain={id_must_contain.strip()}\n"
+                    f"$id={schema_id.strip()}"
+                )
 
     expected = manifest.get("sha256")
     actual = sha256_file(SCHEMA_PATH)

@@ -94,6 +94,40 @@ python -m check_bare_except [--json]
 
 ---
 
+### 1.5 vue_component.py
+**Purpose:** Vue SFC god object detector
+
+**What it does:**
+- Parses Vue Single File Components (.vue files)
+- Detects components exceeding LOC thresholds (500/800/1500)
+- Identifies extractable template sections via HTML comment markers
+- Detects script-heavy components needing composable extraction
+- Calculates template/script ratios
+- Counts child components, composables, props, emits
+
+**Rule IDs:**
+- `VUE-GOD-001` (MEDIUM): Component exceeds 500 LOC
+- `VUE-GOD-002` (HIGH): Component exceeds 800 LOC (god object)
+- `VUE-GOD-003` (CRITICAL): Component exceeds 1500 LOC
+- `VUE-EXTRACT-001` (LOW): Template section extractable as child component
+- `VUE-COMPOSABLE-001` (MEDIUM): Script-heavy, needs composable extraction
+
+**Usage:**
+```python
+from code_audit.analyzers import VueComponentAnalyzer
+
+analyzer = VueComponentAnalyzer(threshold=500, high_threshold=800)
+findings = analyzer.run(root_path, vue_files)
+```
+
+**Dependencies:** None (stdlib only)
+
+**Deployment category:** `analyzers/vue_component.py`
+
+**Cross-repo:** Findings consumed by `code-rescue-tool` `VueComponentFixer` for extraction scaffolds.
+
+---
+
 ## Category 2: Safety & Contract Validators
 
 ### 2.1 fence_checker_v2.py
@@ -355,7 +389,8 @@ code-analysis-tool/
 │   │   ├── complexity.py
 │   │   ├── file_sizes.py
 │   │   ├── duplication.py
-│   │   └── exceptions.py
+│   │   ├── exceptions.py
+│   │   └── vue_component.py  # Vue SFC god object detection
 │   │
 │   ├── contracts/           # Category 2: Safety & Contracts
 │   │   ├── safety_fence.py

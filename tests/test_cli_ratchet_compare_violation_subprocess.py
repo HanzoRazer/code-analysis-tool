@@ -53,6 +53,7 @@ def test_debt_compare_returns_1_on_new_debt(tmp_path: Path) -> None:
         [src_dir, env.get("PYTHONPATH", "")]
     ).strip(os.pathsep)
     env["PYTHONHASHSEED"] = "0"
+    env["CI"] = "true"
 
     baseline_path = work / "artifacts" / "baseline.json"
     current_path = work / "artifacts" / "current.json"

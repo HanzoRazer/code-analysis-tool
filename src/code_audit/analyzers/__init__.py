@@ -91,4 +91,24 @@ def __getattr__(name: str):
     if name == "analyze_project":
         from .method_checker import analyze_project
         return analyze_project
+    # Vue component analyzer
+    if name == "VueComponentAnalyzer":
+        from .vue_component import VueComponentAnalyzer
+        return VueComponentAnalyzer
+    if name == "VueComponentMetrics":
+        from .vue_component import VueComponentMetrics
+        return VueComponentMetrics
+    # Vue coupling analyzer
+    if name == "VueCouplingAnalyzer":
+        from .vue_coupling import VueCouplingAnalyzer
+        return VueCouplingAnalyzer
+    if name == "VueCouplingMetrics":
+        from .vue_coupling import VueCouplingMetrics
+        return VueCouplingMetrics
+    if name == "suggest_composables":
+        from .vue_coupling import suggest_composables
+        return suggest_composables
+    if name == "analyze_coupling":
+        from .vue_coupling import analyze_coupling
+        return analyze_coupling
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

@@ -40,6 +40,27 @@ from code_audit.policy.thresholds import (
     exit_code_from_score as _exit_code_from_score,
     tier_from_score,
 )
+from code_audit.policy.exit_codes import (
+    exit_code_for_worst_severity as _exit_code_for_worst_severity,
+    worst_severity_from_counts as _worst_severity_from_counts,
+)
+from code_audit.contracts.ci_mode import CIModeRequiredError, require_ci_true
+
+
+def _require_ci_env(ci_mode: bool) -> int | None:
+    """If ``--ci`` was passed, assert ``CI=true`` in the environment.
+
+    Returns ``ExitCode.ERROR`` (and prints to stderr) when the check fails,
+    or ``None`` when no action is needed.
+    """
+    if not ci_mode:
+        return None
+    try:
+        require_ci_true()
+    except CIModeRequiredError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return ExitCode.ERROR
+    return None
 
 
 def _env_requires_ci_mode() -> bool:
@@ -1279,6 +1300,10 @@ def _handle_debt(args: argparse.Namespace) -> int:
             )
             if rc is not None:
                 return rc
+
+            rc = _require_ci_env(bool(getattr(args, "ci_mode", False)))
+            if rc is not None:
+                return rc
     else:
         print(
             "error: use 'debt scan', 'debt plan', 'debt snapshot', "
@@ -1639,6 +1664,10 @@ def main(argv: list[str] | None = None) -> int:
         if rc is not None:
             return rc
 
+        rc = _require_ci_env(bool(getattr(args, "ci_mode", False)))
+        if rc is not None:
+            return rc
+
         ci_mode = bool(getattr(args, "ci_mode", False))
         scan_root = Path(args.root).resolve()
 
@@ -1704,7 +1733,13 @@ def main(argv: list[str] | None = None) -> int:
 
         _print_human(result_dict)
         score = result_dict.get("summary", {}).get("confidence_score", 0)
-        return _exit_code_from_score(score)
+        score_ec = _exit_code_from_score(score)
+        if ci_mode:
+            by_sev = result_dict.get("summary", {}).get("counts", {}).get("by_severity", {})
+            worst = _worst_severity_from_counts(by_sev)
+            sev_ec = _exit_code_for_worst_severity(worst)
+            return max(score_ec, sev_ec)
+        return score_ec
 
     # ── default positional-path mode ─────────────────────────────────
     if args.path is None:
@@ -1714,6 +1749,10 @@ def main(argv: list[str] | None = None) -> int:
     rc = _require_ci_flag(
         bool(getattr(args, "ci_mode", False)), what="default scan"
     )
+    if rc is not None:
+        return rc
+
+    rc = _require_ci_env(bool(getattr(args, "ci_mode", False)))
     if rc is not None:
         return rc
 
@@ -1742,9 +1781,15 @@ def main(argv: list[str] | None = None) -> int:
     if args.json_out:
         stable_json_dump(result_dict, sys.stdout, ci_mode=ci_mode, indent=2)
 
-    # Exit code mirrors tier
+    # Exit code mirrors tier (score-based) + severity policy in CI mode
     score = result_dict.get("summary", {}).get("confidence_score", 0)
-    return _exit_code_from_score(score)
+    score_ec = _exit_code_from_score(score)
+    if ci_mode:
+        by_sev = result_dict.get("summary", {}).get("counts", {}).get("by_severity", {})
+        worst = _worst_severity_from_counts(by_sev)
+        sev_ec = _exit_code_for_worst_severity(worst)
+        return max(score_ec, sev_ec)
+    return score_ec
 
 
 if __name__ == "__main__":

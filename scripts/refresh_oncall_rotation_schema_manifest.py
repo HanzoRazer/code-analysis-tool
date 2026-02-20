@@ -24,6 +24,13 @@ def main() -> int:
     if not SCHEMA_PATH.exists():
         raise SystemExit(f"Missing {SCHEMA_PATH}")
 
+    prior = {}
+    if MANIFEST_PATH.exists():
+        try:
+            prior = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
+        except Exception:
+            prior = {}
+
     schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
     schema_version = schema.get("schema_version")
     if not isinstance(schema_version, str) or not schema_version.strip():
@@ -35,6 +42,10 @@ def main() -> int:
         "schema": "oncall_rotation_schema_manifest_v1",
         "tracked_file": str(SCHEMA_PATH),
         "schema_version": schema_version,
+        # Preserve identity policy (defaults to stable if not present)
+        "id_policy": prior.get("id_policy", "stable"),
+        "stable_id": prior.get("stable_id", "oncall_rotation.schema.json"),
+        "id_must_contain": prior.get("id_must_contain", None),
         "sha256": sha256_file(SCHEMA_PATH),
     }
 

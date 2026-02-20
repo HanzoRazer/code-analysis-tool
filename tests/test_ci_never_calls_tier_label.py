@@ -50,6 +50,7 @@ def test_scan_subcommand_ci_never_calls_tier_label(monkeypatch, tmp_path):
             AssertionError("_tier_label() was called in CI mode")
         ),
     )
+    monkeypatch.setenv("CI", "true")
 
     # CLI requires --out to be a relative path within artifacts/ in CI mode
     monkeypatch.chdir(tmp_path)
@@ -71,6 +72,7 @@ def test_default_positional_ci_never_calls_tier_label(monkeypatch, tmp_path):
             AssertionError("_tier_label() was called in CI mode")
         ),
     )
+    monkeypatch.setenv("CI", "true")
 
     rc = _mod.main([str(tmp_path), "--ci"])
     assert rc == 0

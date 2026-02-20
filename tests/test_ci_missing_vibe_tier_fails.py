@@ -43,6 +43,7 @@ class TestScanSubcommandCiGuard:
     def test_missing_vibe_tier_exits_2(self, monkeypatch, capsys, tmp_path):
         fake = lambda *a, **kw: (None, _malformed_result())
         monkeypatch.setattr(_mod, "_api_scan_project", fake)
+        monkeypatch.setenv("CI", "true")
 
         rc = _mod.main([
             "scan", "--root", str(tmp_path),
@@ -61,6 +62,7 @@ class TestDefaultPositionalCiGuard:
     def test_missing_vibe_tier_exits_2(self, monkeypatch, capsys, tmp_path):
         fake = lambda *a, **kw: (None, _malformed_result())
         monkeypatch.setattr(_mod, "_api_scan_project", fake)
+        monkeypatch.setenv("CI", "true")
 
         rc = _mod.main([str(tmp_path), "--ci"])
 

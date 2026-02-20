@@ -1,0 +1,6 @@
+{
+  "manifest_version": 1,
+  "policy_file": "src/code_audit/policy/exit_codes.py",
+  "policy_surface_sha256": "e6e19242f16b10bb0722c046e8465b03cac0ca9d62003ff1075b540dc10e1ed9",
+  "signal_logic_version": "signals_v2"
+}

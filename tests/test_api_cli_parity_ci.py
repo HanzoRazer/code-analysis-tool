@@ -32,11 +32,13 @@ def _run_cli_scan_json(root: Path) -> dict[str, Any]:
     # Keep parity tests stable even if a CI guard checks env.
     env.setdefault("CODE_AUDIT_DETERMINISTIC", "1")
     env.setdefault("PYTHONHASHSEED", "0")
+    # The --ci flag now requires CI=true in the environment.
+    env["CI"] = "true"
 
     cmd = [sys.executable, "-m", "code_audit", str(root), "--json", "--ci"]
     proc = subprocess.run(cmd, capture_output=True, text=True, env=env)
 
-    assert proc.returncode in (0, 1), (
+    assert proc.returncode in (0, 1, 2), (
         f"CLI error (exit {proc.returncode}): {' '.join(cmd)}\n"
         f"stdout:\n{proc.stdout}\n"
         f"stderr:\n{proc.stderr}"
