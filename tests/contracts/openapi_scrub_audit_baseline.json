@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "accepted_json_paths": [],
+  "accepted_keys": [],
+  "notes": "If new scrubbed fields appear, add their json_path and/or key here to accept intentionally."
+}

@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "default": {
+    "max_removed_fields": 0
+  },
+  "endpoints": {
+    "GET /": {
+      "max_removed_fields": 0
+    },
+    "GET /health": {
+      "max_removed_fields": 0
+    },
+    "GET /ready": {
+      "max_removed_fields": 0
+    }
+  },
+  "notes": "Caps scrub removals per endpoint to prevent volatility creep. Endpoint keys must match audit report 'endpoint' exactly."
+}

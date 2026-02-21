@@ -1,0 +1,27 @@
+{
+  "counts_by_json_path": {},
+  "counts_by_key": {},
+  "counts_by_reason": {},
+  "entries": [
+    {
+      "endpoint": "GET /",
+      "fixture": "tests/fixtures/expected/openapi_endpoint__root.json",
+      "removed": []
+    },
+    {
+      "endpoint": "GET /health",
+      "fixture": "tests/fixtures/expected/openapi_endpoint__health.json",
+      "removed": []
+    },
+    {
+      "endpoint": "GET /ready",
+      "fixture": "tests/fixtures/expected/openapi_endpoint__ready.json",
+      "removed": []
+    }
+  ],
+  "totals": {
+    "endpoints": 3,
+    "removed_fields_total": 0
+  },
+  "version": 1
+}

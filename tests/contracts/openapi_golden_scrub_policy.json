@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "mode": "remove",
+  "volatile_key_patterns": [
+    ".*timestamp.*",
+    ".*time.*",
+    ".*created_at.*",
+    ".*updated_at.*",
+    ".*last_seen.*",
+    ".*request_id.*",
+    ".*trace_id.*",
+    ".*span_id.*",
+    ".*correlation_id.*",
+    ".*uuid.*",
+    ".*nonce.*",
+    ".*etag.*",
+    ".*expires.*",
+    ".*duration.*",
+    ".*elapsed.*"
+  ],
+  "volatile_value_patterns": [
+    "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}.*Z$",
+    "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}.*$",
+    "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+  ],
+  "allowlist_paths": [
+    "/expected/json/version",
+    "/expected/json/schema_version"
+  ],
+  "allowlist_keys": [
+    "version",
+    "schema_version"
+  ],
+  "notes": "Any key/value matching volatile patterns is removed unless allowlisted."
+}

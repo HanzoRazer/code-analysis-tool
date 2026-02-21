@@ -1,5 +1,9 @@
 {
   "files": {
+    "tests/contracts/openapi_golden_endpoints.json": "sha256:bb22824622436d260d465fcf3ff2142937682100919d0392df4d2fbf21403486",
+    "tests/contracts/openapi_golden_scrub_policy.json": "sha256:aa352bb17143638101e646c499a2fabe5babfd4cd10dc4386bcd499f50955436",
+    "tests/contracts/openapi_scrub_audit_baseline.json": "sha256:242b65c2f6ecc28741b6067beaaf29fcd1ccdc889c012191c1044fe3d8035763",
+    "tests/contracts/openapi_scrub_budgets.json": "sha256:5cf0abce4c00cb9e16c6d6b2a3fe3748aa4fca0cd2abaf40b4878fc44ba2402a",
     "tests/fixtures/confidence/cases.json": "sha256:6146ea5a974d5145a11140ae47810acc354a674bc18edb67bea8a0be2483a283",
     "tests/fixtures/confidence/expected/many_low_dead_code.json": "sha256:2936224bcd27d744329af0d756d7cf7acad006fce1ffdebfacc877103936a9ef",
     "tests/fixtures/confidence/expected/mixed_severity_sanity.json": "sha256:3ff2bc8bde4969ad03987e5f74e8ec9f70121cd5ff47e9d49c6375ddccb65295",

@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "description": "OpenAPI golden endpoint fixtures: lock response shapes for critical endpoints.",
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/",
+      "fixture_name": "openapi_endpoint__root.json"
+    },
+    {
+      "method": "GET",
+      "path": "/health",
+      "fixture_name": "openapi_endpoint__health.json"
+    },
+    {
+      "method": "GET",
+      "path": "/ready",
+      "fixture_name": "openapi_endpoint__ready.json"
+    }
+  ]
+}

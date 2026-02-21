@@ -9,7 +9,8 @@ from typing import Any
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _EXPECTED_DIR = _REPO_ROOT / "tests" / "fixtures" / "expected"
-_MANIFEST = _REPO_ROOT / "tests" / "contracts" / "golden_fixtures_manifest.json"
+_CONTRACTS_DIR = _REPO_ROOT / "tests" / "contracts"
+_MANIFEST = _CONTRACTS_DIR / "golden_fixtures_manifest.json"
 _SRC = _REPO_ROOT / "src"
 
 
@@ -73,6 +74,18 @@ def _compute_expected_hashes() -> dict[str, str]:
             for ef in sorted(confidence_expected_dir.glob("*.json")):
                 rel = ef.relative_to(_REPO_ROOT).as_posix()
                 hashes[rel] = _sha256_file(ef)
+
+    # Promoted contract artifacts (volatility governance knobs)
+    promoted = [
+        _CONTRACTS_DIR / "openapi_scrub_audit_baseline.json",
+        _CONTRACTS_DIR / "openapi_scrub_budgets.json",
+        _CONTRACTS_DIR / "openapi_golden_scrub_policy.json",
+        _CONTRACTS_DIR / "openapi_golden_endpoints.json",
+    ]
+    for p in promoted:
+        if p.exists():
+            rel = p.relative_to(_REPO_ROOT).as_posix()
+            hashes[rel] = _sha256_file(p)
 
     return hashes
 

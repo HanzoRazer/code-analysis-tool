@@ -8,6 +8,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 EXPECTED_DIR = REPO_ROOT / "tests" / "fixtures" / "expected"
+CONTRACTS_DIR = REPO_ROOT / "tests" / "contracts"
 OUT = REPO_ROOT / "tests" / "contracts" / "golden_fixtures_manifest.json"
 SRC = REPO_ROOT / "src"
 
@@ -119,6 +120,19 @@ def main() -> int:
         for ef in sorted(confidence_expected_dir.glob("*.json")):
             rel = ef.relative_to(REPO_ROOT).as_posix()
             mapping[rel] = _sha256_file(ef)
+
+    # ── Promoted contract artifacts (volatility governance) ──────
+    # These semantic knobs define how golden fixtures are interpreted.
+    promoted = [
+        CONTRACTS_DIR / "openapi_scrub_audit_baseline.json",
+        CONTRACTS_DIR / "openapi_scrub_budgets.json",
+        CONTRACTS_DIR / "openapi_golden_scrub_policy.json",
+        CONTRACTS_DIR / "openapi_golden_endpoints.json",
+    ]
+    for p in promoted:
+        if p.exists():
+            rel = p.relative_to(REPO_ROOT).as_posix()
+            mapping[rel] = _sha256_file(p)
 
     payload = {
         "signal_logic_version": _find_signal_logic_version(),

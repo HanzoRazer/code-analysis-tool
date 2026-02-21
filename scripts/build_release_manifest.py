@@ -185,6 +185,46 @@ def main() -> int:
         bom, "public_rule_registry_manifest",
         ROOT / "tests" / "contracts" / "public_rule_registry_manifest.json",
     )
+    maybe_add_manifest(
+        bom, "openapi_manifest",
+        ROOT / "tests" / "contracts" / "openapi_manifest.json",
+    )
+    maybe_add_manifest(
+        bom, "openapi_scrub_baseline_manifest",
+        ROOT / "tests" / "contracts" / "openapi_scrub_baseline_manifest.json",
+    )
+    maybe_add_manifest(
+        bom, "openapi_scrub_budgets_manifest",
+        ROOT / "tests" / "contracts" / "openapi_scrub_budgets_manifest.json",
+    )
+
+    # OpenAPI scrub budgets file (if present)
+    budgets_file = ROOT / "tests" / "contracts" / "openapi_scrub_budgets.json"
+    if budgets_file.exists():
+        bom["manifests"]["openapi_scrub_budgets_file"] = {
+            "present": True,
+            "path": str(budgets_file.relative_to(ROOT)),
+            "sha256": sha256_file(budgets_file),
+        }
+    else:
+        bom["manifests"]["openapi_scrub_budgets_file"] = {
+            "present": False,
+            "path": str(budgets_file.relative_to(ROOT)),
+        }
+
+    # OpenAPI snapshot (if present)
+    openapi_snapshot = ROOT / "docs" / "openapi.json"
+    if openapi_snapshot.exists():
+        bom["manifests"]["openapi_snapshot"] = {
+            "present": True,
+            "path": str(openapi_snapshot.relative_to(ROOT)),
+            "sha256": sha256_file(openapi_snapshot),
+        }
+    else:
+        bom["manifests"]["openapi_snapshot"] = {
+            "present": False,
+            "path": str(openapi_snapshot.relative_to(ROOT)),
+        }
 
     # Rule registry file (if present)
     rr_file = ROOT / "docs" / "rule_registry.json"

@@ -1,0 +1,6 @@
+{
+  "budgets_path": "tests/contracts/openapi_scrub_budgets.json",
+  "budgets_sha256": "5cf0abce4c00cb9e16c6d6b2a3fe3748aa4fca0cd2abaf40b4878fc44ba2402a",
+  "manifest_version": 1,
+  "signal_logic_version": "signals_v2"
+}
