@@ -1,0 +1,12 @@
+{
+  "endpoint": {
+    "method": "GET",
+    "path": "/ready"
+  },
+  "expected": {
+    "json": {
+      "status": "ready"
+    },
+    "status_code": 200
+  }
+}

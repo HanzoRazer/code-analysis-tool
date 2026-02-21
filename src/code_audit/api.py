@@ -40,6 +40,8 @@ from code_audit.analyzers.routers import RoutersAnalyzer
 from code_audit.analyzers.security import SecurityAnalyzer
 from code_audit.analyzers.deployment import DeploymentAnalyzer
 from code_audit.analyzers.sql_ecosystem import SQLEcosystemAnalyzer
+from code_audit.analyzers.vue_component import VueComponentAnalyzer
+from code_audit.analyzers.vue_coupling import VueCouplingAnalyzer
 from code_audit.core.discover import discover_py_files
 from code_audit.core.runner import run_scan
 from code_audit.model.run_result import RunResult
@@ -61,6 +63,8 @@ _DEFAULT_ANALYZERS = (
     RoutersAnalyzer,
     SecurityAnalyzer,
     SQLEcosystemAnalyzer,
+    VueComponentAnalyzer,
+    VueCouplingAnalyzer,
 )
 
 

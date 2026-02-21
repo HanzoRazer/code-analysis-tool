@@ -1,0 +1,14 @@
+{
+  "endpoint": {
+    "method": "GET",
+    "path": "/"
+  },
+  "expected": {
+    "json": {
+      "docs": "disabled",
+      "name": "Code Analysis API",
+      "version": "1.0.0"
+    },
+    "status_code": 200
+  }
+}

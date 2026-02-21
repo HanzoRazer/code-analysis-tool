@@ -12,7 +12,7 @@ from __future__ import annotations
 from code_audit.model import AnalyzerType, Severity
 from code_audit.model.finding import Finding
 
-# ── confidence scoring semantic version ──────────────────────────────
+# Confidence scoring semantic version.
 # Bump when confidence scoring behavior changes in any user-meaningful way:
 # weights, caps, thresholds, severity factors, volume penalties, etc.
 confidence_logic_version = "confidence_v1"

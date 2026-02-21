@@ -1,31 +1,17 @@
 {
-  "closure_edges": [
-    [
-      "code_audit.insights.confidence",
-      "code_audit.model"
-    ],
-    [
-      "code_audit.insights.confidence",
-      "code_audit.model.finding"
-    ],
-    [
-      "code_audit.model.finding",
-      "code_audit.model"
-    ]
-  ],
   "closure_files": [
     "src/code_audit/insights/confidence.py",
     "src/code_audit/model/__init__.py",
     "src/code_audit/model/finding.py"
   ],
-  "closure_graph_sha256": "9d0a51cfe2d8c3984fc6136132cfd2a5cd8827bcfbc53cdd30164708ac6b15ed",
-  "closure_hash": "ea2d89acc1803e24ece02f169e8886e5bc0985de27f150a9aae63bb46cc83185",
+  "confidence_entrypoints": [
+    "src/code_audit/insights/confidence.py"
+  ],
   "confidence_logic_version": "confidence_v1",
   "files": {
-    "pyproject.toml::confidence_scoring_keys_v1": "4baecd07e4da3861cb5cbb2542332612010055281ef139afdb7544b0a26b0027",
-    "src/code_audit/insights/confidence.py": "ea601fe651cc76195e4c00b4bacf56cfed4990f3339a12ac95d63b711825e7d9",
-    "src/code_audit/model/__init__.py": "6987dd409e73dee8ab86220fa83ae17ccca485dcf4ddbbbb416ca95c9f73fe3a",
-    "src/code_audit/model/finding.py": "b79b41d146eab8e3d39782d964cc90253dd1ef03f604f89ab698f7e88403253b",
+    "src/code_audit/insights/confidence.py": "59f68b3fa6611c6fa19b3dc47f45aafdef93f2aa70ff9af5a54ff758fbe717f1",
+    "src/code_audit/model/__init__.py": "c058c08783c592e944f67247df336c47ccbdcc23227201ff6f5ad667b1ba0f40",
+    "src/code_audit/model/finding.py": "b7e3f0f490a1805230596461c8c3fd9245bca106c80b9c34bf97471cfa27981c",
     "tests/fixtures/confidence/cases.json": "6146ea5a974d5145a11140ae47810acc354a674bc18edb67bea8a0be2483a283",
     "tests/fixtures/confidence/expected/many_low_dead_code.json": "2936224bcd27d744329af0d756d7cf7acad006fce1ffdebfacc877103936a9ef",
     "tests/fixtures/confidence/expected/mixed_severity_sanity.json": "3ff2bc8bde4969ad03987e5f74e8ec9f70121cd5ff47e9d49c6375ddccb65295",
@@ -34,7 +20,6 @@
     "tests/fixtures/confidence/expected/overwhelm_threshold_crossing.json": "7a8b31b80939bc8594471d05d05c413ed3c7011ad5ce034cf7b282df0897c431"
   },
   "hash_modes": {
-    "pyproject.toml::confidence_scoring_keys_v1": "toml_subset",
     "src/code_audit/insights/confidence.py": "ast",
     "src/code_audit/model/__init__.py": "ast",
     "src/code_audit/model/finding.py": "ast",
@@ -46,8 +31,5 @@
     "tests/fixtures/confidence/expected/overwhelm_threshold_crossing.json": "bytes"
   },
   "manifest_version": 1,
-  "pyproject_subset": {
-    "tool.code_audit.confidence": {}
-  },
   "signal_logic_version": "signals_v2"
 }

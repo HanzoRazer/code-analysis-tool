@@ -185,16 +185,18 @@ class _PolicyTransformer(ast.NodeTransformer):
         self.generic_visit(node)
         return node
 
+    _VERSION_ANCHORS = {"CONFIDENCE_POLICY_VERSION", "confidence_logic_version"}
+
     def visit_Assign(self, node: ast.Assign) -> ast.AST | None:
         for t in node.targets:
-            if isinstance(t, ast.Name) and t.id == "CONFIDENCE_POLICY_VERSION":
+            if isinstance(t, ast.Name) and t.id in self._VERSION_ANCHORS:
                 return None
         return node
 
     def visit_AnnAssign(self, node: ast.AnnAssign) -> ast.AST | None:
         if (
             isinstance(node.target, ast.Name)
-            and node.target.id == "CONFIDENCE_POLICY_VERSION"
+            and node.target.id in self._VERSION_ANCHORS
         ):
             return None
         return node
