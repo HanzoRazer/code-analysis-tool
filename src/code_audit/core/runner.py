@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 import json
+import logging
+import os
+import signal as _signal
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -18,6 +22,12 @@ from code_audit.policy.thresholds import tier_from_score
 
 if TYPE_CHECKING:
     from code_audit.analyzers.base import Analyzer
+
+_logger = logging.getLogger(__name__)
+
+# Default per-analyzer timeout in seconds.  Override with
+# CODE_AUDIT_ANALYZER_TIMEOUT env var (0 = no limit).
+_DEFAULT_ANALYZER_TIMEOUT = 300  # 5 minutes
 
 
 def run_scan(
@@ -44,10 +54,38 @@ def run_scan(
         exclude=scan_config.get("exclude"),
     )
 
-    # ── 1. run every analyzer ───────────────────────────────────────
+    # ── 1. run every analyzer (with per-analyzer timeout) ───────────
+    timeout_str = os.environ.get("CODE_AUDIT_ANALYZER_TIMEOUT", "")
+    analyzer_timeout: float | None = (
+        float(timeout_str) if timeout_str else _DEFAULT_ANALYZER_TIMEOUT
+    )
+    if analyzer_timeout == 0:
+        analyzer_timeout = None  # no limit
+
     all_findings: list[Finding] = []
     for analyzer in analyzers:
-        all_findings.extend(analyzer.run(root, files))
+        analyzer_id = getattr(analyzer, "id", type(analyzer).__name__)
+        if analyzer_timeout is not None:
+            # Run with a deadline so a single slow analyzer cannot stall
+            # the entire scan indefinitely.
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                future = pool.submit(analyzer.run, root, files)
+                try:
+                    results = future.result(timeout=analyzer_timeout)
+                    all_findings.extend(results)
+                except FuturesTimeoutError:
+                    _logger.warning(
+                        "Analyzer '%s' timed out after %.0fs — skipped",
+                        analyzer_id,
+                        analyzer_timeout,
+                    )
+                except Exception:
+                    _logger.exception(
+                        "Analyzer '%s' raised an exception — skipped",
+                        analyzer_id,
+                    )
+        else:
+            all_findings.extend(analyzer.run(root, files))
 
     # ── 2. compute confidence score ─────────────────────────────────
     score = compute_confidence(all_findings)

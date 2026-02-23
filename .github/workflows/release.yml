@@ -109,6 +109,39 @@ jobs:
           python -m pip install -e ".[dev]" || true
           python -m pip install build twine
 
+      - name: OpenAPI release gate (semantic diff)
+        run: python scripts/check_openapi_release_gate.py
+
+      - name: Reproduce diff from dist
+        run: python scripts/reproduce_openapi_diff_from_dist.py
+
+      - name: Generate release BOM
+        run: python scripts/generate_release_bom.py
+
+      - name: Validate BOM schema
+        run: python scripts/validate_release_bom.py dist/release_bom.json
+
+      - name: BOM consistency check
+        run: python scripts/check_release_bom_consistency.py --json
+
+      - name: Verify dist payload (OpenAPI artifacts)
+        run: |
+          for f in \
+            release_bom.json \
+            release_bom.schema.json \
+            release_audit_failure.schema.json \
+            openapi_breaking_policy.json \
+            openapi_before.json \
+            openapi_after.json \
+            openapi_diff_report.json \
+            openapi_classifier_manifest.json; do
+            test -f "dist/$f" || { echo "MISSING: dist/$f"; exit 1; }
+          done
+          echo "All 8 OpenAPI dist files present."
+
+      - name: Validate OpenAPI snapshot (spec)
+        run: python scripts/validate_openapi_snapshot.py docs/openapi.json
+
       - name: Run tests
         env:
           CI: "true"
@@ -123,6 +156,12 @@ jobs:
         run: |
           python scripts/build_release_manifest.py --strict --out dist/release_manifest.json
           python -c "import json; p='dist/release_manifest.json'; json.load(open(p,'r',encoding='utf-8')); print('Validated', p)"
+
+      - name: Build release BOM (auditable bill of materials)
+        env:
+          CI: "true"
+        run: |
+          python scripts/build_release_bom.py
 
       - name: Validate dist with twine
         run: |
@@ -144,6 +183,10 @@ jobs:
           generate_release_notes: true
           files: |
             dist/*
+            docs/openapi.json
+            tests/contracts/openapi_manifest.json
+            tests/contracts/openapi_golden_endpoints.json
+            tests/contracts/openapi_golden_endpoints.schema.json
           body: |
             Build metadata:
             - Commit: ${{ steps.meta.outputs.sha }}

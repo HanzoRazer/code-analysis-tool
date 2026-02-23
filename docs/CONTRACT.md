@@ -6,6 +6,26 @@ Anything not described here is not a public contract.
 
 ---
 
+## Release BOM (auditable semantic bill of materials)
+
+Every tagged release publishes `dist/release_bom.json` as a release artifact.
+This BOM is deterministic and self-describing, recording:
+
+- `tool_version`, `engine_version`, `signal_logic_version`
+- schema file hashes
+- contract manifest hashes (golden fixtures, analyzer logic, translator policy, OpenAPI governance artifacts)
+- Web API: OpenAPI snapshot hash, validator manifest, endpoint registry + schema
+- git commit + tag
+
+CI enforces:
+- BOM can be generated deterministically
+- BOM hashes match repo files
+- tag `vX.Y.Z` matches `pyproject.toml` version `X.Y.Z` on tagged CI
+- golden manifest includes promoted OpenAPI artifacts
+- endpoint registry is schema-valid, sorted, unique, and matches OpenAPI snapshot
+
+---
+
 ## 1. Supported Commands (v1 Stable Surface)
 
 The following commands are considered **Supported v1** and are subject to stability guarantees:

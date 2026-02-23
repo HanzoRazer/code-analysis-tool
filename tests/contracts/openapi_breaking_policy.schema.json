@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "openapi_breaking_policy_schema_v1",
+  "title": "OpenAPI Breaking/Unknown Allowlist Policy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "allow_unknown", "allow_breaking"],
+  "properties": {
+    "version": { "type": "integer", "const": 1 },
+    "allow_unknown": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/policy_item" },
+      "default": []
+    },
+    "allow_breaking": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/policy_item" },
+      "default": []
+    },
+    "allow_breaking_to_non_breaking": {
+      "type": "boolean",
+      "default": false,
+      "description": "If true, allow_breaking entries can be converted to non-breaking. Default false (max safety)."
+    }
+  },
+  "$defs": {
+    "policy_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "reason"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "op": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Operation key, e.g. 'GET /items/{}'"
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Normalized path, e.g. '/items/{}' (alternative to op)"
+        },
+        "location": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Precise location string, e.g. 'responses.200.content.application/json.schema'"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 3
+        }
+      },
+      "anyOf": [
+        { "required": ["op"] },
+        { "required": ["path"] }
+      ]
+    }
+  }
+}

@@ -1,0 +1,37 @@
+name: OpenAPI Release Gate
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  openapi-release-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history for tag diff)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install (editable + dev extras)
+        run: pip install -e ".[dev]"
+
+      - name: Run OpenAPI release gate
+        run: python scripts/check_openapi_release_gate.py
+
+      - name: Upload diff report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: openapi-diff-report
+          path: dist/openapi_diff_report.json
+          if-no-files-found: ignore

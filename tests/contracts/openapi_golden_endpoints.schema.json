@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "openapi_golden_endpoints_schema_v1",
+  "title": "OpenAPI Golden Endpoints Registry",
+  "description": "Schema for the endpoint registry contract artifact. Only object-form entries are allowed (string form is banned).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "endpoints"],
+  "properties": {
+    "version": { "type": "integer", "const": 1 },
+    "description": { "type": "string" },
+    "endpoints": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["method", "path"],
+        "properties": {
+          "method": {
+            "type": "string",
+            "enum": ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS", "TRACE"]
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^/"
+          },
+          "fixture_name": {
+            "type": "string",
+            "description": "Name of the golden fixture file for this endpoint."
+          }
+        },
+        "additionalProperties": false
+      },
+      "uniqueItems": true
+    }
+  }
+}

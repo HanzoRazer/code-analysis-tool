@@ -68,14 +68,28 @@ def _is_assert_false(node: ast.Assert) -> bool:
     return False
 
 
-def _get_enclosing_function(tree: ast.AST, target: ast.AST) -> str:
-    """Find the enclosing function name for a node, or '<module>'."""
+def _build_parent_map(tree: ast.AST) -> dict[int, ast.AST]:
+    """Build a child-id → parent mapping in a single O(N) walk."""
+    parent_map: dict[int, ast.AST] = {}
     for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            for child in ast.walk(node):
-                if child is target:
-                    return node.name
-    return "<module>"
+        for child in ast.iter_child_nodes(node):
+            parent_map[id(child)] = node
+    return parent_map
+
+
+def _get_enclosing_function(parent_map: dict[int, ast.AST], target: ast.AST) -> str:
+    """Find the enclosing function name for *target* using a pre-built parent map.
+
+    Walks up the parent chain in O(depth) instead of O(N²).
+    """
+    node = target
+    while True:
+        parent = parent_map.get(id(node))
+        if parent is None:
+            return "<module>"
+        if isinstance(parent, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            return parent.name
+        node = parent
 
 
 def _stmt_repr(stmt: ast.stmt, max_len: int = 60) -> str:
@@ -119,7 +133,7 @@ class DeadCodeAnalyzer:
     """
 
     id: str = "dead_code"
-    version: str = "1.0.0"
+    version: str = "1.1.0"
 
     def run(self, root: Path, files: list[Path]) -> list[Finding]:
         findings: list[Finding] = []
@@ -132,15 +146,16 @@ class DeadCodeAnalyzer:
                 continue
 
             rel = path.relative_to(root).as_posix()
+            parent_map = _build_parent_map(tree)
 
             # Detect unreachable code after terminators
-            findings.extend(self._detect_unreachable(tree, rel, source))
+            findings.extend(self._detect_unreachable(tree, rel, source, parent_map))
 
             # Detect if False: blocks
-            findings.extend(self._detect_if_false(tree, rel, source))
+            findings.extend(self._detect_if_false(tree, rel, source, parent_map))
 
             # Detect assert False
-            findings.extend(self._detect_assert_false(tree, rel, source))
+            findings.extend(self._detect_assert_false(tree, rel, source, parent_map))
 
         # Assign stable finding IDs (fingerprint-based)
         for i, f in enumerate(findings):
@@ -149,7 +164,7 @@ class DeadCodeAnalyzer:
         return findings
 
     def _detect_unreachable(
-        self, tree: ast.AST, rel: str, source: str
+        self, tree: ast.AST, rel: str, source: str, parent_map: dict[int, ast.AST]
     ) -> list[Finding]:
         """Detect statements after unconditional terminators."""
         findings: list[Finding] = []
@@ -166,7 +181,7 @@ class DeadCodeAnalyzer:
                 if node.orelse:
                     findings.extend(
                         self._check_body_for_unreachable(
-                            node.orelse, tree, rel, source
+                            node.orelse, parent_map, rel, source
                         )
                     )
             elif isinstance(node, (ast.For, ast.AsyncFor, ast.While)):
@@ -179,19 +194,19 @@ class DeadCodeAnalyzer:
                 for handler in node.handlers:
                     findings.extend(
                         self._check_body_for_unreachable(
-                            handler.body, tree, rel, source
+                            handler.body, parent_map, rel, source
                         )
                     )
                 if node.orelse:
                     findings.extend(
                         self._check_body_for_unreachable(
-                            node.orelse, tree, rel, source
+                            node.orelse, parent_map, rel, source
                         )
                     )
                 if node.finalbody:
                     findings.extend(
                         self._check_body_for_unreachable(
-                            node.finalbody, tree, rel, source
+                            node.finalbody, parent_map, rel, source
                         )
                     )
             elif isinstance(node, ast.Module):
@@ -199,7 +214,7 @@ class DeadCodeAnalyzer:
 
             if body:
                 findings.extend(
-                    self._check_body_for_unreachable(body, tree, rel, source)
+                    self._check_body_for_unreachable(body, parent_map, rel, source)
                 )
 
         return findings
@@ -207,7 +222,7 @@ class DeadCodeAnalyzer:
     def _check_body_for_unreachable(
         self,
         body: list[ast.stmt],
-        tree: ast.AST,
+        parent_map: dict[int, ast.AST],
         rel: str,
         source: str,
     ) -> list[Finding]:
@@ -225,7 +240,7 @@ class DeadCodeAnalyzer:
                 line_end = getattr(last_unreachable, "end_lineno", line_start) or line_start
 
                 terminator = _terminator_name(stmt)
-                symbol = _get_enclosing_function(tree, stmt)
+                symbol = _get_enclosing_function(parent_map, stmt)
                 count = len(unreachable_stmts)
 
                 snippet_parts = [f"# {count} unreachable statement(s) after {terminator}"]
@@ -263,7 +278,7 @@ class DeadCodeAnalyzer:
         return findings
 
     def _detect_if_false(
-        self, tree: ast.AST, rel: str, source: str
+        self, tree: ast.AST, rel: str, source: str, parent_map: dict[int, ast.AST]
     ) -> list[Finding]:
         """Detect `if False:` and `while False:` blocks."""
         findings: list[Finding] = []
@@ -272,7 +287,7 @@ class DeadCodeAnalyzer:
             if isinstance(node, ast.If) and _is_if_false(node):
                 line_start = node.lineno
                 line_end = getattr(node, "end_lineno", line_start) or line_start
-                symbol = _get_enclosing_function(tree, node)
+                symbol = _get_enclosing_function(parent_map, node)
 
                 body_count = len(node.body)
                 snippet = f"if False:  # {body_count} statement(s) never execute"
@@ -303,7 +318,7 @@ class DeadCodeAnalyzer:
             elif isinstance(node, ast.While) and _is_while_false(node):
                 line_start = node.lineno
                 line_end = getattr(node, "end_lineno", line_start) or line_start
-                symbol = _get_enclosing_function(tree, node)
+                symbol = _get_enclosing_function(parent_map, node)
 
                 body_count = len(node.body)
                 snippet = f"while False:  # {body_count} statement(s) never execute"
@@ -334,7 +349,7 @@ class DeadCodeAnalyzer:
         return findings
 
     def _detect_assert_false(
-        self, tree: ast.AST, rel: str, source: str
+        self, tree: ast.AST, rel: str, source: str, parent_map: dict[int, ast.AST]
     ) -> list[Finding]:
         """Detect `assert False` patterns."""
         findings: list[Finding] = []
@@ -343,7 +358,7 @@ class DeadCodeAnalyzer:
             if isinstance(node, ast.Assert) and _is_assert_false(node):
                 line_start = node.lineno
                 line_end = getattr(node, "end_lineno", line_start) or line_start
-                symbol = _get_enclosing_function(tree, node)
+                symbol = _get_enclosing_function(parent_map, node)
 
                 snippet = "assert False  # always fails"
 

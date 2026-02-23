@@ -9,6 +9,27 @@ from code_audit.model import AnalyzerType, Severity
 from code_audit.model.finding import Finding, Location, make_fingerprint
 
 
+def _build_parent_map(tree: ast.AST) -> dict[int, ast.AST]:
+    """Build a child-id → parent mapping in a single O(N) walk."""
+    parent_map: dict[int, ast.AST] = {}
+    for node in ast.walk(tree):
+        for child in ast.iter_child_nodes(node):
+            parent_map[id(child)] = node
+    return parent_map
+
+
+def _get_enclosing_function(parent_map: dict[int, ast.AST], target: ast.AST) -> str:
+    """Find the enclosing function name for *target* using a pre-built parent map."""
+    node = target
+    while True:
+        parent = parent_map.get(id(node))
+        if parent is None:
+            return "<module>"
+        if isinstance(parent, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            return parent.name
+        node = parent
+
+
 def _is_bare_except(handler: ast.ExceptHandler) -> bool:
     """``except:`` with no type specified."""
     return handler.type is None
@@ -37,7 +58,7 @@ class ExceptionsAnalyzer:
     """Finds bare/broad excepts and swallowed exceptions."""
 
     id: str = "exceptions"
-    version: str = "1.0.0"
+    version: str = "1.1.0"
 
     def run(self, root: Path, files: list[Path]) -> list[Finding]:
         findings: list[Finding] = []
@@ -49,6 +70,7 @@ class ExceptionsAnalyzer:
                 continue
 
             rel = path.relative_to(root).as_posix()
+            parent_map = _build_parent_map(tree)
             for node in ast.walk(tree):
                 if not isinstance(node, ast.ExceptHandler):
                     continue
@@ -82,13 +104,7 @@ class ExceptionsAnalyzer:
                 snippet = f"except {type_str}:\n    {body_str}" if type_str else f"except:\n    {body_str}"
 
                 # Try to find the enclosing function name
-                symbol = "<module>"
-                for parent in ast.walk(tree):
-                    if isinstance(parent, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                        for child in ast.walk(parent):
-                            if child is node:
-                                symbol = parent.name
-                                break
+                symbol = _get_enclosing_function(parent_map, node)
 
                 findings.append(
                     Finding(

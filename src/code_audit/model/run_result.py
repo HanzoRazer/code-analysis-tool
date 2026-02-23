@@ -29,6 +29,8 @@ class RunResult:
     tool_version: str = __version__
     engine_version: str = "engine_v1"
     signal_logic_version: str = "signals_v2"
+    openapi_classifier_version: str = "openapi_classifier_v1"  # version anchor: OpenAPI diff classifier logic
+    bom_logic_version: str = "bom_v1"  # version anchor: BOM generation + consistency logic
     copy_version: str = "i18n@dev"
 
     config: dict = field(default_factory=dict)

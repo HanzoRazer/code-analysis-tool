@@ -1,0 +1,25 @@
+{
+  "files": {
+    "scripts\\check_release_bom_consistency.py": {
+      "mode": "ast",
+      "sha256": "8d7d35b18d5fee8a63db2166cc1dcd58a7ce0a23999ab177e9ca5e7324816756",
+      "sha256_short": "8d7d35b18d5f"
+    },
+    "scripts\\generate_release_bom.py": {
+      "mode": "ast",
+      "sha256": "c58327d29a23280fabc55768ffbf9b78d2135bcbee149ec833a4a12d244b2d8d",
+      "sha256_short": "c58327d29a23"
+    }
+  },
+  "json_files": {
+    "schemas\\release_audit_failure.schema.json": {
+      "sha256": "2e5d6aefb7272ace1263e951a1c6875e7e39d14bbfefcc6b00a37b991477b327",
+      "sha256_short": "2e5d6aefb727"
+    },
+    "schemas\\release_bom.schema.json": {
+      "sha256": "891e7125eb42de676d81edbc32bc89eb5a2c330ba4e314810cc873024e0e4c2e",
+      "sha256_short": "891e7125eb42"
+    }
+  },
+  "version": 1
+}

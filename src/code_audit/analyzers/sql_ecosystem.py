@@ -436,20 +436,21 @@ class PythonSQLInjectionValidator(BaseSQLValidator):
     id = "injection"
 
     # Patterns for dynamic SQL construction
+    # NOTE: Use [^'"\n]{0,500} instead of .*? to prevent catastrophic backtracking
     FSTRING_SQL_PATTERN = re.compile(
-        r'f["\'].*?(SELECT|INSERT|UPDATE|DELETE|WHERE|FROM).*?\{',
+        r'f["\'][^\'"\n]{0,500}?(SELECT|INSERT|UPDATE|DELETE|WHERE|FROM)[^\'"\n]{0,500}?\{',
         re.IGNORECASE
     )
     FORMAT_SQL_PATTERN = re.compile(
-        r'["\'].*?(SELECT|INSERT|UPDATE|DELETE).*?["\']\.format\(',
+        r'["\'][^\'"\n]{0,500}?(SELECT|INSERT|UPDATE|DELETE)[^\'"\n]{0,500}?["\']\.format\(',
         re.IGNORECASE
     )
     CONCAT_SQL_PATTERN = re.compile(
-        r'["\'].*?(SELECT|INSERT|UPDATE|DELETE).*?["\']\s*\+',
+        r'["\'][^\'"\n]{0,500}?(SELECT|INSERT|UPDATE|DELETE)[^\'"\n]{0,500}?["\']\s*\+',
         re.IGNORECASE
     )
     PERCENT_SQL_PATTERN = re.compile(
-        r'["\'].*?(SELECT|INSERT|UPDATE|DELETE).*?%s.*?["\']',
+        r'["\'][^\'"\n]{0,500}?(SELECT|INSERT|UPDATE|DELETE)[^\'"\n]{0,500}?%s[^\'"\n]{0,500}?["\']',
         re.IGNORECASE
     )
 
@@ -731,22 +732,26 @@ class PerformanceValidator(BaseSQLValidator):
         findings = []
 
         # Check for SELECT inside loop patterns (in Python)
+        # Use line-by-line approach to avoid catastrophic backtracking with DOTALL
         if file_path.suffix == '.py':
-            pattern = re.compile(
-                r'for\s+\w+\s+in\s+.*?:\s*\n\s*.*?\.execute\(',
-                re.MULTILINE | re.DOTALL
-            )
-            for match in pattern.finditer(content):
-                line_num = self._get_line_number(content, match.start())
-                findings.append(self._make_finding(
-                    severity=Severity.HIGH,
-                    message="Potential N+1 query: execute() inside loop",
-                    file_path=file_path,
-                    line=line_num,
-                    snippet=match.group()[:80],
-                    recommendation="Use batch query or JOIN to fetch all data at once",
-                    rule_id="n_plus_one",
-                ))
+            loop_pattern = re.compile(r'^\s*for\s+\w+\s+in\s+', re.MULTILINE)
+            execute_pattern = re.compile(r'\.execute\(')
+            lines = content.split('\n')
+            for i, line in enumerate(lines):
+                if loop_pattern.search(line):
+                    # Check next few lines (up to 5) for .execute(
+                    for j in range(i + 1, min(i + 6, len(lines))):
+                        if execute_pattern.search(lines[j]):
+                            findings.append(self._make_finding(
+                                severity=Severity.HIGH,
+                                message="Potential N+1 query: execute() inside loop",
+                                file_path=file_path,
+                                line=i + 1,
+                                snippet=(line.strip() + '\n' + lines[j].strip())[:80],
+                                recommendation="Use batch query or JOIN to fetch all data at once",
+                                rule_id="n_plus_one",
+                            ))
+                            break
 
         return findings
 
@@ -806,9 +811,11 @@ class SchemaValidator(BaseSQLValidator):
         findings = []
 
         # Find CREATE TABLE blocks
+        # Use [^)]{0,10000} instead of .*? to prevent catastrophic backtracking
+        # on files with deeply nested parentheses
         pattern = re.compile(
-            r'CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(\w+)\s*\((.*?)\)',
-            re.IGNORECASE | re.DOTALL
+            r'CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(\w+)\s*\(([^)]{0,10000})\)',
+            re.IGNORECASE
         )
 
         for match in pattern.finditer(content):
@@ -1192,7 +1199,7 @@ class SQLEcosystemAnalyzer:
     """
 
     id = "sql_ecosystem"
-    version = "1.0.0"
+    version = "1.1.0"
 
     # Registry of built-in validators
     _BUILTIN_VALIDATORS: ClassVar[Dict[str, Type[BaseSQLValidator]]] = {

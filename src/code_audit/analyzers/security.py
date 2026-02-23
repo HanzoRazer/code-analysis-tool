@@ -94,14 +94,28 @@ def _looks_like_real_secret(value: str) -> bool:
     return False
 
 
-def _get_enclosing_function(tree: ast.AST, target: ast.AST) -> str:
-    """Find the enclosing function name for a node, or '<module>'."""
+def _build_parent_map(tree: ast.AST) -> dict[int, ast.AST]:
+    """Build a child-id → parent mapping in a single O(N) walk."""
+    parent_map: dict[int, ast.AST] = {}
     for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            for child in ast.walk(node):
-                if child is target:
-                    return node.name
-    return "<module>"
+        for child in ast.iter_child_nodes(node):
+            parent_map[id(child)] = node
+    return parent_map
+
+
+def _get_enclosing_function(parent_map: dict[int, ast.AST], target: ast.AST) -> str:
+    """Find the enclosing function name for *target* using a pre-built parent map.
+
+    Walks up the parent chain in O(depth) instead of O(N²).
+    """
+    node = target
+    while True:
+        parent = parent_map.get(id(node))
+        if parent is None:
+            return "<module>"
+        if isinstance(parent, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            return parent.name
+        node = parent
 
 
 def _get_string_value(node: ast.expr) -> Optional[str]:
@@ -145,7 +159,7 @@ class SecurityAnalyzer:
     """
 
     id: str = "security"
-    version: str = "1.0.0"
+    version: str = "1.1.0"
 
     def run(self, root: Path, files: list[Path]) -> list[Finding]:
         findings: list[Finding] = []
@@ -158,14 +172,15 @@ class SecurityAnalyzer:
                 continue
 
             rel = path.relative_to(root).as_posix()
+            parent_map = _build_parent_map(tree)
 
             # Run all detectors
-            findings.extend(self._detect_hardcoded_secrets(tree, rel, source))
-            findings.extend(self._detect_eval_exec(tree, rel, source))
-            findings.extend(self._detect_subprocess_shell(tree, rel, source))
-            findings.extend(self._detect_sql_injection(tree, rel, source))
-            findings.extend(self._detect_pickle_load(tree, rel, source))
-            findings.extend(self._detect_yaml_unsafe(tree, rel, source))
+            findings.extend(self._detect_hardcoded_secrets(tree, rel, source, parent_map))
+            findings.extend(self._detect_eval_exec(tree, rel, source, parent_map))
+            findings.extend(self._detect_subprocess_shell(tree, rel, source, parent_map))
+            findings.extend(self._detect_sql_injection(tree, rel, source, parent_map))
+            findings.extend(self._detect_pickle_load(tree, rel, source, parent_map))
+            findings.extend(self._detect_yaml_unsafe(tree, rel, source, parent_map))
 
         # Assign stable finding IDs (fingerprint-based)
         for i, f in enumerate(findings):
@@ -174,7 +189,7 @@ class SecurityAnalyzer:
         return findings
 
     def _detect_hardcoded_secrets(
-        self, tree: ast.AST, rel: str, source: str
+        self, tree: ast.AST, rel: str, source: str, parent_map: dict[int, ast.AST]
     ) -> list[Finding]:
         """Detect hardcoded secrets in assignments."""
         findings: list[Finding] = []
@@ -189,7 +204,7 @@ class SecurityAnalyzer:
                             value = _get_string_value(node.value)
                             if value and _looks_like_real_secret(value):
                                 findings.append(self._make_secret_finding(
-                                    node, rel, tree, var_name, value
+                                    node, rel, parent_map, var_name, value
                                 ))
 
             elif isinstance(node, ast.AnnAssign) and node.value:
@@ -199,18 +214,18 @@ class SecurityAnalyzer:
                         value = _get_string_value(node.value)
                         if value and _looks_like_real_secret(value):
                             findings.append(self._make_secret_finding(
-                                node, rel, tree, var_name, value
+                                node, rel, parent_map, var_name, value
                             ))
 
         return findings
 
     def _make_secret_finding(
-        self, node: ast.stmt, rel: str, tree: ast.AST, var_name: str, value: str
+        self, node: ast.stmt, rel: str, parent_map: dict[int, ast.AST], var_name: str, value: str
     ) -> Finding:
         """Create a finding for a hardcoded secret."""
         line_start = node.lineno
         line_end = getattr(node, "end_lineno", line_start) or line_start
-        symbol = _get_enclosing_function(tree, node)
+        symbol = _get_enclosing_function(parent_map, node)
 
         # Redact the actual value in snippet
         redacted = value[:4] + "..." + value[-4:] if len(value) > 12 else "***"
@@ -233,7 +248,7 @@ class SecurityAnalyzer:
         )
 
     def _detect_eval_exec(
-        self, tree: ast.AST, rel: str, source: str
+        self, tree: ast.AST, rel: str, source: str, parent_map: dict[int, ast.AST]
     ) -> list[Finding]:
         """Detect use of eval() or exec()."""
         findings: list[Finding] = []
@@ -251,7 +266,7 @@ class SecurityAnalyzer:
             if func_name:
                 line_start = node.lineno
                 line_end = getattr(node, "end_lineno", line_start) or line_start
-                symbol = _get_enclosing_function(tree, node)
+                symbol = _get_enclosing_function(parent_map, node)
 
                 snippet = f"{func_name}(...)"
 
@@ -274,7 +289,7 @@ class SecurityAnalyzer:
         return findings
 
     def _detect_subprocess_shell(
-        self, tree: ast.AST, rel: str, source: str
+        self, tree: ast.AST, rel: str, source: str, parent_map: dict[int, ast.AST]
     ) -> list[Finding]:
         """Detect subprocess calls with shell=True and os.system()."""
         findings: list[Finding] = []
@@ -307,7 +322,7 @@ class SecurityAnalyzer:
             if is_os_system:
                 line_start = node.lineno
                 line_end = getattr(node, "end_lineno", line_start) or line_start
-                symbol = _get_enclosing_function(tree, node)
+                symbol = _get_enclosing_function(parent_map, node)
 
                 snippet = f"{func_name}(...)"
 
@@ -342,7 +357,7 @@ class SecurityAnalyzer:
             if has_shell_true:
                 line_start = node.lineno
                 line_end = getattr(node, "end_lineno", line_start) or line_start
-                symbol = _get_enclosing_function(tree, node)
+                symbol = _get_enclosing_function(parent_map, node)
 
                 snippet = f"{func_name}(..., shell=True)"
 
@@ -365,7 +380,7 @@ class SecurityAnalyzer:
         return findings
 
     def _detect_sql_injection(
-        self, tree: ast.AST, rel: str, source: str
+        self, tree: ast.AST, rel: str, source: str, parent_map: dict[int, ast.AST]
     ) -> list[Finding]:
         """Detect SQL injection via string formatting."""
         findings: list[Finding] = []
@@ -425,7 +440,7 @@ class SecurityAnalyzer:
             if is_sql_injection:
                 line_start = node.lineno
                 line_end = getattr(node, "end_lineno", line_start) or line_start
-                symbol = _get_enclosing_function(tree, node)
+                symbol = _get_enclosing_function(parent_map, node)
 
                 findings.append(Finding(
                     finding_id="",
@@ -445,7 +460,7 @@ class SecurityAnalyzer:
         return findings
 
     def _detect_pickle_load(
-        self, tree: ast.AST, rel: str, source: str
+        self, tree: ast.AST, rel: str, source: str, parent_map: dict[int, ast.AST]
     ) -> list[Finding]:
         """Detect pickle.load() which can execute arbitrary code."""
         findings: list[Finding] = []
@@ -467,7 +482,7 @@ class SecurityAnalyzer:
             if is_pickle_load:
                 line_start = node.lineno
                 line_end = getattr(node, "end_lineno", line_start) or line_start
-                symbol = _get_enclosing_function(tree, node)
+                symbol = _get_enclosing_function(parent_map, node)
 
                 snippet = f"{func_name}(...)"
 
@@ -490,7 +505,7 @@ class SecurityAnalyzer:
         return findings
 
     def _detect_yaml_unsafe(
-        self, tree: ast.AST, rel: str, source: str
+        self, tree: ast.AST, rel: str, source: str, parent_map: dict[int, ast.AST]
     ) -> list[Finding]:
         """Detect yaml.load() without safe Loader and yaml.unsafe_load()."""
         findings: list[Finding] = []
@@ -517,7 +532,7 @@ class SecurityAnalyzer:
             if is_unsafe_load:
                 line_start = node.lineno
                 line_end = getattr(node, "end_lineno", line_start) or line_start
-                symbol = _get_enclosing_function(tree, node)
+                symbol = _get_enclosing_function(parent_map, node)
 
                 snippet = "yaml.unsafe_load(...)"
 
@@ -567,7 +582,7 @@ class SecurityAnalyzer:
             if not has_safe_loader:
                 line_start = node.lineno
                 line_end = getattr(node, "end_lineno", line_start) or line_start
-                symbol = _get_enclosing_function(tree, node)
+                symbol = _get_enclosing_function(parent_map, node)
 
                 snippet = "yaml.load(...) # missing Loader"
 

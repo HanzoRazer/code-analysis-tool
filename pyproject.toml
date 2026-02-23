@@ -20,6 +20,7 @@ code_audit = ["data/**/*"]
 dev = [
   "pytest>=7.0",
   "jsonschema>=4.0",
+  "openapi-spec-validator>=0.7.0",
   "ruff>=0.4.0",
 ]
 api = [

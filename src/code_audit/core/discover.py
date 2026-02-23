@@ -80,6 +80,7 @@ def discover_py_files(
     *,
     include: list[str] | None = None,
     exclude: list[str] | None = None,
+    max_file_bytes: int = 2_000_000,
 ) -> list[Path]:
     """Recursively find ``*.py`` files under *root*.
 
@@ -91,6 +92,9 @@ def discover_py_files(
         Glob patterns to include.  Default: ``["**/*.py"]``.
     exclude:
         Directory basenames to skip.  Merged with built-in defaults.
+    max_file_bytes:
+        Skip files larger than this (default 2 MB).  Prevents
+        pathologically large generated files from stalling analyzers.
 
     Returns
     -------
@@ -106,6 +110,11 @@ def discover_py_files(
             if any(part in skip for part in p.relative_to(root).parts):
                 continue
             if p.is_file():
+                try:
+                    if p.stat().st_size > max_file_bytes:
+                        continue
+                except OSError:
+                    continue
                 results.append(p.resolve())
 
     return sorted(set(results))

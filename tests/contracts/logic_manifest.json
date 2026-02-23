@@ -8,9 +8,9 @@
     },
     {
       "class_name": "DeadCodeAnalyzer",
-      "logic_hash": "sha256:a93fe0c72188f4aa8babb5a40a1e09eac1ffdf3dc9f21ac19417edc81d1c8f72",
+      "logic_hash": "sha256:8188ebbcfb5d4e0857ad1904f98aaf649ecd8154443d70554c5ccc3edc653766",
       "module": "code_audit.analyzers.dead_code",
-      "version": "1.0.0"
+      "version": "1.1.0"
     },
     {
       "class_name": "DeploymentAnalyzer",
@@ -26,9 +26,9 @@
     },
     {
       "class_name": "ExceptionsAnalyzer",
-      "logic_hash": "sha256:f1437c28c3b89800009f1ba9a4315ceec5408e474d7b6cbffff83c3121bbacd9",
+      "logic_hash": "sha256:13e60e6ad3df1a95e4f26b759a718311f6d56ccd6f5936a8f291e765ebbb2c2c",
       "module": "code_audit.analyzers.exceptions",
-      "version": "1.0.0"
+      "version": "1.1.0"
     },
     {
       "class_name": "FileSizesAnalyzer",
@@ -50,14 +50,26 @@
     },
     {
       "class_name": "SecurityAnalyzer",
-      "logic_hash": "sha256:22afa25c4c2cd1a186ed0d6d61a5b9a8d443fb53eebb0b6e65945a2ced9873e7",
+      "logic_hash": "sha256:f85254fd609df2dcb908b656e977529978256c45b014b5745543d84cf7aaac32",
       "module": "code_audit.analyzers.security",
-      "version": "1.0.0"
+      "version": "1.1.0"
     },
     {
       "class_name": "SQLEcosystemAnalyzer",
-      "logic_hash": "sha256:ff7690093eebba0cb885096c80fd7b7798021e04807d2a4d9aa99c146e8f96d2",
+      "logic_hash": "sha256:5f5714b01c724a11bfea8e09ae1387c7b6ea5e1c1f308d458f2a680b2c2bdeb2",
       "module": "code_audit.analyzers.sql_ecosystem",
+      "version": "1.1.0"
+    },
+    {
+      "class_name": "VueComponentAnalyzer",
+      "logic_hash": "sha256:692b5b27e89ae1bfc04cff78917653a0e29a398d89955ce57ca0e1546a858dc9",
+      "module": "code_audit.analyzers.vue_component",
+      "version": "1.0.0"
+    },
+    {
+      "class_name": "VueCouplingAnalyzer",
+      "logic_hash": "sha256:c279ec5514ba0a42c43d6511c8fd2c0ca7ab70eac94a1b8299b5f92513f9535d",
+      "module": "code_audit.analyzers.vue_coupling",
       "version": "1.0.0"
     }
   ],

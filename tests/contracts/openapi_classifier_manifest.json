@@ -1,0 +1,60 @@
+{
+  "closure_graph": {
+    "edge_graph_sha256": "f620d1ffe7c89e32969ceb12c822d0591cae4955dddee1772e5488a53edb223d",
+    "edge_graph_sha256_short": "f620d1ffe7c8",
+    "files": {
+      "src\\code_audit\\web_api\\openapi_diff.py": {
+        "mode": "ast",
+        "sha256": "56a419843cf3d8380727390db474472ce217c7540082567da97be11e24eb6e7a",
+        "sha256_short": "56a419843cf3"
+      },
+      "src\\code_audit\\web_api\\openapi_normalize.py": {
+        "mode": "ast",
+        "sha256": "335b9a121314d79b628cde070f89637f0752bef36abcd09e54a0e658ca717485",
+        "sha256_short": "335b9a121314"
+      },
+      "src\\code_audit\\web_api\\openapi_path_match.py": {
+        "mode": "ast",
+        "sha256": "0657f45c1be18e1b92541713e920bbbb0eff5477d32031d1ef1197fa8db92399",
+        "sha256_short": "0657f45c1be1"
+      },
+      "src\\code_audit\\web_api\\schema_semver.py": {
+        "mode": "ast",
+        "sha256": "0284f89e2b3d16e9e907407af9011ef291c4c9249b8923b62bf56be3add2695c",
+        "sha256_short": "0284f89e2b3d"
+      }
+    }
+  },
+  "edges": {
+    "src\\code_audit\\web_api\\openapi_diff.py": [
+      "src\\code_audit\\web_api\\openapi_normalize.py",
+      "src\\code_audit\\web_api\\schema_semver.py"
+    ],
+    "src\\code_audit\\web_api\\openapi_normalize.py": [
+      "src\\code_audit\\web_api\\openapi_path_match.py"
+    ]
+  },
+  "entrypoints": [
+    "src\\code_audit\\web_api\\openapi_normalize.py",
+    "src\\code_audit\\web_api\\openapi_diff.py",
+    "src\\code_audit\\web_api\\schema_semver.py"
+  ],
+  "files": {
+    "src\\code_audit\\web_api\\openapi_diff.py": {
+      "mode": "ast",
+      "sha256": "56a419843cf3d8380727390db474472ce217c7540082567da97be11e24eb6e7a",
+      "sha256_short": "56a419843cf3"
+    },
+    "src\\code_audit\\web_api\\openapi_normalize.py": {
+      "mode": "ast",
+      "sha256": "335b9a121314d79b628cde070f89637f0752bef36abcd09e54a0e658ca717485",
+      "sha256_short": "335b9a121314"
+    },
+    "src\\code_audit\\web_api\\schema_semver.py": {
+      "mode": "ast",
+      "sha256": "0284f89e2b3d16e9e907407af9011ef291c4c9249b8923b62bf56be3add2695c",
+      "sha256_short": "0284f89e2b3d"
+    }
+  },
+  "version": 1
+}

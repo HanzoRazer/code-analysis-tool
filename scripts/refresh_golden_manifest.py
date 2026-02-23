@@ -123,16 +123,31 @@ def main() -> int:
 
     # ── Promoted contract artifacts (volatility governance) ──────
     # These semantic knobs define how golden fixtures are interpreted.
+    # They are REQUIRED — if missing, the manifest is incomplete.
+    #
+    # NOTE: If you edit the promoted list, update:
+    #   - tests/test_contract_manifest_self_consistency.py (PROMOTED_ARTIFACTS)
     promoted = [
         CONTRACTS_DIR / "openapi_scrub_audit_baseline.json",
         CONTRACTS_DIR / "openapi_scrub_budgets.json",
         CONTRACTS_DIR / "openapi_golden_scrub_policy.json",
         CONTRACTS_DIR / "openapi_golden_endpoints.json",
     ]
+
+    missing = [p for p in promoted if not p.exists()]
+    if missing:
+        lines = [
+            "Golden manifest promotion invariant violated:",
+            "The following required contract artifacts are missing:",
+        ]
+        lines.extend([f"- {p.relative_to(REPO_ROOT)}" for p in missing])
+        lines.append("")
+        lines.append("These files define the OpenAPI contract interpretation surface and must exist.")
+        raise SystemExit("\n".join(lines))
+
     for p in promoted:
-        if p.exists():
-            rel = p.relative_to(REPO_ROOT).as_posix()
-            mapping[rel] = _sha256_file(p)
+        rel = p.relative_to(REPO_ROOT).as_posix()
+        mapping[rel] = _sha256_file(p)
 
     payload = {
         "signal_logic_version": _find_signal_logic_version(),

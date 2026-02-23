@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "release_audit_failure_schema_v1",
+  "schema_version": "release_audit_failure_schema_v1",
+  "title": "Release Audit Failure Schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["kind", "path", "expected", "got", "ci"],
+  "properties": {
+    "kind": { "$ref": "#/$defs/kind" },
+    "path": { "type": "string", "minLength": 1 },
+    "expected": {},
+    "got": {},
+    "details": {},
+    "ci": { "type": "boolean" }
+  },
+  "$defs": {
+    "kind": {
+      "type": "string",
+      "enum": [
+        "input_type_error",
+        "bom_schema_validation",
+        "bom_hash_verification",
+        "diff_report_mismatch",
+        "bom_invalid",
+        "bom_missing_artifact",
+        "bom_path_missing",
+        "bom_hash_mismatch",
+        "bom_identity_mismatch",
+        "bom_selected_mismatch"
+      ]
+    },
+    "detail_item": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["kind", "path"],
+      "properties": {
+        "kind": { "$ref": "#/$defs/kind" },
+        "path": { "type": "string", "minLength": 1 },
+        "expected": {},
+        "got": {},
+        "details": {}
+      }
+    },
+    "details_list": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/detail_item" }
+    }
+  }
+}
