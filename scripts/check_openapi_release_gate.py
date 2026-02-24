@@ -12,12 +12,20 @@ from typing import Any, Dict, List, Optional, Tuple
 from code_audit.web_api.openapi_diff import apply_allowlist_policy, diff_openapi_core
 from code_audit.web_api.openapi_normalize import normalize_openapi
 
+from scripts.release_gate_json import (
+    build_gate_failure_json,
+    emit_gate_failure_human,
+    emit_gate_failure_json,
+    is_ci_true,
+)
+
 
 ROOT = Path(__file__).resolve().parents[1]
 CURRENT_OPENAPI = ROOT / "docs" / "openapi.json"
 POLICY_PATH = ROOT / "tests" / "contracts" / "openapi_breaking_policy.json"
 OUT_DIR = ROOT / "dist"
 OUT_REPORT = OUT_DIR / "openapi_diff_report.json"
+OUT_GATE_RESULT = OUT_DIR / "openapi_release_gate_result.json"
 OPENAPI_REPO_PATH = "docs/openapi.json"
 
 DIST_BEFORE_OPENAPI = OUT_DIR / "openapi_before.json"
@@ -31,6 +39,48 @@ CLASSIFIER_FILES = [
 
 
 TAG_RE = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
+
+
+def _issue(kind: str, path: str, expected: Any, got: Any, details: Any = None) -> Dict[str, Any]:
+    """Build a structured issue dict for gate failure details."""
+    d: Dict[str, Any] = {"kind": kind, "path": path, "expected": expected, "got": got}
+    if details is not None:
+        d["details"] = details
+    return d
+
+
+def _emit_and_exit(issues: List[Dict[str, Any]], json_mode: bool) -> int:
+    """Build gate failure JSON, write to dist, emit, and return exit code 1."""
+    result = build_gate_failure_json(
+        kind="openapi_release_gate_failed",
+        path="dist/*",
+        expected="clean gate",
+        got=f"{len(issues)} issue(s)",
+        details=issues,
+    )
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    OUT_GATE_RESULT.write_text(
+        json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    if json_mode:
+        emit_gate_failure_json(result)
+    else:
+        emit_gate_failure_human(result, prefix="openapi-release-gate")
+    return 1
+
+
+def _load_json_or_issue(
+    path: Path, label: str, issues: List[Dict[str, Any]]
+) -> Optional[Dict[str, Any]]:
+    """Load a JSON file, appending an issue on failure."""
+    if not path.exists():
+        issues.append(_issue("missing_file", str(path), "present", "missing"))
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, ValueError) as e:
+        issues.append(_issue("invalid_json", str(path), "valid JSON", str(e)))
+        return None
 
 
 def _run_git(args: list[str]) -> str:
@@ -119,14 +169,19 @@ def _summarize_report(report: Dict[str, Any]) -> str:
 
 
 def main() -> int:
+    json_mode = "--json" in sys.argv
+    issues: List[Dict[str, Any]] = []
+
     current_tag = _current_tag_from_env()
     cur_major, cur_minor, cur_patch = _parse_tag(current_tag)
 
     if not CURRENT_OPENAPI.exists():
-        raise RuntimeError("Missing docs/openapi.json (current OpenAPI snapshot).")
+        issues.append(_issue("missing_file", str(CURRENT_OPENAPI), "present", "missing"))
+        return _emit_and_exit(issues, json_mode)
 
-    if not POLICY_PATH.exists():
-        raise RuntimeError("Missing tests/contracts/openapi_breaking_policy.json (required for release gate).")
+    policy = _load_json_or_issue(POLICY_PATH, "openapi_breaking_policy.json", issues)
+    if policy is None:
+        return _emit_and_exit(issues, json_mode)
 
     prev = _find_previous_tag(current_tag)
     if prev is None:
@@ -146,9 +201,13 @@ def main() -> int:
 
     prev_major, prev_minor, prev_patch = _parse_tag(prev)
 
-    before_doc = _load_openapi_at_tag(prev)
+    try:
+        before_doc = _load_openapi_at_tag(prev)
+    except Exception as e:
+        issues.append(_issue("snapshot_load_failed", f"git:{prev}:{OPENAPI_REPO_PATH}", "loadable", str(e)))
+        return _emit_and_exit(issues, json_mode)
+
     after_doc = _load_json(CURRENT_OPENAPI)
-    policy = _load_json(POLICY_PATH)
     policy_sha = _sha256_file(POLICY_PATH)
 
     # Write reproducible snapshots into dist/
@@ -165,8 +224,13 @@ def main() -> int:
 
     before_norm = normalize_openapi(before_doc)
     after_norm = normalize_openapi(after_doc)
-    raw_report = diff_openapi_core(before_norm, after_norm, success_status_prefixes=success_prefixes)
-    gated_report = apply_allowlist_policy(raw_report, policy=policy)
+
+    try:
+        raw_report = diff_openapi_core(before_norm, after_norm, success_status_prefixes=success_prefixes)
+        gated_report = apply_allowlist_policy(raw_report, policy=policy)
+    except Exception as e:
+        issues.append(_issue("diff_failed", "openapi_diff", "successful diff", str(e)))
+        return _emit_and_exit(issues, json_mode)
 
     # Classifier fingerprint
     classifier_fingerprint: Dict[str, Dict[str, str]] = {}
@@ -181,10 +245,9 @@ def main() -> int:
             "sha256_short": h[:12],
         }
     if missing:
-        raise RuntimeError(
-            "Missing classifier fingerprint files (release must be self-describing): "
-            + ", ".join(missing)
-        )
+        for m in missing:
+            issues.append(_issue("missing_file", m, "present", "missing"))
+        return _emit_and_exit(issues, json_mode)
 
     out = gated_report.to_dict()
     out["baseline_tag"] = prev
@@ -206,7 +269,11 @@ def main() -> int:
         "file_count": len(classifier_fingerprint),
     }
 
-    OUT_REPORT.write_text(json.dumps(out, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    try:
+        OUT_REPORT.write_text(json.dumps(out, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    except Exception as e:
+        issues.append(_issue("report_emit_failed", str(OUT_REPORT), "written", str(e)))
+        return _emit_and_exit(issues, json_mode)
 
     cf = out.get("classifier_fingerprint", {}).get("files", {})
     cf_short = ", ".join([f"{k}:{v.get('sha256_short')}" for k, v in sorted(cf.items())])
@@ -219,40 +286,28 @@ def main() -> int:
     # Hard requirement: unknowns must be empty after allowlist policy.
     unknown_count = int((out.get("summary") or {}).get("unknown_count") or 0)
     if unknown_count > 0:
-        print("")
-        print("[openapi-release-gate] FAIL: unknown OpenAPI changes remain after policy application.")
-        print("These must be allowlisted (with reason + location for schema kinds) before a release tag can pass.")
-        print("")
         unknowns = out.get("unknown_changes") or []
-        for i, ch in enumerate(unknowns[:10]):
-            kind = ch.get("kind")
-            op = ch.get("op")
-            loc = ch.get("location")
-            print(f"  - {kind} :: {op} @ {loc}")
-        if len(unknowns) > 10:
-            print(f"  ... ({len(unknowns) - 10} more)")
-        return 1
+        issues.append(_issue(
+            "unknowns_block_release",
+            "openapi_diff_report.json:unknown_changes",
+            0,
+            unknown_count,
+            {"sample": [{"kind": ch.get("kind"), "op": ch.get("op"), "location": ch.get("location")} for ch in unknowns[:10]]},
+        ))
 
     # SemVer major gating: breaking changes require major bump.
     breaking_count = int((out.get("summary") or {}).get("breaking_count") or 0)
     if breaking_count > 0 and cur_major <= prev_major:
-        print("")
-        print("[openapi-release-gate] FAIL: breaking OpenAPI changes detected but tag is not a major bump.")
-        print(f"Baseline tag: {prev} (major={prev_major})")
-        print(f"Current tag:  {current_tag} (major={cur_major})")
-        print("")
-        print("Rule: if breaking_count > 0 after policy, current_major must be > previous_major.")
-        print("Fix: bump major version (v(N+1).0.0) or allowlist/avoid the breaking changes.")
-        print("")
-        breaks = out.get("breaking_changes") or []
-        for i, ch in enumerate(breaks[:10]):
-            kind = ch.get("kind")
-            op = ch.get("op")
-            loc = ch.get("location")
-            print(f"  - {kind} :: {op} @ {loc}")
-        if len(breaks) > 10:
-            print(f"  ... ({len(breaks) - 10} more)")
-        return 1
+        issues.append(_issue(
+            "major_bump_required",
+            "tag",
+            f"major > {prev_major}",
+            cur_major,
+            {"baseline_tag": prev, "current_tag": current_tag, "breaking_count": breaking_count},
+        ))
+
+    if issues:
+        return _emit_and_exit(issues, json_mode)
 
     print("[openapi-release-gate] OK: no unknowns remain after policy.")
     return 0

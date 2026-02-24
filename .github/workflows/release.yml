@@ -110,7 +110,7 @@ jobs:
           python -m pip install build twine
 
       - name: OpenAPI release gate (semantic diff)
-        run: python scripts/check_openapi_release_gate.py
+        run: python scripts/check_openapi_release_gate.py --json
 
       - name: Reproduce diff from dist
         run: python scripts/reproduce_openapi_diff_from_dist.py
@@ -118,8 +118,23 @@ jobs:
       - name: Generate release BOM
         run: python scripts/generate_release_bom.py
 
+      - name: BOM generator preflight gate
+        run: python scripts/check_release_bom_generator_gate.py
+
       - name: Validate BOM schema
         run: python scripts/validate_release_bom.py dist/release_bom.json
+
+      - name: Validate OpenAPI release gate result schema
+        run: |
+          if [ -f dist/openapi_release_gate_result.json ]; then
+            python scripts/validate_openapi_release_gate_result.py dist/openapi_release_gate_result.json
+          fi
+
+      - name: Validate BOM generator gate result schema
+        run: |
+          if [ -f dist/release_bom_generator_gate_result.json ]; then
+            python scripts/validate_release_bom_generator_gate_result.py dist/release_bom_generator_gate_result.json
+          fi
 
       - name: BOM consistency check
         run: python scripts/check_release_bom_consistency.py --json
@@ -130,6 +145,11 @@ jobs:
             release_bom.json \
             release_bom.schema.json \
             release_audit_failure.schema.json \
+            openapi_release_gate_result.schema.json \
+            release_bom_consistency_result.schema.json \
+            release_bom_generator_gate_result.schema.json \
+            release_gate_envelope.schema.json \
+            schema_graph_bundle.schema.json \
             openapi_breaking_policy.json \
             openapi_before.json \
             openapi_after.json \
@@ -137,7 +157,7 @@ jobs:
             openapi_classifier_manifest.json; do
             test -f "dist/$f" || { echo "MISSING: dist/$f"; exit 1; }
           done
-          echo "All 8 OpenAPI dist files present."
+          echo "All 13 dist files present."
 
       - name: Validate OpenAPI snapshot (spec)
         run: python scripts/validate_openapi_snapshot.py docs/openapi.json

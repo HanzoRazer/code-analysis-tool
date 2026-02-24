@@ -5,7 +5,7 @@
   "title": "Release BOM Schema",
   "type": "object",
   "additionalProperties": false,
-  "required": ["version", "release_tag", "artifacts", "provenance"],
+  "required": ["version", "artifacts", "provenance"],
   "properties": {
     "version": {
       "type": "integer",
@@ -21,6 +21,11 @@
       "required": [
         "release_bom_schema",
         "release_audit_failure_schema",
+        "openapi_release_gate_result_schema",
+        "release_bom_consistency_result_schema",
+        "release_bom_generator_gate_result_schema",
+        "release_gate_envelope_schema",
+        "schema_graph_bundle_schema",
         "openapi_breaking_policy",
         "openapi_before_snapshot",
         "openapi_after_snapshot",
@@ -31,37 +36,148 @@
         "release_bom_schema": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["path", "schema_version", "$id", "canonical_sha256", "canonical_sha256_short"],
+          "required": [
+            "path", "schema_version", "$id",
+            "canonical_sha256", "canonical_sha256_short",
+            "ref_closure", "ref_closure_sha256",
+            "ref_edges", "ref_edges_sha256"
+          ],
           "properties": {
             "path": { "type": "string", "pattern": "^dist/release_bom\\.schema\\.json$" },
             "schema_version": { "type": "string", "minLength": 1 },
             "$id": { "type": "string", "minLength": 1 },
-            "canonical_sha256": {
-              "type": "string",
-              "pattern": "^[a-f0-9]{64}$"
-            },
-            "canonical_sha256_short": {
-              "type": "string",
-              "pattern": "^[a-f0-9]{12}$"
-            }
+            "canonical_sha256": { "$ref": "#/$defs/sha256" },
+            "canonical_sha256_short": { "$ref": "#/$defs/sha12" },
+            "ref_closure": { "$ref": "schema_graph_bundle.schema.json#/properties/ref_closure" },
+            "ref_closure_sha256": { "$ref": "#/$defs/sha256" },
+            "ref_edges": { "$ref": "schema_graph_bundle.schema.json#/properties/ref_edges" },
+            "ref_edges_sha256": { "$ref": "#/$defs/sha256" }
           }
         },
         "release_audit_failure_schema": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["path", "schema_version", "$id", "canonical_sha256", "canonical_sha256_short"],
+          "required": [
+            "path", "schema_version", "$id",
+            "canonical_sha256", "canonical_sha256_short",
+            "ref_closure", "ref_closure_sha256",
+            "ref_edges", "ref_edges_sha256"
+          ],
           "properties": {
             "path": { "type": "string", "pattern": "^dist/release_audit_failure\\.schema\\.json$" },
             "schema_version": { "type": "string", "minLength": 1 },
             "$id": { "type": "string", "minLength": 1 },
-            "canonical_sha256": {
-              "type": "string",
-              "pattern": "^[a-f0-9]{64}$"
-            },
-            "canonical_sha256_short": {
-              "type": "string",
-              "pattern": "^[a-f0-9]{12}$"
-            }
+            "canonical_sha256": { "$ref": "#/$defs/sha256" },
+            "canonical_sha256_short": { "$ref": "#/$defs/sha12" },
+            "ref_closure": { "$ref": "schema_graph_bundle.schema.json#/properties/ref_closure" },
+            "ref_closure_sha256": { "$ref": "#/$defs/sha256" },
+            "ref_edges": { "$ref": "schema_graph_bundle.schema.json#/properties/ref_edges" },
+            "ref_edges_sha256": { "$ref": "#/$defs/sha256" }
+          }
+        },
+        "openapi_release_gate_result_schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path", "schema_version", "$id",
+            "canonical_sha256", "canonical_sha256_short",
+            "ref_closure", "ref_closure_sha256",
+            "ref_edges", "ref_edges_sha256"
+          ],
+          "properties": {
+            "path": { "type": "string", "pattern": "^dist/openapi_release_gate_result\\.schema\\.json$" },
+            "schema_version": { "type": "string", "minLength": 1 },
+            "$id": { "type": "string", "minLength": 1 },
+            "canonical_sha256": { "$ref": "#/$defs/sha256" },
+            "canonical_sha256_short": { "$ref": "#/$defs/sha12" },
+            "ref_closure": { "$ref": "schema_graph_bundle.schema.json#/properties/ref_closure" },
+            "ref_closure_sha256": { "$ref": "#/$defs/sha256" },
+            "ref_edges": { "$ref": "schema_graph_bundle.schema.json#/properties/ref_edges" },
+            "ref_edges_sha256": { "$ref": "#/$defs/sha256" }
+          }
+        },
+        "release_bom_consistency_result_schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path", "schema_version", "$id",
+            "canonical_sha256", "canonical_sha256_short",
+            "ref_closure", "ref_closure_sha256",
+            "ref_edges", "ref_edges_sha256"
+          ],
+          "properties": {
+            "path": { "type": "string", "pattern": "^dist/release_bom_consistency_result\\.schema\\.json$" },
+            "schema_version": { "type": "string", "minLength": 1 },
+            "$id": { "type": "string", "minLength": 1 },
+            "canonical_sha256": { "$ref": "#/$defs/sha256" },
+            "canonical_sha256_short": { "$ref": "#/$defs/sha12" },
+            "ref_closure": { "$ref": "schema_graph_bundle.schema.json#/properties/ref_closure" },
+            "ref_closure_sha256": { "$ref": "#/$defs/sha256" },
+            "ref_edges": { "$ref": "schema_graph_bundle.schema.json#/properties/ref_edges" },
+            "ref_edges_sha256": { "$ref": "#/$defs/sha256" }
+          }
+        },
+        "release_bom_generator_gate_result_schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path", "schema_version", "$id",
+            "canonical_sha256", "canonical_sha256_short",
+            "ref_closure", "ref_closure_sha256",
+            "ref_edges", "ref_edges_sha256"
+          ],
+          "properties": {
+            "path": { "type": "string", "pattern": "^dist/release_bom_generator_gate_result\\.schema\\.json$" },
+            "schema_version": { "type": "string", "minLength": 1 },
+            "$id": { "type": "string", "minLength": 1 },
+            "canonical_sha256": { "$ref": "#/$defs/sha256" },
+            "canonical_sha256_short": { "$ref": "#/$defs/sha12" },
+            "ref_closure": { "$ref": "schema_graph_bundle.schema.json#/properties/ref_closure" },
+            "ref_closure_sha256": { "$ref": "#/$defs/sha256" },
+            "ref_edges": { "$ref": "schema_graph_bundle.schema.json#/properties/ref_edges" },
+            "ref_edges_sha256": { "$ref": "#/$defs/sha256" }
+          }
+        },
+        "release_gate_envelope_schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path", "schema_version", "$id",
+            "canonical_sha256", "canonical_sha256_short",
+            "ref_closure", "ref_closure_sha256",
+            "ref_edges", "ref_edges_sha256"
+          ],
+          "properties": {
+            "path": { "type": "string", "pattern": "^dist/release_gate_envelope\\.schema\\.json$" },
+            "schema_version": { "type": "string", "minLength": 1 },
+            "$id": { "type": "string", "minLength": 1 },
+            "canonical_sha256": { "$ref": "#/$defs/sha256" },
+            "canonical_sha256_short": { "$ref": "#/$defs/sha12" },
+            "ref_closure": { "$ref": "schema_graph_bundle.schema.json#/properties/ref_closure" },
+            "ref_closure_sha256": { "$ref": "#/$defs/sha256" },
+            "ref_edges": { "$ref": "schema_graph_bundle.schema.json#/properties/ref_edges" },
+            "ref_edges_sha256": { "$ref": "#/$defs/sha256" }
+          }
+        },
+        "schema_graph_bundle_schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path", "schema_version", "$id",
+            "canonical_sha256", "canonical_sha256_short",
+            "ref_closure", "ref_closure_sha256",
+            "ref_edges", "ref_edges_sha256"
+          ],
+          "properties": {
+            "path": { "type": "string", "pattern": "^dist/schema_graph_bundle\\.schema\\.json$" },
+            "schema_version": { "type": "string", "minLength": 1 },
+            "$id": { "type": "string", "minLength": 1 },
+            "canonical_sha256": { "$ref": "#/$defs/sha256" },
+            "canonical_sha256_short": { "$ref": "#/$defs/sha12" },
+            "ref_closure": { "$ref": "schema_graph_bundle.schema.json#/properties/ref_closure" },
+            "ref_closure_sha256": { "$ref": "#/$defs/sha256" },
+            "ref_edges": { "$ref": "schema_graph_bundle.schema.json#/properties/ref_edges" },
+            "ref_edges_sha256": { "$ref": "#/$defs/sha256" }
           }
         },
         "openapi_breaking_policy": {
@@ -70,8 +186,8 @@
           "required": ["path", "sha256", "sha256_short"],
           "properties": {
             "path": { "type": "string", "minLength": 1 },
-            "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
-            "sha256_short": { "type": "string", "pattern": "^[a-f0-9]{12}$" }
+            "sha256": { "$ref": "#/$defs/sha256" },
+            "sha256_short": { "$ref": "#/$defs/sha12" }
           }
         },
         "openapi_before_snapshot": {
@@ -79,9 +195,9 @@
           "additionalProperties": false,
           "required": ["path", "sha256", "sha256_short"],
           "properties": {
-            "path": { "type": "string", "pattern": "^dist/openapi_before\\.json$" },
-            "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
-            "sha256_short": { "type": "string", "pattern": "^[a-f0-9]{12}$" }
+            "path": { "type": "string", "pattern": "^(dist/)?openapi_before\\.json$" },
+            "sha256": { "$ref": "#/$defs/sha256" },
+            "sha256_short": { "$ref": "#/$defs/sha12" }
           }
         },
         "openapi_after_snapshot": {
@@ -89,21 +205,19 @@
           "additionalProperties": false,
           "required": ["path", "sha256", "sha256_short"],
           "properties": {
-            "path": { "type": "string", "pattern": "^dist/openapi_after\\.json$" },
-            "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
-            "sha256_short": { "type": "string", "pattern": "^[a-f0-9]{12}$" }
+            "path": { "type": "string", "pattern": "^(dist/)?openapi_after\\.json$" },
+            "sha256": { "$ref": "#/$defs/sha256" },
+            "sha256_short": { "$ref": "#/$defs/sha12" }
           }
         },
         "openapi_diff_report": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["path", "sha256"],
+          "required": ["path", "sha256", "sha256_short"],
           "properties": {
             "path": { "type": "string", "minLength": 1 },
-            "sha256": {
-              "type": "string",
-              "pattern": "^[a-f0-9]{64}$"
-            }
+            "sha256": { "$ref": "#/$defs/sha256" },
+            "sha256_short": { "$ref": "#/$defs/sha12" }
           }
         },
         "openapi_classifier_manifest": {
@@ -111,15 +225,9 @@
           "additionalProperties": false,
           "required": ["path", "sha256", "sha256_short", "selected"],
           "properties": {
-            "path": { "type": "string", "pattern": "^dist/openapi_classifier_manifest\\.json$" },
-            "sha256": {
-              "type": "string",
-              "pattern": "^[a-f0-9]{64}$"
-            },
-            "sha256_short": {
-              "type": "string",
-              "pattern": "^[a-f0-9]{12}$"
-            },
+            "path": { "type": "string", "pattern": "^(dist/)?openapi_classifier_manifest\\.json$" },
+            "sha256": { "$ref": "#/$defs/sha256" },
+            "sha256_short": { "$ref": "#/$defs/sha12" },
             "selected": {
               "type": "object",
               "additionalProperties": false,
@@ -139,21 +247,12 @@
                   "minItems": 1,
                   "items": { "type": "string", "minLength": 1 }
                 },
-                "closure_graph_edges_sha256": {
-                  "type": "string",
-                  "pattern": "^[a-f0-9]{64}$"
-                },
-                "closure_graph_edges_sha256_short": {
-                  "type": "string",
-                  "pattern": "^[a-f0-9]{12}$"
-                },
+                "closure_graph_edges_sha256": { "$ref": "#/$defs/sha256" },
+                "closure_graph_edges_sha256_short": { "$ref": "#/$defs/sha12" },
                 "files_ast_sha256": {
                   "type": "object",
                   "minProperties": 1,
-                  "additionalProperties": {
-                    "type": "string",
-                    "pattern": "^[a-f0-9]{64}$"
-                  }
+                  "additionalProperties": { "$ref": "#/$defs/sha256" }
                 }
               }
             }
@@ -163,36 +262,36 @@
     },
     "provenance": {
       "type": "object",
-      "additionalProperties": false,
+      "additionalProperties": true,
       "required": [
         "baseline_tag",
         "current_tag",
-        "policy_path",
-        "policy_sha256",
-        "before_openapi_path",
-        "before_openapi_sha256",
-        "after_openapi_path",
-        "after_openapi_sha256"
+        "breaking",
+        "policy_sha256"
       ],
       "properties": {
         "baseline_tag": { "type": ["string", "null"] },
         "current_tag": { "type": ["string", "null"] },
-        "policy_path": { "type": ["string", "null"] },
+        "breaking": { "type": "boolean" },
+        "breaking_count": { "type": "integer", "minimum": 0 },
+        "non_breaking_count": { "type": "integer", "minimum": 0 },
+        "unknown_count": { "type": "integer", "minimum": 0 },
         "policy_sha256": {
           "type": ["string", "null"],
           "pattern": "^[a-f0-9]{64}$"
         },
-        "before_openapi_path": { "type": ["string", "null"] },
-        "before_openapi_sha256": {
-          "type": ["string", "null"],
-          "pattern": "^[a-f0-9]{64}$"
-        },
-        "after_openapi_path": { "type": ["string", "null"] },
-        "after_openapi_sha256": {
-          "type": ["string", "null"],
-          "pattern": "^[a-f0-9]{64}$"
-        }
+        "classifier_fingerprint": { "type": "object" }
       }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "sha12": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{12}$"
     }
   }
 }

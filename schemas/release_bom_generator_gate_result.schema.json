@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "release_bom_generator_gate_result_schema_v1",
+  "schema_version": "release_bom_generator_gate_result_schema_v1",
+  "title": "Release BOM Generator Gate Result",
+  "allOf": [
+    { "$ref": "release_gate_envelope.schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "release_bom_generator_gate_failed" },
+        "path": { "const": "dist/*" },
+        "details": {
+          "items": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "missing_input",
+                  "invalid_input_json",
+                  "missing_dist_output",
+                  "schema_identity_invalid",
+                  "schema_identity_mismatch",
+                  "schema_meta_validation_unavailable",
+                  "schema_meta_validation_failed",
+                  "bom_emit_failed",
+                  "bom_invalid_artifacts",
+                  "bom_invalid_ref_edges",
+                  "bom_invalid_ref_edges_sha",
+                  "bom_invalid_ref_edge_item",
+                  "bom_ref_edge_trace_short_mismatch",
+                  "bom_ref_edges_sha_mismatch",
+                  "bom_ref_edges_duplicate",
+                  "bom_ref_edges_not_sorted"
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

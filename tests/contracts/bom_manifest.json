@@ -2,13 +2,13 @@
   "files": {
     "scripts\\check_release_bom_consistency.py": {
       "mode": "ast",
-      "sha256": "8d7d35b18d5fee8a63db2166cc1dcd58a7ce0a23999ab177e9ca5e7324816756",
-      "sha256_short": "8d7d35b18d5f"
+      "sha256": "bc6a784b7746cfa8b73d663fc87f0087d78b27d14396150cd545f639c7c934c6",
+      "sha256_short": "bc6a784b7746"
     },
     "scripts\\generate_release_bom.py": {
       "mode": "ast",
-      "sha256": "c58327d29a23280fabc55768ffbf9b78d2135bcbee149ec833a4a12d244b2d8d",
-      "sha256_short": "c58327d29a23"
+      "sha256": "b6e02d47e3c0fa7e8023ae59b15ff508f7078798df6326c17ec3fe042756a7ba",
+      "sha256_short": "b6e02d47e3c0"
     }
   },
   "json_files": {
@@ -17,8 +17,8 @@
       "sha256_short": "2e5d6aefb727"
     },
     "schemas\\release_bom.schema.json": {
-      "sha256": "891e7125eb42de676d81edbc32bc89eb5a2c330ba4e314810cc873024e0e4c2e",
-      "sha256_short": "891e7125eb42"
+      "sha256": "3533e80861566fdeb9eeb80d08e84032b895e49e3a361c5a220406775c6d481f",
+      "sha256_short": "3533e8086156"
     }
   },
   "version": 1
