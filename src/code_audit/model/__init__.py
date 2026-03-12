@@ -42,3 +42,4 @@ class AnalyzerType(str, Enum):
     DEAD_CODE = "dead_code"
     ROUTERS = "routers"
     SQL = "sql"
+    JS_TS_SECURITY = "js_ts_security"

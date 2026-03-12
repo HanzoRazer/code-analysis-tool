@@ -1,0 +1,1606 @@
+*** Begin Patch
+*** Add File: src/code_audit/contracts/trusted_signing_keys.json
++{
+
+"schema_version": 1,
+
+"generated_by": "manual",
+
+"keys": [
+
+{
+
+ "key_id": "default",
+ "status": "active",
+ "created_at": "2026-03-05",
+ "notes": "Initial signing key id. Rotate by adding a new key_id (active) and marking old as retired."
+
+}
+
+]
++}
+
+*** End Patch
+*** Begin Patch
+*** Add File: schemas/trusted_signing_keys.schema.json
++{
+
+"$schema": "https://json-schema.org/draft/2020-12/schema
+",
+
+"title": "Trusted Signing Keys Registry (code_audit)",
+
+"type": "object",
+
+"additionalProperties": false,
+
+"required": ["schema_version", "generated_by", "keys"],
+
+"properties": {
+
+"schema_version": { "type": "integer", "minimum": 1 },
+
+"generated_by": { "type": "string", "minLength": 1 },
+
+"keys": {
+
+ "type": "array",
+ "minItems": 1,
+ "items": { "$ref": "#/$defs/key_entry" }
+
+}
+
+},
+
+"$defs": {
+
+"key_entry": {
+
+ "type": "object",
+ "additionalProperties": false,
+ "required": ["key_id", "status", "created_at"],
+ "properties": {
+   "key_id": { "type": "string", "minLength": 1 },
+   "status": { "type": "string", "enum": ["active", "retired"] },
+   "created_at": { "type": "string", "minLength": 4 },
+   "notes": { "type": "string" }
+ }
+
+}
+
+}
++}
+
+*** End Patch
+*** Begin Patch
+*** Update File: schemas/release_bom.schema.json
+@@
+"properties": {
+"js_ts_surface": { "type": "boolean" },
+"supply_chain_signed": { "type": "boolean" },
+"contract_versions": { "$ref": "#/$defs/contract_versions_artifact" },
+"rules_registry": { "$ref": "#/$defs/rules_registry_artifact" },
+"rule_versions": { "$ref": "#/$defs/rule_versions_artifact" },
+"rule_pack": { "$ref": "#/$defs/rule_pack_artifact" },
+"rule_pack_signature": { "$ref": "#/$defs/rule_pack_signature_artifact" },
+"release_bom_signature": { "$ref": "#/$defs/release_bom_signature_artifact" },
+
+   "trusted_signing_keys": { "$ref": "#/$defs/trusted_signing_keys_artifact" },
+   "treesitter_manifest": { "$ref": "#/$defs/treesitter_manifest_artifact" }
+ }
+
+}
+},
+@@
+{
+"if": {
+"properties": {
+"artifacts": {
+"properties": { "supply_chain_signed": { "const": true } },
+"required": ["supply_chain_signed"]
+}
+},
+"required": ["artifacts"]
+},
+"then": {
+"properties": {
+
+     "artifacts": { "required": ["rule_pack_signature", "release_bom_signature"] }
+     "artifacts": { "required": ["rule_pack_signature", "release_bom_signature", "trusted_signing_keys"] }
+   }
+ }
+
+}
+],
+"$defs": {
+@@
+
+"trusted_signing_keys_artifact": {
+
+ "type": "object",
+ "additionalProperties": false,
+ "required": ["path", "sha256", "schema_version", "keys_count"],
+ "properties": {
+   "path": {
+     "type": "string",
+     "pattern": "^dist/contracts/trusted_signing_keys\\.json$"
+   },
+   "sha256": { "$ref": "#/$defs/sha256" },
+   "schema_version": { "type": "integer", "minimum": 1 },
+   "keys_count": { "type": "integer", "minimum": 1 }
+ }
+
+},
+"treesitter_manifest_artifact": {
+"type": "object",
+"additionalProperties": false,
+"required": ["path", "sha256", "manifest_version", "signal_logic_version"],
+"properties": {
+*** End Patch
+*** Begin Patch
+*** Update File: src/code_audit/contracts/signing.py
+@@
+import base64
+import hashlib
+import json
+import os
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Optional
+
+class SigningError(RuntimeError):
+pass
+
+@dataclass(frozen=True)
+class SigningConfig:
+@@
+
+key_env: str = "CODE_AUDIT_SIGNING_KEY_B64"
+
+Single-key (legacy) env:
+
+key_env: str = "CODE_AUDIT_SIGNING_KEY_B64"
+
+Multi-key rotation env (preferred):
+JSON mapping of key_id -> base64 key bytes.
+
+keys_env: str = "CODE_AUDIT_SIGNING_KEYS_JSON_B64"
+key_id_env: str = "CODE_AUDIT_SIGNING_KEY_ID"
+algorithm: str = "hmac-sha256"
+
+def load_key(self) -> bytes:
+
+   b64 = (os.environ.get(self.key_env, "") or "").strip()
+   if not b64:
+       raise SigningError(f"Missing signing key env: {self.key_env}")
+   try:
+       return base64.b64decode(b64, validate=True)
+   except Exception as e:
+       raise SigningError(f"Invalid base64 signing key in {self.key_env}") from e
+
+def key_id(self) -> str:
+
+   kid = (os.environ.get(self.key_id_env, "") or "").strip()
+   return kid or "default"
+
+def load_key(self, *, key_id: Optional[str] = None) -> bytes:
+
+   """
+   Load a signing key, supporting both:
+   - CODE_AUDIT_SIGNING_KEYS_JSON_B64 (rotation)
+   - CODE_AUDIT_SIGNING_KEY_B64 (legacy)
+   """
+   target = key_id or self.key_id()
+   keys_b64 = (os.environ.get(self.keys_env, "") or "").strip()
+   if keys_b64:
+       try:
+           raw = base64.b64decode(keys_b64, validate=True).decode("utf-8")
+           obj = json.loads(raw)
+       except Exception as e:
+           raise SigningError(f"Invalid {self.keys_env} (expected base64(JSON))") from e
+       if not isinstance(obj, dict):
+           raise SigningError(f"Invalid {self.keys_env} (expected JSON object)")
+       b64 = obj.get(target)
+       if not isinstance(b64, str) or not b64.strip():
+           raise SigningError(f"Missing signing key for key_id={target!r} in {self.keys_env}")
+       try:
+           return base64.b64decode(b64.strip(), validate=True)
+       except Exception as e:
+           raise SigningError(f"Invalid base64 signing key for key_id={target!r} in {self.keys_env}") from e
+   # Legacy fallback
+   b64 = (os.environ.get(self.key_env, "") or "").strip()
+   if not b64:
+       raise SigningError(f"Missing signing key env: {self.keys_env} or {self.key_env}")
+   try:
+       return base64.b64decode(b64, validate=True)
+   except Exception as e:
+       raise SigningError(f"Invalid base64 signing key in {self.key_env}") from e
+
+def key_id(self) -> str:
+
+   kid = (os.environ.get(self.key_id_env, "") or "").strip()
+   return kid or "default"
+
+def have_any_key_material(self) -> bool:
+
+   return bool((os.environ.get(self.keys_env, "") or "").strip() or (os.environ.get(self.key_env, "") or "").strip())
+
+@@
+def sign_payload(payload_obj: dict[str, Any], *, cfg: Optional[SigningConfig] = None) -> dict[str, Any]:
+@@
+cfg = cfg or SigningConfig()
+
+key = cfg.load_key()
+
+kid = cfg.key_id()
+
+key = cfg.load_key(key_id=kid)
+msg = _canonical_json_bytes(payload_obj)
+import hmac
+
+sig = hmac.new(key, msg, hashlib.sha256).hexdigest()
+return {
+"algorithm": cfg.algorithm,
+
+   "key_id": cfg.key_id(),
+   "key_id": kid,
+   "payload_sha256": hashlib.sha256(msg).hexdigest(),
+   "signature": sig,
+
+}
+@@
+def verify_payload(payload_obj: dict[str, Any], sig_obj: dict[str, Any], *, cfg: Optional[SigningConfig] = None) -> None:
+cfg = cfg or SigningConfig()
+
+key = cfg.load_key()
+
+kid = sig_obj.get("key_id")
+
+if not isinstance(kid, str) or not kid.strip():
+
+   raise SigningError("Missing key_id in signature")
+
+key = cfg.load_key(key_id=kid.strip())
+import hmac
+
+msg = _canonical_json_bytes(payload_obj)
+expected = hmac.new(key, msg, hashlib.sha256).hexdigest()
+got = sig_obj.get("signature")
+if not isinstance(got, str) or not got:
+raise SigningError("Missing signature")
+if not hmac.compare_digest(expected, got):
+raise SigningError("Signature verification failed")
+*** End Patch
+*** Begin Patch
+*** Update File: scripts/generate_release_bom.py
+@@
+ROOT = Path(file).resolve().parents[1]
+DIST = ROOT / "dist"
+@@
+RULE_PACK_SIG_DIST = DIST / "contracts" / "rule_pack.sig.json"
+BOM_SIG_DIST = DIST / "release_bom.sig.json"
++TRUSTED_KEYS_SRC = ROOT / "src" / "code_audit" / "contracts" / "trusted_signing_keys.json"
++TRUSTED_KEYS_DIST = DIST / "contracts" / "trusted_signing_keys.json"
+@@
+def generate_release_bom(*, write: bool = True) -> dict[str, Any]:
+@@
+if have_key:
+bom["artifacts"]["supply_chain_signed"] = True
+@@
+# 4) Inject release_bom_signature and rewrite BOM (final)
+bom["artifacts"]["release_bom_signature"] = _sig_obj_from_file(BOM_SIG_DIST)
+
+   # 5) Ship trusted signing key registry + attest it in the BOM (required when signed).
+   if not TRUSTED_KEYS_SRC.exists():
+       raise SystemExit("[release-bom] supply_chain_signed=true requires src/code_audit/contracts/trusted_signing_keys.json")
+   TRUSTED_KEYS_DIST.parent.mkdir(parents=True, exist_ok=True)
+   TRUSTED_KEYS_DIST.write_bytes(TRUSTED_KEYS_SRC.read_bytes())
+   tk_obj = _load_json(TRUSTED_KEYS_DIST)
+   keys = tk_obj.get("keys") or []
+   bom["artifacts"]["trusted_signing_keys"] = {
+       "path": str(TRUSTED_KEYS_DIST.relative_to(ROOT)),
+       "sha256": _sha256_file(TRUSTED_KEYS_DIST),
+       "schema_version": int(tk_obj.get("schema_version", 0) or 0),
+       "keys_count": int(len(keys) if isinstance(keys, list) else 0),
+   }
+   _write_json(DIST / "release_bom.json", bom)
+
+else:
+# No key: ensure we do not accidentally emit signature artifacts while claiming unsigned.
+bom["artifacts"]["supply_chain_signed"] = False
+bom["artifacts"].pop("rule_pack_signature", None)
+bom["artifacts"].pop("release_bom_signature", None)
+
+   bom["artifacts"].pop("trusted_signing_keys", None)
+   (DIST / "release_bom.json").write_text(json.dumps(bom, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+return bom
+*** End Patch
+*** Begin Patch
+*** Update File: scripts/check_release_bom_consistency.py
+@@
+def check_release_bom_consistency(bom: dict[str, Any]) -> None:
+@@
+scs = artifacts.get("supply_chain_signed")
+assert isinstance(scs, bool), "artifacts.supply_chain_signed must be boolean"
+
+has_rp_sig = "rule_pack_signature" in artifacts
+has_bom_sig = "release_bom_signature" in artifacts
+
+has_tk = "trusted_signing_keys" in artifacts
+if (has_rp_sig or has_bom_sig) and scs is not True:
+raise AssertionError("Signature artifacts present but artifacts.supply_chain_signed is not true.")
+
+if scs is True and not (has_rp_sig and has_bom_sig):
+
+   raise AssertionError("artifacts.supply_chain_signed=true requires both signature artifacts.")
+
+if scs is True and not (has_rp_sig and has_bom_sig and has_tk):
+
+   raise AssertionError("artifacts.supply_chain_signed=true requires signature artifacts + trusted_signing_keys.")
+
+@@
+require_sigs = (os.environ.get("CODE_AUDIT_REQUIRE_SIGNATURES", "") or "").strip().lower() in ("1", "true", "yes", "on")
+have_key = bool((os.environ.get("CODE_AUDIT_SIGNING_KEY_B64", "") or "").strip())
+@@
+def _check_sig_artifact(key: str, expected_path: str, payload_path: str) -> None:
+@@
+sig_obj = json.loads(p.read_text(encoding="utf-8"))
+@@
+# Verify HMAC when key is available (or required).
+if have_key or require_sigs:
+from code_audit.contracts.signing import verify_payload, SigningConfig
+verify_payload(canon_payload, sig_obj, cfg=SigningConfig())
+
+   return
+
+def _load_trusted_keys() -> dict[str, str]:
+
+   a = artifacts.get("trusted_signing_keys")
+   if a is None:
+       if require_sigs or scs is True:
+           raise AssertionError("trusted_signing_keys missing but signatures are required/present")
+       return {}
+   assert isinstance(a, dict), "artifacts.trusted_signing_keys must be an object"
+   rel = _req(a, "path", "artifacts.trusted_signing_keys")
+   p = (ROOT / rel).resolve()
+   assert p.exists(), f"trusted_signing_keys file missing: {rel}"
+   obj = json.loads(p.read_text(encoding="utf-8"))
+   keys = obj.get("keys") or []
+   assert isinstance(keys, list) and keys, "trusted_signing_keys.keys must be a non-empty list"
+   out: dict[str, str] = {}
+   for k in keys:
+       if not isinstance(k, dict):
+           continue
+       kid = k.get("key_id")
+       st = k.get("status")
+       if isinstance(kid, str) and isinstance(st, str):
+           out[kid] = st
+   assert out, "trusted_signing_keys must include at least one key_id"
+   return out
+
+trusted = _load_trusted_keys()
+
+_check_sig_artifact(
+"rule_pack_signature",
+"dist/contracts/rule_pack.sig.json",
+"dist/contracts/rule_pack.json",
+)
+_check_sig_artifact(
+"release_bom_signature",
+"dist/release_bom.sig.json",
+"dist/release_bom.json",
+)
+
+Key rotation enforcement:
+- signature.key_id must exist in trusted_signing_keys
+- by default, key must be "active"
+- allow retired keys only if CODE_AUDIT_ALLOW_RETIRED_SIGNATURE_KEYS=1
+
+allow_retired = (os.environ.get("CODE_AUDIT_ALLOW_RETIRED_SIGNATURE_KEYS", "") or "").strip().lower() in ("1", "true", "yes", "on")
+
+for sig_key in ("rule_pack_signature", "release_bom_signature"):
+
+   a = artifacts.get(sig_key)
+   if not isinstance(a, dict):
+       continue
+   kid = a.get("key_id")
+   if not isinstance(kid, str) or not kid:
+       raise AssertionError(f"Missing key_id in {sig_key}")
+   status = trusted.get(kid)
+   if status is None:
+       raise AssertionError(f"{sig_key}.key_id={kid!r} is not present in trusted_signing_keys")
+   if status != "active" and not allow_retired:
+       raise AssertionError(
+           f"{sig_key}.key_id={kid!r} is {status!r}; set CODE_AUDIT_ALLOW_RETIRED_SIGNATURE_KEYS=1 to permit."
+       )
+
+*** End Patch
+
+ship the next diff
+
+*** Begin Patch
+*** Add File: tests/test_trusted_signing_keys_gate.py
++from future import annotations
++
++import json
++from pathlib import Path
++
++import jsonschema
++
++
++ROOT = Path(file).resolve().parents[1]
++REG = ROOT / "src" / "code_audit" / "contracts" / "trusted_signing_keys.json"
++SCHEMA = ROOT / "schemas" / "trusted_signing_keys.schema.json"
++
++
++def _load_json(p: Path) -> dict:
+
+return json.loads(p.read_text(encoding="utf-8"))
+
++def test_trusted_signing_keys_schema_valid() -> None:
+
+assert REG.exists()
+
+assert SCHEMA.exists()
+
+jsonschema.validate(instance=_load_json(REG), schema=_load_json(SCHEMA))
+
++def test_trusted_signing_keys_unique_sorted_and_has_active() -> None:
+
+obj = _load_json(REG)
+
+keys = obj.get("keys") or []
+
+assert isinstance(keys, list) and keys
+
+ids: list[str] = []
+
+active = 0
+
+for k in keys:
+
+   assert isinstance(k, dict)
+   kid = k.get("key_id")
+   st = k.get("status")
+   assert isinstance(kid, str) and kid.strip()
+   assert isinstance(st, str) and st in ("active", "retired")
+   ids.append(kid)
+   if st == "active":
+       active += 1
+
+assert ids == sorted(ids), "trusted_signing_keys.keys must be sorted by key_id"
+
+assert len(ids) == len(set(ids)), "Duplicate key_id in trusted_signing_keys"
+
+assert active >= 1, "trusted_signing_keys must include at least one active key"
+
+*** End Patch
+*** Begin Patch
+*** Update File: scripts/check_release_bom_generator_gate.py
+@@
+# Required by schema motif
+_require_dist_path("contract_versions", "dist/contracts/versions.json")
+_require_dist_path("rules_registry", "dist/contracts/rules_registry.json")
+_require_dist_path("rule_versions", "dist/contracts/rule_versions.json")
+
+             # Supply-chain signatures:
+             # - artifacts.supply_chain_signed is canonical declaration.
+             # - If true OR if CODE_AUDIT_REQUIRE_SIGNATURES=1, require both signature artifacts present
+             #   and their dist files exist.
+             import os
+             require_sigs = (os.environ.get("CODE_AUDIT_REQUIRE_SIGNATURES", "") or "").strip().lower() in ("1", "true", "yes", "on")
+             scs = arts.get("supply_chain_signed") if isinstance(arts, dict) else None
+             if not isinstance(scs, bool):
+
+@@
+scs = False
+
+             if require_sigs and scs is not True:
+
+@@
+scs,
+))
+
+           if scs is True or require_sigs:
+           if scs is True or require_sigs:
+               # trusted_signing_keys must exist in signed mode
+               _require_dist_path("trusted_signing_keys", "dist/contracts/trusted_signing_keys.json")
+               def _is_hex64(x: object) -> bool:
+                   return isinstance(x, str) and len(x) == 64 and all(c in "0123456789abcdef" for c in x)
+
+@@
+if not isinstance(kid, str) or not kid.strip():
+issues.append(_issue(
+"invalid_required_artifact",
+f"release_bom.json:artifacts.{key}.key_id",
+"non-empty string",
+kid,
+))
++
+
+               # Tighten: trusted_signing_keys keys_count must match file contents
+               try:
+                   a = arts.get("trusted_signing_keys")
+                   rel = a.get("path") if isinstance(a, dict) else None
+                   p = (ROOT / rel).resolve() if isinstance(rel, str) else None
+                   obj = json.loads(p.read_text(encoding="utf-8")) if p and p.exists() else None
+                   if isinstance(a, dict) and isinstance(obj, dict):
+                       keys = obj.get("keys") or []
+                       exp = a.get("keys_count")
+                       if not isinstance(keys, list) or not isinstance(exp, int) or exp != len(keys):
+                           issues.append(_issue(
+                               "invalid_required_artifact",
+                               "release_bom.json:artifacts.trusted_signing_keys.keys_count",
+                               len(keys) if isinstance(keys, list) else "<list>",
+                               exp,
+                           ))
+               except Exception:
+                   issues.append(_issue(
+                       "invalid_required_artifact",
+                       "release_bom.json:artifacts.trusted_signing_keys",
+                       "parseable JSON with keys list",
+                       "<unreadable>",
+                   ))
+
+*** End Patch
+
+ship the next diff 
+Thought for 11s
+
+*** Begin Patch
+*** Update File: scripts/verify_dist_signatures.py
+@@
+from future import annotations
+
+import json
++import os
+from pathlib import Path
+from typing import Any
+
+from code_audit.contracts.signing import SigningConfig, SigningError, verify_payload
+from code_audit.contracts.signing import canonical_payload_for_artifact
+
+ROOT = Path(file).resolve().parents[1]
+DIST = ROOT / "dist"
+
+RULE_PACK = DIST / "contracts" / "rule_pack.json"
+BOM = DIST / "release_bom.json"
+
+RULE_PACK_SIG = DIST / "contracts" / "rule_pack.sig.json"
+BOM_SIG = DIST / "release_bom.sig.json"
++TRUSTED_KEYS = DIST / "contracts" / "trusted_signing_keys.json"
+@@
+def _load_json(p: Path) -> dict[str, Any]:
+return json.loads(p.read_text(encoding="utf-8"))
+
++def _load_trusted_keys() -> dict[str, str]:
+
+if not TRUSTED_KEYS.exists():
+
+   raise SystemExit(f"Missing trusted signing keys registry: {TRUSTED_KEYS.relative_to(ROOT)}")
+
+obj = _load_json(TRUSTED_KEYS)
+
+keys = obj.get("keys") or []
+
+if not isinstance(keys, list) or not keys:
+
+   raise SystemExit("trusted_signing_keys.json invalid: keys must be a non-empty list")
+
+out: dict[str, str] = {}
+
+for k in keys:
+
+   if not isinstance(k, dict):
+       continue
+   kid = k.get("key_id")
+   st = k.get("status")
+   if isinstance(kid, str) and isinstance(st, str):
+       out[kid] = st
+
+if not out:
+
+   raise SystemExit("trusted_signing_keys.json invalid: no usable key entries")
+
+return out
+
+def main() -> int:
+cfg = SigningConfig()
+
+trusted = _load_trusted_keys()
+
+allow_retired = (os.environ.get("CODE_AUDIT_ALLOW_RETIRED_SIGNATURE_KEYS", "") or "").strip().lower() in ("1", "true", "yes", "on")
+
+for payload, sigp, label in [
+(RULE_PACK, RULE_PACK_SIG, "rule_pack"),
+(BOM, BOM_SIG, "release_bom"),
+]:
+if not payload.exists():
+raise SystemExit(f"Missing payload: {payload.relative_to(ROOT)}")
+if not sigp.exists():
+raise SystemExit(f"Missing signature: {sigp.relative_to(ROOT)}")
+
+obj = _load_json(payload)
+sig = _load_json(sigp)
+   kid = sig.get("key_id")
+   if not isinstance(kid, str) or not kid.strip():
+       raise SystemExit(f"[code-audit] {label} signature missing key_id")
+   status = trusted.get(kid)
+   if status is None:
+       raise SystemExit(f"[code-audit] {label} signature key_id={kid!r} not present in trusted_signing_keys.json")
+   if status != "active" and not allow_retired:
+       raise SystemExit(
+           f"[code-audit] {label} signature key_id={kid!r} is {status!r}. "
+           "Set CODE_AUDIT_ALLOW_RETIRED_SIGNATURE_KEYS=1 to permit."
+       )
+   try:
+       canon = canonical_payload_for_artifact(str(payload), obj)
+       verify_payload(canon, sig, cfg=cfg)
+   except SigningError as e:
+       raise SystemExit(f"[code-audit] {label} signature invalid: {e}")
+
+print("[code-audit] signatures verified")
+return 0
+*** End Patch
+*** Begin Patch
+*** Update File: scripts/sign_dist_artifacts.py
+@@
+from future import annotations
+
+import json
++import os
+from pathlib import Path
+from typing import Any
+
+from code_audit.contracts.signing import SigningConfig, sign_payload
+from code_audit.contracts.signing import canonical_payload_for_artifact
+
+ROOT = Path(file).resolve().parents[1]
+DIST = ROOT / "dist"
+
+RULE_PACK = DIST / "contracts" / "rule_pack.json"
+BOM = DIST / "release_bom.json"
+
+RULE_PACK_SIG = DIST / "contracts" / "rule_pack.sig.json"
+BOM_SIG = DIST / "release_bom.sig.json"
++TRUSTED_KEYS = DIST / "contracts" / "trusted_signing_keys.json"
+@@
+def _write_json(p: Path, obj: dict[str, Any]) -> None:
+p.parent.mkdir(parents=True, exist_ok=True)
+p.write_text(json.dumps(obj, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
++def _load_trusted_keys() -> dict[str, str]:
+
+if not TRUSTED_KEYS.exists():
+
+   raise SystemExit("Missing dist/contracts/trusted_signing_keys.json (required for signing)")
+
+obj = _load_json(TRUSTED_KEYS)
+
+keys = obj.get("keys") or []
+
+if not isinstance(keys, list) or not keys:
+
+   raise SystemExit("trusted_signing_keys.json invalid: keys must be a non-empty list")
+
+out: dict[str, str] = {}
+
+for k in keys:
+
+   if not isinstance(k, dict):
+       continue
+   kid = k.get("key_id")
+   st = k.get("status")
+   if isinstance(kid, str) and isinstance(st, str):
+       out[kid] = st
+
+if not out:
+
+   raise SystemExit("trusted_signing_keys.json invalid: no usable key entries")
+
+return out
+
+def main() -> int:
+cfg = SigningConfig()
+
+trusted = _load_trusted_keys()
+
+allow_retired = (os.environ.get("CODE_AUDIT_ALLOW_RETIRED_SIGNATURE_KEYS", "") or "").strip().lower() in ("1", "true", "yes", "on")
+
+kid = cfg.key_id()
+
+status = trusted.get(kid)
+
+if status is None:
+
+   raise SystemExit(f"Signing key_id={kid!r} is not present in trusted_signing_keys.json")
+
+if status != "active" and not allow_retired:
+
+   raise SystemExit(
+       f"Signing key_id={kid!r} is {status!r}. Set CODE_AUDIT_ALLOW_RETIRED_SIGNATURE_KEYS=1 to permit."
+   )
+
+if not RULE_PACK.exists():
+raise SystemExit("Missing dist/contracts/rule_pack.json (generate release artifacts first)")
+if not BOM.exists():
+raise SystemExit("Missing dist/release_bom.json (generate release artifacts first)")
+*** End Patch
+
+ship the next diff
+Thought for 20s
+
+*** Begin Patch
+*** Update File: scripts/check_release_bom_consistency.py
+@@
+def _load_trusted_keys() -> dict[str, str]:
+a = artifacts.get("trusted_signing_keys")
+if a is None:
+if require_sigs or scs is True:
+raise AssertionError("trusted_signing_keys missing but signatures are required/present")
+return {}
+assert isinstance(a, dict), "artifacts.trusted_signing_keys must be an object"
+
+   rel = _req(a, "path", "artifacts.trusted_signing_keys")
+   ctx = "artifacts.trusted_signing_keys"
+   rel = _req(a, "path", ctx)
+   p = (ROOT / rel).resolve()
+   assert p.exists(), f"trusted_signing_keys file missing: {rel}"
+   # Tighten: sha256 must match the on-disk file
+   exp_sha = _req(a, "sha256", ctx)
+   assert isinstance(exp_sha, str) and len(exp_sha) == 64 and all(c in "0123456789abcdef" for c in exp_sha)
+   got_sha = _sha256_file(p)
+   assert got_sha == exp_sha, f"{ctx}.sha256 mismatch: expected={exp_sha} got={got_sha}"
+   obj = json.loads(p.read_text(encoding="utf-8"))
+   keys = obj.get("keys") or []
+   assert isinstance(keys, list) and keys, "trusted_signing_keys.keys must be a non-empty list"
+   # Tighten: schema_version present and sane
+   sv = obj.get("schema_version")
+   assert isinstance(sv, int) and sv >= 1, "trusted_signing_keys.schema_version must be >= 1"
+   a_sv = a.get("schema_version")
+   assert isinstance(a_sv, int) and a_sv == sv, "artifacts.trusted_signing_keys.schema_version must match file"
+   # Tighten: keys_count must match
+   a_kc = a.get("keys_count")
+   assert isinstance(a_kc, int) and a_kc == len(keys), "artifacts.trusted_signing_keys.keys_count must match file"
+   out: dict[str, str] = {}
+   ids: list[str] = []
+   active = 0
+   for k in keys:
+       if not isinstance(k, dict):
+           continue
+       kid = k.get("key_id")
+       st = k.get("status")
+       if isinstance(kid, str) and isinstance(st, str):
+           out[kid] = st
+           ids.append(kid)
+           if st == "active":
+               active += 1
+   assert out, "trusted_signing_keys must include at least one key_id"
+   assert ids == sorted(ids), "trusted_signing_keys.keys must be sorted by key_id"
+   assert len(ids) == len(set(ids)), "trusted_signing_keys contains duplicate key_id"
+   assert active >= 1, "trusted_signing_keys must include at least one active key_id"
+   return out
+
+*** End Patch
+*** Begin Patch
+*** Update File: scripts/check_release_bom_generator_gate.py
+@@
+if scs is True or require_sigs:
+# trusted_signing_keys must exist in signed mode
+_require_dist_path("trusted_signing_keys", "dist/contracts/trusted_signing_keys.json")
+@@
+# Tighten: trusted_signing_keys keys_count must match file contents
+try:
+a = arts.get("trusted_signing_keys")
+rel = a.get("path") if isinstance(a, dict) else None
+p = (ROOT / rel).resolve() if isinstance(rel, str) else None
+obj = json.loads(p.read_text(encoding="utf-8")) if p and p.exists() else None
+if isinstance(a, dict) and isinstance(obj, dict):
+keys = obj.get("keys") or []
+exp = a.get("keys_count")
+if not isinstance(keys, list) or not isinstance(exp, int) or exp != len(keys):
+issues.append(_issue(
+"invalid_required_artifact",
+"release_bom.json:artifacts.trusted_signing_keys.keys_count",
+len(keys) if isinstance(keys, list) else "<list>",
+exp,
+))
+
+                       # Tighten: schema_version match
+                       sv = obj.get("schema_version")
+                       a_sv = a.get("schema_version")
+                       if not isinstance(sv, int) or not isinstance(a_sv, int) or sv != a_sv or sv < 1:
+                           issues.append(_issue(
+                               "invalid_required_artifact",
+                               "release_bom.json:artifacts.trusted_signing_keys.schema_version",
+                               sv,
+                               a_sv,
+                           ))
+                       # Tighten: sha256 looks like hex64
+                       sha = a.get("sha256")
+                       if not _is_hex64(sha):
+                           issues.append(_issue(
+                               "invalid_required_artifact",
+                               "release_bom.json:artifacts.trusted_signing_keys.sha256",
+                               "64-char lowercase hex",
+                               sha,
+                           ))
+                       # Tighten: ensure at least one active key and sorted unique ids (fast checks)
+                       if isinstance(keys, list):
+                           ids = []
+                           active = 0
+                           for k in keys:
+                               if not isinstance(k, dict):
+                                   continue
+                               kid = k.get("key_id")
+                               st = k.get("status")
+                               if isinstance(kid, str):
+                                   ids.append(kid)
+                               if st == "active":
+                                   active += 1
+                           if ids != sorted(ids) or len(ids) != len(set(ids)):
+                               issues.append(_issue(
+                                   "invalid_required_artifact",
+                                   "dist/contracts/trusted_signing_keys.json:keys",
+                                   "sorted unique key_id list",
+                                   "<unsorted-or-duplicate>",
+                               ))
+                           if active < 1:
+                               issues.append(_issue(
+                                   "invalid_required_artifact",
+                                   "dist/contracts/trusted_signing_keys.json:keys.status",
+                                   ">=1 active",
+                                   active,
+                               ))
+               except Exception:
+                   issues.append(_issue(
+                       "invalid_required_artifact",
+                       "release_bom.json:artifacts.trusted_signing_keys",
+                       "parseable JSON with keys list",
+                       "<unreadable>",
+                   ))
+
+*** End Patch
+
+great progression, ship the next diff in this sequence of tightenings
+Thought for 19s
+
+*** Begin Patch
+*** Update File: scripts/generate_release_bom.py
+@@
+def generate_release_bom(*, write: bool = True) -> dict[str, Any]:
+@@
+# Supply-chain: sign rule_pack + release_bom when signing key is available.
+# Fail-closed in release contexts by setting CODE_AUDIT_REQUIRE_SIGNATURES=1.
+import os
+require = (os.environ.get("CODE_AUDIT_REQUIRE_SIGNATURES", "") or "").strip().lower() in ("1", "true", "yes", "on")
+
+have_key = bool((os.environ.get("CODE_AUDIT_SIGNING_KEY_B64", "") or "").strip())
+
+from code_audit.contracts.signing import SigningConfig
+
+cfg = SigningConfig()
+
+have_key = cfg.have_any_key_material()
+if require and not have_key:
+
+   raise SystemExit("[release-bom] CODE_AUDIT_REQUIRE_SIGNATURES=1 but CODE_AUDIT_SIGNING_KEY_B64 is missing")
+   raise SystemExit(
+       "[release-bom] CODE_AUDIT_REQUIRE_SIGNATURES=1 but no signing key material is available.\n"
+       "Provide one of:\n"
+       "  - CODE_AUDIT_SIGNING_KEYS_JSON_B64 (preferred, rotation)\n"
+       "  - CODE_AUDIT_SIGNING_KEY_B64 (legacy)\n"
+   )
+
+if have_key:
+bom["artifacts"]["supply_chain_signed"] = True
+@@
+
+   from code_audit.contracts.signing import SigningConfig, canonical_payload_for_artifact, sign_payload, verify_payload
+   cfg = SigningConfig()
+   from code_audit.contracts.signing import canonical_payload_for_artifact, sign_payload, verify_payload
+   # Tighten: enforce key_id is governed + active (unless explicitly allowed).
+   allow_retired = (os.environ.get("CODE_AUDIT_ALLOW_RETIRED_SIGNATURE_KEYS", "") or "").strip().lower() in ("1", "true", "yes", "on")
+   if not TRUSTED_KEYS_SRC.exists():
+       raise SystemExit("[release-bom] supply_chain_signed=true requires src/code_audit/contracts/trusted_signing_keys.json")
+   try:
+       tk_obj = json.loads(TRUSTED_KEYS_SRC.read_text(encoding="utf-8"))
+   except Exception as e:
+       raise SystemExit(f"[release-bom] unable to read trusted_signing_keys.json: {e}")
+   keys = tk_obj.get("keys") or []
+   if not isinstance(keys, list) or not keys:
+       raise SystemExit("[release-bom] trusted_signing_keys.json invalid: keys must be a non-empty list")
+   status_by_id: dict[str, str] = {}
+   for k in keys:
+       if not isinstance(k, dict):
+           continue
+       kid = k.get("key_id")
+       st = k.get("status")
+       if isinstance(kid, str) and isinstance(st, str):
+           status_by_id[kid] = st
+   signing_kid = cfg.key_id()
+   st = status_by_id.get(signing_kid)
+   if st is None:
+       raise SystemExit(f"[release-bom] signing key_id={signing_kid!r} not present in trusted_signing_keys.json")
+   if st != "active" and not allow_retired:
+       raise SystemExit(
+           f"[release-bom] signing key_id={signing_kid!r} is {st!r}. "
+           "Set CODE_AUDIT_ALLOW_RETIRED_SIGNATURE_KEYS=1 to permit."
+       )
+
+@@
+# 4) Inject release_bom_signature and rewrite BOM (final)
+bom["artifacts"]["release_bom_signature"] = _sig_obj_from_file(BOM_SIG_DIST)
+
+     # 5) Ship trusted signing key registry + attest it in the BOM (required when signed).
+   if not TRUSTED_KEYS_SRC.exists():
+       raise SystemExit("[release-bom] supply_chain_signed=true requires src/code_audit/contracts/trusted_signing_keys.json")
+   TRUSTED_KEYS_DIST.parent.mkdir(parents=True, exist_ok=True)
+   TRUSTED_KEYS_DIST.write_bytes(TRUSTED_KEYS_SRC.read_bytes())
+   tk_obj = _load_json(TRUSTED_KEYS_DIST)
+   tk_obj = _load_json(TRUSTED_KEYS_DIST)
+   keys = tk_obj.get("keys") or []
+   bom["artifacts"]["trusted_signing_keys"] = {
+       "path": str(TRUSTED_KEYS_DIST.relative_to(ROOT)),
+       "sha256": _sha256_file(TRUSTED_KEYS_DIST),
+       "schema_version": int(tk_obj.get("schema_version", 0) or 0),
+       "keys_count": int(len(keys) if isinstance(keys, list) else 0),
+   }
+   _write_json(DIST / "release_bom.json", bom)
+
+*** End Patch
+*** Begin Patch
+*** Update File: scripts/check_release_bom_generator_gate.py
+@@
+if scs is True or require_sigs:
+# trusted_signing_keys must exist in signed mode
+_require_dist_path("trusted_signing_keys", "dist/contracts/trusted_signing_keys.json")
+@@
+# Tighten: trusted_signing_keys keys_count must match file contents
+try:
+a = arts.get("trusted_signing_keys")
+rel = a.get("path") if isinstance(a, dict) else None
+p = (ROOT / rel).resolve() if isinstance(rel, str) else None
+obj = json.loads(p.read_text(encoding="utf-8")) if p and p.exists() else None
+if isinstance(a, dict) and isinstance(obj, dict):
+keys = obj.get("keys") or []
+@@
+if active < 1:
+issues.append(_issue(
+"invalid_required_artifact",
+"dist/contracts/trusted_signing_keys.json:keys.status",
+">=1 active",
+active,
+))
++
+
+                       # Tighten: signature key_id must be present in trusted_signing_keys (fast check)
+                       if isinstance(keys, list):
+                           known = set()
+                           for k in keys:
+                               if isinstance(k, dict) and isinstance(k.get("key_id"), str):
+                                   known.add(k["key_id"])
+                           for sig_key in ("rule_pack_signature", "release_bom_signature"):
+                               sig_a = arts.get(sig_key)
+                               kid = sig_a.get("key_id") if isinstance(sig_a, dict) else None
+                               if isinstance(kid, str) and kid and (kid not in known):
+                                   issues.append(_issue(
+                                       "invalid_required_artifact",
+                                       f"release_bom.json:artifacts.{sig_key}.key_id",
+                                       "present in trusted_signing_keys",
+                                       kid,
+                                   ))
+               except Exception:
+                   issues.append(_issue(
+                       "invalid_required_artifact",
+                       "release_bom.json:artifacts.trusted_signing_keys",
+                       "parseable JSON with keys list",
+                       "<unreadable>",
+                   ))
+
+*** End Patch
+
+ship the next diff
+Thought for 12s
+
+*** Begin Patch
+*** Update File: scripts/generate_release_bom.py
+@@
+if have_key:
+bom["artifacts"]["supply_chain_signed"] = True
+# IMPORTANT: sign in a non-self-referential order so the attested BOM is what gets signed.
+@@
+from code_audit.contracts.signing import canonical_payload_for_artifact, sign_payload, verify_payload
+
+     # Tighten: enforce key_id is governed + active (unless explicitly allowed).
+     allow_retired = (os.environ.get("CODE_AUDIT_ALLOW_RETIRED_SIGNATURE_KEYS", "") or "").strip().lower() in ("1", "true", "yes", "on")
+     if not TRUSTED_KEYS_SRC.exists():
+         raise SystemExit("[release-bom] supply_chain_signed=true requires src/code_audit/contracts/trusted_signing_keys.json")
+
+@@
+signing_kid = cfg.key_id()
+st = status_by_id.get(signing_kid)
+if st is None:
+raise SystemExit(f"[release-bom] signing key_id={signing_kid!r} not present in trusted_signing_keys.json")
+if st != "active" and not allow_retired:
+raise SystemExit(
+f"[release-bom] signing key_id={signing_kid!r} is {st!r}. "
+"Set CODE_AUDIT_ALLOW_RETIRED_SIGNATURE_KEYS=1 to permit."
+)
+
+     def _write_json(path: Path, obj: dict[str, Any]) -> None:
+         path.parent.mkdir(parents=True, exist_ok=True)
+         path.write_text(json.dumps(obj, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+     def _sig_obj_from_file(path: Path) -> dict[str, Any]:
+         o = _load_json(path)
+         return {
+             "path": str(path.relative_to(ROOT)),
+             "sha256": _sha256_file(path),
+             "algorithm": str(o.get("algorithm") or ""),
+             "key_id": str(o.get("key_id") or ""),
+             "payload_sha256": str(o.get("payload_sha256") or ""),
+             "signature": str(o.get("signature") or ""),
+         }
+   # 0) Ship trusted signing key registry + attest it in the BOM BEFORE BOM signing.
+   # This ensures release_bom_signature covers the trusted key registry attestation.
+   TRUSTED_KEYS_DIST.parent.mkdir(parents=True, exist_ok=True)
+   TRUSTED_KEYS_DIST.write_bytes(TRUSTED_KEYS_SRC.read_bytes())
+   tk_dist_obj = _load_json(TRUSTED_KEYS_DIST)
+   tk_keys = tk_dist_obj.get("keys") or []
+   bom["artifacts"]["trusted_signing_keys"] = {
+       "path": str(TRUSTED_KEYS_DIST.relative_to(ROOT)),
+       "sha256": _sha256_file(TRUSTED_KEYS_DIST),
+       "schema_version": int(tk_dist_obj.get("schema_version", 0) or 0),
+       "keys_count": int(len(tk_keys) if isinstance(tk_keys, list) else 0),
+   }
+   # 1) Sign rule_pack.json
+   if not RULE_PACK_DIST.exists():
+       raise SystemExit("[release-bom] missing dist/contracts/rule_pack.json prior to signing")
+   rp_obj = _load_json(RULE_PACK_DIST)
+   rp_payload = canonical_payload_for_artifact(str(RULE_PACK_DIST), rp_obj)
+   _write_json(RULE_PACK_SIG_DIST, sign_payload(rp_payload, cfg=cfg))
+   # Self-verify (fail-closed) to prevent emitting broken signatures.
+   verify_payload(rp_payload, _load_json(RULE_PACK_SIG_DIST), cfg=cfg)
+
+   # 2) Inject rule_pack_signature into BOM and write BOM (unsigned-self)
+   bom["artifacts"]["rule_pack_signature"] = _sig_obj_from_file(RULE_PACK_SIG_DIST)
+   _write_json(DIST / "release_bom.json", bom)
+
+   # 3) Sign canonical BOM payload (which strips release_bom_signature only)
+   bom_on_disk = _load_json(DIST / "release_bom.json")
+   bom_payload = canonical_payload_for_artifact(str(DIST / "release_bom.json"), bom_on_disk)
+   _write_json(BOM_SIG_DIST, sign_payload(bom_payload, cfg=cfg))
+   verify_payload(bom_payload, _load_json(BOM_SIG_DIST), cfg=cfg)
+
+   # 4) Inject release_bom_signature and rewrite BOM (final)
+   bom["artifacts"]["release_bom_signature"] = _sig_obj_from_file(BOM_SIG_DIST)
+   # 5) Ship trusted signing key registry + attest it in the BOM (required when signed).
+   TRUSTED_KEYS_DIST.parent.mkdir(parents=True, exist_ok=True)
+   TRUSTED_KEYS_DIST.write_bytes(TRUSTED_KEYS_SRC.read_bytes())
+   tk_obj = _load_json(TRUSTED_KEYS_DIST)
+   keys = tk_obj.get("keys") or []
+   bom["artifacts"]["trusted_signing_keys"] = {
+       "path": str(TRUSTED_KEYS_DIST.relative_to(ROOT)),
+       "sha256": _sha256_file(TRUSTED_KEYS_DIST),
+       "schema_version": int(tk_obj.get("schema_version", 0) or 0),
+       "keys_count": int(len(keys) if isinstance(keys, list) else 0),
+   }
+   _write_json(DIST / "release_bom.json", bom)
+
+else:
+# No key: ensure we do not accidentally emit signature artifacts while claiming unsigned.
+bom["artifacts"]["supply_chain_signed"] = False
+bom["artifacts"].pop("rule_pack_signature", None)
+bom["artifacts"].pop("release_bom_signature", None)
+bom["artifacts"].pop("trusted_signing_keys", None)
+(DIST / "release_bom.json").write_text(json.dumps(bom, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+return bom
+*** End Patch
+
+excellent we are making great progress; ship the next diff
+Thought for 16s
+
+*** Begin Patch
+*** Update File: scripts/generate_release_bom.py
+@@
+# 0) Ship trusted signing key registry + attest it in the BOM BEFORE BOM signing.
+# This ensures release_bom_signature covers the trusted key registry attestation.
+
+   # Also fail-closed if the registry is not schema-valid.
+   try:
+       import jsonschema  # type: ignore
+   except Exception as e:
+       raise SystemExit(f"[release-bom] missing dependency: jsonschema (required to validate trusted_signing_keys): {e}")
+   schema_path = ROOT / "schemas" / "trusted_signing_keys.schema.json"
+   if not schema_path.exists():
+       raise SystemExit("[release-bom] missing schemas/trusted_signing_keys.schema.json")
+   try:
+       jsonschema.validate(instance=tk_obj, schema=json.loads(schema_path.read_text(encoding="utf-8")))
+   except Exception as e:
+       raise SystemExit(f"[release-bom] trusted_signing_keys.json failed schema validation: {e}")
+   TRUSTED_KEYS_DIST.parent.mkdir(parents=True, exist_ok=True)
+   TRUSTED_KEYS_DIST.write_bytes(TRUSTED_KEYS_SRC.read_bytes())
+   tk_dist_obj = _load_json(TRUSTED_KEYS_DIST)
+   tk_keys = tk_dist_obj.get("keys") or []
+   bom["artifacts"]["trusted_signing_keys"] = {
+       "path": str(TRUSTED_KEYS_DIST.relative_to(ROOT)),
+       "sha256": _sha256_file(TRUSTED_KEYS_DIST),
+       "schema_version": int(tk_dist_obj.get("schema_version", 0) or 0),
+       "keys_count": int(len(tk_keys) if isinstance(tk_keys, list) else 0),
+   }
+
+*** End Patch
+*** Begin Patch
+*** Update File: scripts/check_release_bom_consistency.py
+@@
+import hashlib
+import json
+from pathlib import Path
+from typing import Any
+
+ROOT = Path(file).resolve().parents[1]
+@@
+def _sha256_hex_of_json(obj: Any) -> str:
+return hashlib.sha256(_canonical_json_bytes(obj)).hexdigest()
+
++def _validate_jsonschema(*, instance: dict[str, Any], schema_path: Path, ctx: str) -> None:
+
+try:
+
+   import jsonschema  # type: ignore
+
+except Exception as e:
+
+   raise AssertionError(f"{ctx}: jsonschema dependency missing: {e}")
+
+if not schema_path.exists():
+
+   raise AssertionError(f"{ctx}: missing schema file: {schema_path.relative_to(ROOT)}")
+
+schema = json.loads(schema_path.read_text(encoding="utf-8"))
+
+jsonschema.validate(instance=instance, schema=schema)
+
+@@
+def _load_trusted_keys() -> dict[str, str]:
+a = artifacts.get("trusted_signing_keys")
+if a is None:
+if require_sigs or scs is True:
+raise AssertionError("trusted_signing_keys missing but signatures are required/present")
+return {}
+assert isinstance(a, dict), "artifacts.trusted_signing_keys must be an object"
+ctx = "artifacts.trusted_signing_keys"
+rel = _req(a, "path", ctx)
+p = (ROOT / rel).resolve()
+assert p.exists(), f"trusted_signing_keys file missing: {rel}"
+@@
+got_sha = _sha256_file(p)
+assert got_sha == exp_sha, f"{ctx}.sha256 mismatch: expected={exp_sha} got={got_sha}"
+
+     obj = json.loads(p.read_text(encoding="utf-8"))
+
++
+
+   # Tighten: full schema validation (prevents ad-hoc fields / bad statuses).
+   _validate_jsonschema(
+       instance=obj,
+       schema_path=ROOT / "schemas" / "trusted_signing_keys.schema.json",
+       ctx="dist/contracts/trusted_signing_keys.json",
+   )
+   keys = obj.get("keys") or []
+   assert isinstance(keys, list) and keys, "trusted_signing_keys.keys must be a non-empty list"
+
+   # Tighten: schema_version present and sane
+   sv = obj.get("schema_version")
+   assert isinstance(sv, int) and sv >= 1, "trusted_signing_keys.schema_version must be >= 1"
+   a_sv = a.get("schema_version")
+   assert isinstance(a_sv, int) and a_sv == sv, "artifacts.trusted_signing_keys.schema_version must match file"
+
+*** End Patch
+
+ship the next diff for the next tightening 
+
+*** Begin Patch
+*** Update File: scripts/check_release_bom_generator_gate.py
+@@
+from future import annotations
+
+import json
+from pathlib import Path
+from typing import Any
+@@
+def run_preflight() -> int:
+@@
+if scs is True or require_sigs:
+# trusted_signing_keys must exist in signed mode
+_require_dist_path("trusted_signing_keys", "dist/contracts/trusted_signing_keys.json")
+@@
+# Tighten: trusted_signing_keys keys_count must match file contents
+try:
+a = arts.get("trusted_signing_keys")
+rel = a.get("path") if isinstance(a, dict) else None
+p = (ROOT / rel).resolve() if isinstance(rel, str) else None
+obj = json.loads(p.read_text(encoding="utf-8")) if p and p.exists() else None
+if isinstance(a, dict) and isinstance(obj, dict):
+
+                       # Full schema validation for trusted_signing_keys (defense-in-depth)
+                       try:
+                           import jsonschema  # type: ignore
+                           schema_path = ROOT / "schemas" / "trusted_signing_keys.schema.json"
+                           if not schema_path.exists():
+                               issues.append(_issue(
+                                   "invalid_required_artifact",
+                                   "schemas/trusted_signing_keys.schema.json",
+                                   "existing schema file",
+                                   "<missing>",
+                               ))
+                           else:
+                               schema = json.loads(schema_path.read_text(encoding="utf-8"))
+                               jsonschema.validate(instance=obj, schema=schema)
+                       except Exception as e:
+                           issues.append(_issue(
+                               "invalid_required_artifact",
+                               "dist/contracts/trusted_signing_keys.json",
+                               "schema-valid JSON",
+                               str(e),
+                           ))
+                       keys = obj.get("keys") or []
+                       exp = a.get("keys_count")
+                       if not isinstance(keys, list) or not isinstance(exp, int) or exp != len(keys):
+                           issues.append(_issue(
+                               "invalid_required_artifact",
+
+@@
+for k in keys:
+if not isinstance(k, dict):
+continue
+kid = k.get("key_id")
+st = k.get("status")
+if isinstance(kid, str):
+ids.append(kid)
+if st == "active":
+active += 1
+if ids != sorted(ids) or len(ids) != len(set(ids)):
+issues.append(_issue(
+"invalid_required_artifact",
+"dist/contracts/trusted_signing_keys.json:keys",
+"sorted unique key_id list",
+"<unsorted-or-duplicate>",
+))
+if active < 1:
+issues.append(_issue(
+"invalid_required_artifact",
+"dist/contracts/trusted_signing_keys.json:keys.status",
+">=1 active",
+active,
+))
++
+
+                           # Tighten: signature key_ids must be active unless explicitly allowed
+                           allow_retired = (os.environ.get("CODE_AUDIT_ALLOW_RETIRED_SIGNATURE_KEYS", "") or "").strip().lower() in ("1", "true", "yes", "on")
+                           status_by_id: dict[str, str] = {}
+                           for k in keys:
+                               if isinstance(k, dict) and isinstance(k.get("key_id"), str) and isinstance(k.get("status"), str):
+                                   status_by_id[k["key_id"]] = k["status"]
+                           for sig_key in ("rule_pack_signature", "release_bom_signature"):
+                               sig_a = arts.get(sig_key)
+                               kid = sig_a.get("key_id") if isinstance(sig_a, dict) else None
+                               if isinstance(kid, str) and kid:
+                                   st = status_by_id.get(kid)
+                                   if st is None:
+                                       issues.append(_issue(
+                                           "invalid_required_artifact",
+                                           f"release_bom.json:artifacts.{sig_key}.key_id",
+                                           "present in trusted_signing_keys",
+                                           kid,
+                                       ))
+                                   elif st != "active" and not allow_retired:
+                                       issues.append(_issue(
+                                           "invalid_required_artifact",
+                                           f"release_bom.json:artifacts.{sig_key}.key_id",
+                                           "active trusted key_id",
+                                           f"{kid}:{st}",
+                                       ))
+               except Exception:
+                   issues.append(_issue(
+                       "invalid_required_artifact",
+                       "release_bom.json:artifacts.trusted_signing_keys",
+                       "parseable JSON with keys list",
+
+*** End Patch
+
+it's tight but it's right; send the next diff
+
+*** Begin Patch
+*** Update File: scripts/verify_dist_signatures.py
+@@
+from future import annotations
+
+import json
+import os
+from pathlib import Path
+from typing import Any
+@@
+def _load_json(p: Path) -> dict[str, Any]:
+return json.loads(p.read_text(encoding="utf-8"))
+
+def _load_trusted_keys() -> dict[str, str]:
+if not TRUSTED_KEYS.exists():
+raise SystemExit(f"Missing trusted signing keys registry: {TRUSTED_KEYS.relative_to(ROOT)}")
+obj = _load_json(TRUSTED_KEYS)
++
+
+Full schema validation (defense-in-depth).
+
+try:
+
+   import jsonschema  # type: ignore
+
+except Exception as e:
+
+   raise SystemExit(f"jsonschema dependency missing: {e}")
+
+schema_path = ROOT / "schemas" / "trusted_signing_keys.schema.json"
+
+if not schema_path.exists():
+
+   raise SystemExit("Missing schemas/trusted_signing_keys.schema.json")
+
+jsonschema.validate(instance=obj, schema=_load_json(schema_path))
+
+keys = obj.get("keys") or []
+if not isinstance(keys, list) or not keys:
+raise SystemExit("trusted_signing_keys.json invalid: keys must be a non-empty list")
+out: dict[str, str] = {}
+
+ids: list[str] = []
+
+active = 0
+for k in keys:
+if not isinstance(k, dict):
+continue
+kid = k.get("key_id")
+st = k.get("status")
+if isinstance(kid, str) and isinstance(st, str):
+out[kid] = st
+
+       ids.append(kid)
+       if st == "active":
+           active += 1
+
+if not out:
+raise SystemExit("trusted_signing_keys.json invalid: no usable key entries")
+
+if ids != sorted(ids):
+
+   raise SystemExit("trusted_signing_keys.json invalid: keys must be sorted by key_id")
+
+if len(ids) != len(set(ids)):
+
+   raise SystemExit("trusted_signing_keys.json invalid: duplicate key_id entries")
+
+if active < 1:
+
+   raise SystemExit("trusted_signing_keys.json invalid: must include at least one active key")
+
+return out
+*** End Patch
+*** Begin Patch
+*** Update File: scripts/sign_dist_artifacts.py
+@@
+from future import annotations
+
+import json
+import os
+from pathlib import Path
+@@
+def _write_json(p: Path, obj: dict[str, Any]) -> None:
+p.parent.mkdir(parents=True, exist_ok=True)
+p.write_text(json.dumps(obj, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+def _load_trusted_keys() -> dict[str, str]:
+if not TRUSTED_KEYS.exists():
+raise SystemExit("Missing dist/contracts/trusted_signing_keys.json (required for signing)")
+obj = _load_json(TRUSTED_KEYS)
++
+
+Full schema validation (defense-in-depth).
+
+try:
+
+   import jsonschema  # type: ignore
+
+except Exception as e:
+
+   raise SystemExit(f"jsonschema dependency missing: {e}")
+
+schema_path = ROOT / "schemas" / "trusted_signing_keys.schema.json"
+
+if not schema_path.exists():
+
+   raise SystemExit("Missing schemas/trusted_signing_keys.schema.json")
+
+jsonschema.validate(instance=obj, schema=_load_json(schema_path))
+
+keys = obj.get("keys") or []
+if not isinstance(keys, list) or not keys:
+raise SystemExit("trusted_signing_keys.json invalid: keys must be a non-empty list")
+out: dict[str, str] = {}
+
+ids: list[str] = []
+
+active = 0
+for k in keys:
+if not isinstance(k, dict):
+continue
+kid = k.get("key_id")
+st = k.get("status")
+if isinstance(kid, str) and isinstance(st, str):
+out[kid] = st
+
+       ids.append(kid)
+       if st == "active":
+           active += 1
+
+if not out:
+raise SystemExit("trusted_signing_keys.json invalid: no usable key entries")
+
+if ids != sorted(ids):
+
+   raise SystemExit("trusted_signing_keys.json invalid: keys must be sorted by key_id")
+
+if len(ids) != len(set(ids)):
+
+   raise SystemExit("trusted_signing_keys.json invalid: duplicate key_id entries")
+
+if active < 1:
+
+   raise SystemExit("trusted_signing_keys.json invalid: must include at least one active key")
+
+return out
+*** End Patch
+
+ship the next diff
+Thought for 15s
+
+*** Begin Patch
+*** Update File: scripts/check_release_bom_consistency.py
+@@
+def check_release_bom_consistency(bom: dict[str, Any]) -> None:
+@@
+require_sigs = (os.environ.get("CODE_AUDIT_REQUIRE_SIGNATURES", "") or "").strip().lower() in ("1", "true", "yes", "on")
+have_key = bool((os.environ.get("CODE_AUDIT_SIGNING_KEY_B64", "") or "").strip())
+
+allow_mixed_keys = (os.environ.get("CODE_AUDIT_ALLOW_MIXED_SIGNATURE_KEYS", "") or "").strip().lower() in ("1", "true", "yes", "on")
+@@
+_check_sig_artifact(
+"rule_pack_signature",
+"dist/contracts/rule_pack.sig.json",
+"dist/contracts/rule_pack.json",
+)
+@@
+_check_sig_artifact(
+"release_bom_signature",
+"dist/release_bom.sig.json",
+"dist/release_bom.json",
+)
+
+Key rotation tightening:
+By default, both release signatures must be produced by the same trusted key_id.
+Mixed-key releases require explicit opt-in.
+
+if has_rp_sig and has_bom_sig:
+
+   rp_sig = artifacts.get("rule_pack_signature")
+   bom_sig = artifacts.get("release_bom_signature")
+   if isinstance(rp_sig, dict) and isinstance(bom_sig, dict):
+       rp_kid = rp_sig.get("key_id")
+       bom_kid = bom_sig.get("key_id")
+       assert isinstance(rp_kid, str) and rp_kid, "artifacts.rule_pack_signature.key_id missing"
+       assert isinstance(bom_kid, str) and bom_kid, "artifacts.release_bom_signature.key_id missing"
+       if rp_kid != bom_kid and not allow_mixed_keys:
+           raise AssertionError(
+               "Mixed signature key_ids are not allowed by default: "
+               f"rule_pack_signature.key_id={rp_kid!r}, release_bom_signature.key_id={bom_kid!r}. "
+               "Set CODE_AUDIT_ALLOW_MIXED_SIGNATURE_KEYS=1 to permit."
+           )
+
+*** End Patch
+*** Begin Patch
+*** Update File: scripts/check_release_bom_generator_gate.py
+@@
+import os
+require_sigs = (os.environ.get("CODE_AUDIT_REQUIRE_SIGNATURES", "") or "").strip().lower() in ("1", "true", "yes", "on")
+
+           allow_mixed_keys = (os.environ.get("CODE_AUDIT_ALLOW_MIXED_SIGNATURE_KEYS", "") or "").strip().lower() in ("1", "true", "yes", "on")
+           scs = arts.get("supply_chain_signed") if isinstance(arts, dict) else None
+           if not isinstance(scs, bool):
+
+@@
+if scs is True or require_sigs:
+# trusted_signing_keys must exist in signed mode
+_require_dist_path("trusted_signing_keys", "dist/contracts/trusted_signing_keys.json")
+@@
+for key, expected_rel in (
+("rule_pack_signature", "dist/contracts/rule_pack.sig.json"),
+("release_bom_signature", "dist/release_bom.sig.json"),
+):
+@@
+kid = a.get("key_id")
+if not isinstance(kid, str) or not kid.strip():
+issues.append(_issue(
+"invalid_required_artifact",
+f"release_bom.json:artifacts.{key}.key_id",
+"non-empty string",
+kid,
+))
++
+
+               # Tighten: by default both signatures must use the same key_id.
+               rp_sig = arts.get("rule_pack_signature")
+               bom_sig = arts.get("release_bom_signature")
+               rp_kid = rp_sig.get("key_id") if isinstance(rp_sig, dict) else None
+               bom_kid = bom_sig.get("key_id") if isinstance(bom_sig, dict) else None
+               if (
+                   isinstance(rp_kid, str) and rp_kid
+                   and isinstance(bom_kid, str) and bom_kid
+                   and rp_kid != bom_kid
+                   and not allow_mixed_keys
+               ):
+                   issues.append(_issue(
+                       "invalid_required_artifact",
+                       "release_bom.json:artifacts.{rule_pack_signature,release_bom_signature}.key_id",
+                       f"same key_id (or CODE_AUDIT_ALLOW_MIXED_SIGNATURE_KEYS=1)",
+                       f"{rp_kid} != {bom_kid}",
+                   ))
+
+               # Tighten: trusted_signing_keys keys_count must match file contents
+               try:
+
+*** End Patch
+*** Begin Patch
+*** Update File: scripts/verify_dist_signatures.py
+@@
+def main() -> int:
+cfg = SigningConfig()
+trusted = _load_trusted_keys()
+allow_retired = (os.environ.get("CODE_AUDIT_ALLOW_RETIRED_SIGNATURE_KEYS", "") or "").strip().lower() in ("1", "true", "yes", "on")
+
+allow_mixed_keys = (os.environ.get("CODE_AUDIT_ALLOW_MIXED_SIGNATURE_KEYS", "") or "").strip().lower() in ("1", "true", "yes", "on")
+
+seen_key_ids: list[str] = []
+
+for payload, sigp, label in [
+(RULE_PACK, RULE_PACK_SIG, "rule_pack"),
+(BOM, BOM_SIG, "release_bom"),
+]:
+@@
+kid = sig.get("key_id")
+if not isinstance(kid, str) or not kid.strip():
+raise SystemExit(f"[code-audit] {label} signature missing key_id")
+
+   seen_key_ids.append(kid)
+   status = trusted.get(kid)
+   if status is None:
+       raise SystemExit(f"[code-audit] {label} signature key_id={kid!r} not present in trusted_signing_keys.json")
+   if status != "active" and not allow_retired:
+       raise SystemExit(
+
+@@
+except SigningError as e:
+raise SystemExit(f"[code-audit] {label} signature invalid: {e}")
++
+
+if len(set(seen_key_ids)) > 1 and not allow_mixed_keys:
+
+   raise SystemExit(
+       "[code-audit] mixed signature key_ids are not allowed by default. "
+       f"Observed: {sorted(set(seen_key_ids))}. "
+       "Set CODE_AUDIT_ALLOW_MIXED_SIGNATURE_KEYS=1 to permit."
+   )
+
+print("[code-audit] signatures verified")
+return 0
+*** End Patch

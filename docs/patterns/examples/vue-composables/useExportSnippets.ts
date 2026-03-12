@@ -17,11 +17,14 @@ export function pyEscape(s: string): string {
   return String(s).replace(/\\/g, '\\\\').replace(/"""/g, '\\"\\"\\"')
 }
 
+/** Character code for backtick (U+0060) — avoids literal backticks inside template strings */
+const BACKTICK_CHARCODE = 96
+
 /** Escape for JS template literal (backticks) */
 export function jsEscape(s: string): string {
   return String(s)
     .replace(/\\/g, '\\\\')
-    .replace(new RegExp(String.fromCharCode(96), 'g'), '\\' + String.fromCharCode(96))
+    .replace(new RegExp(String.fromCharCode(BACKTICK_CHARCODE), 'g'), '\\' + String.fromCharCode(BACKTICK_CHARCODE))
 }
 
 /** Escape single quotes for YAML single-quoted strings */
@@ -33,11 +36,14 @@ export function yamlEscapeSingleQuotes(s: string): string {
 // Filename Utilities
 // ==========================================================================
 
+/** Maximum length for session ID in safe filenames */
+const MAX_SESSION_ID_LENGTH = 32
+
 /** Generate safe filename from session ID */
 export function safeFilenameFromSession(sessionId: string): string {
   const cleaned = (sessionId || 'session')
     .trim()
-    .slice(0, 32)
+    .slice(0, MAX_SESSION_ID_LENGTH)
     .replace(/[^a-zA-Z0-9._-]+/g, '_')
   return `art_studio_export_intent_${cleaned}.json`
 }
@@ -172,9 +178,21 @@ export function buildExportNodeFetch(url: string, sessionId: string): string {
 // GitHub Actions Step
 // ==========================================================================
 
+/**
+ * Shared YAML-safe preparation for GitHub Actions snippets.
+ * Eliminates duplicate escaping logic across step / job / workflow builders.
+ */
+function prepareYamlExportArgs(url: string, sessionId: string) {
+  const rawOut = safeFilenameFromSession(sessionId)
+  return {
+    safeUrl: yamlEscapeSingleQuotes(url),
+    safeOut: yamlEscapeSingleQuotes(rawOut),
+    rawOut,
+  }
+}
+
 export function buildExportGitHubActionsStep(url: string, sessionId: string): string {
-  const out = safeFilenameFromSession(sessionId)
-  const safeUrl = yamlEscapeSingleQuotes(url)
+  const { safeUrl, rawOut: out } = prepareYamlExportArgs(url, sessionId)
   return [
     '- name: Download RMOS promotion-intent',
     '  run: |',
@@ -193,9 +211,7 @@ export function buildExportGitHubActionsStep(url: string, sessionId: string): st
 // ==========================================================================
 
 export function buildExportGitHubActionsJob(url: string, sessionId: string): string {
-  const safeOut = safeFilenameFromSession(sessionId)
-  const u = yamlEscapeSingleQuotes(url)
-  const out = yamlEscapeSingleQuotes(safeOut)
+  const { safeUrl: u, safeOut: out } = prepareYamlExportArgs(url, sessionId)
 
   return [
     'art-studio-export-intent:',
@@ -230,9 +246,7 @@ export function buildExportGitHubActionsJob(url: string, sessionId: string): str
 // ==========================================================================
 
 export function buildExportGitHubActionsWorkflow(url: string, sessionId: string): string {
-  const safeOut = safeFilenameFromSession(sessionId)
-  const u = yamlEscapeSingleQuotes(url)
-  const out = yamlEscapeSingleQuotes(safeOut)
+  const { safeUrl: u, safeOut: out } = prepareYamlExportArgs(url, sessionId)
 
   return [
     `name: Art Studio — Download + Validate Export Intent`,

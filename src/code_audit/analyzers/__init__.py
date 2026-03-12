@@ -111,4 +111,11 @@ def __getattr__(name: str):
     if name == "analyze_coupling":
         from .vue_coupling import analyze_coupling
         return analyze_coupling
+    # JS/TS tree-sitter analyzers
+    if name == "JsTsSecurityPreviewAnalyzer":
+        from .js_ts_security import JsTsSecurityPreviewAnalyzer
+        return JsTsSecurityPreviewAnalyzer
+    if name == "TreeSitterAnalyzerBase":
+        from .treesitter_base import TreeSitterAnalyzerBase
+        return TreeSitterAnalyzerBase
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

@@ -36,7 +36,7 @@ def _run_cli_scan_json(root: Path) -> dict[str, Any]:
     env["CI"] = "true"
 
     cmd = [sys.executable, "-m", "code_audit", str(root), "--json", "--ci"]
-    proc = subprocess.run(cmd, capture_output=True, text=True, env=env)
+    proc = subprocess.run(cmd, capture_output=True, encoding="utf-8", env=env)
 
     assert proc.returncode in (0, 1, 2), (
         f"CLI error (exit {proc.returncode}): {' '.join(cmd)}\n"

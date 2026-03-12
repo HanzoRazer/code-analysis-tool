@@ -1,0 +1,11 @@
+{
+  "files": {
+    "src/code_audit/contracts/versions.json": "sha256:666e7ca9d86ad770be37b32358b1d318c9fea5cca5a814117382f79531fc68c4",
+    "src/code_audit/parsers/__init__.py": "sha256:c9a7779e6fc606f2fd5b5c356f9c967e4429f3bc64c0e0209d80607295a3e54a",
+    "src/code_audit/parsers/tree_sitter_js.py": "sha256:268c3fe09374d5ca6062b7d20c317ca3fbc3d9765dbf4f94e590e77e826d721b",
+    "src/code_audit/parsers/tree_sitter_loader.py": "sha256:d3410ed8ea3d82d909d678d7fbba217808fec5b8457fdd4679d3fc5f12724d2e"
+  },
+  "manifest_version": 1,
+  "signal_logic_version": "signals_v4",
+  "versions_json_hash": "sha256:666e7ca9d86ad770be37b32358b1d318c9fea5cca5a814117382f79531fc68c4"
+}

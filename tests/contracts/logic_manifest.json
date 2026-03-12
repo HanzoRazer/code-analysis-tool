@@ -43,6 +43,12 @@
       "version": "1.0.0"
     },
     {
+      "class_name": "JsTsSecurityPreviewAnalyzer",
+      "logic_hash": "sha256:8848c802d9a0c1f68ecb58776ae7d31858597f445cd87596ee2a53e09650e247",
+      "module": "code_audit.analyzers.js_ts_security",
+      "version": "0.1.0"
+    },
+    {
       "class_name": "RoutersAnalyzer",
       "logic_hash": "sha256:aacf8a413e59e5aa46dda41ecd54ebeb77f28e8ae76517eac81cff6c7dc992f1",
       "module": "code_audit.analyzers.routers",
@@ -73,5 +79,5 @@
       "version": "1.0.0"
     }
   ],
-  "signal_logic_version": "signals_v2"
+  "signal_logic_version": "signals_v4"
 }

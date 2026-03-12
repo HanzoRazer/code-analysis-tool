@@ -28,8 +28,13 @@ api = [
   "uvicorn[standard]>=0.27.0",
   "pydantic>=2.0.0",
 ]
+treesitter = [
+  "tree-sitter>=0.24.0",
+  "tree-sitter-javascript>=0.23.0",
+  "tree-sitter-typescript>=0.23.0",
+]
 all = [
-  "code-analysis-tool[dev,api]",
+  "code-analysis-tool[dev,api,treesitter]",
 ]
 
 [tool.pytest.ini_options]

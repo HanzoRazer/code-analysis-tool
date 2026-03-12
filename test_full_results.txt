@@ -1,0 +1,116 @@
+....................ss.................................................. [  7%]
+...............FF.........F............FF..FF........................... [ 14%]
+........................................................FFFFF........... [ 21%]
+............................................FFFF...FF................... [ 28%]
+....FFF...FF............................................................ [ 35%]
+........................................................................ [ 42%]
+........................................................................ [ 49%]
+........................................................................ [ 56%]
+........................................................................ [ 63%]
+........................................................................ [ 70%]
+........................................................................ [ 77%]
+.........................................s.............................. [ 84%]
+...FF..FF............................................................... [ 91%]
+........................................................................ [ 98%]
+....................                                                     [100%]
+============================== warnings summary ===============================
+src\code_audit\web_api\schemas\scan.py:11
+  C:\Users\thepr\Downloads\code-analysis-tool\src\code_audit\web_api\schemas\scan.py:11: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    class ScanRequest(BaseModel):
+
+src\code_audit\web_api\schemas\scan.py:37
+  C:\Users\thepr\Downloads\code-analysis-tool\src\code_audit\web_api\schemas\scan.py:37: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    class ScanResponse(BaseModel):
+
+tests/web_api/test_endpoints.py::TestScanEndpoint::test_scan_returns_200
+tests/web_api/test_endpoints.py::TestScanEndpoint::test_scan_returns_complete_status
+tests/web_api/test_endpoints.py::TestScanEndpoint::test_scan_includes_summary
+tests/web_api/test_endpoints.py::TestScanEndpoint::test_scan_includes_result
+tests/web_api/test_endpoints.py::TestScanEndpoint::test_scan_with_project_id
+tests/web_api/test_endpoints.py::TestEndpointIntegration::test_all_endpoints_accessible
+tests/web_api/test_endpoints.py::TestEndpointIntegration::test_scan_and_debt_consistency
+  C:\Users\thepr\AppData\Roaming\Python\Python314\site-packages\pydantic\main.py:250: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    validated_self = self.__pydantic_validator__.validate_python(data, self_instance=self)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/test_cli_api_parity_debt_ci.py::TestDebtSnapshotParity::test_snapshot_json_matches_api - FileNotFoundError: [Errno 2] No such file or directory: 'C:\\Users\\thepr\\AppData\\Local\\Temp\\pytest-of-thepr\\pytest-1813\\test_snapshot_json_matches_api0\\artifacts\\snapshot.json'
+FAILED tests/test_cli_api_parity_debt_ci.py::TestDebtSnapshotParity::test_snapshot_deterministic_across_runs - FileNotFoundError: [Errno 2] No such file or directory: 'C:\\Users\\thepr\\AppData\\Local\\Temp\\pytest-of-thepr\\pytest-1813\\test_snapshot_deterministic_ac0\\artifacts\\snap_a.json'
+FAILED tests/test_cli_api_parity_scan_ci.py::TestDefaultPositionalParity::test_default_and_scan_subcommand_produce_same_result - FileNotFoundError: [Errno 2] No such file or directory: 'C:\\Users\\thepr\\AppData\\Local\\Temp\\pytest-of-thepr\\pytest-1813\\test_default_and_scan_subcomma1\\repo\\artifacts\\scan.json'
+FAILED tests/test_contract_manifest_self_consistency.py::test_dedicated_gate_files_are_collected_by_pytest_in_ci - AssertionError: Pytest collection assertion failed in CI:
+The following dedicated gate files did not produce any collected tests:
+- tests/test_openapi_scrub_audit_baseline.py
+- tests/test_openapi_scrub_baseline_requires_signal_logic_bump.py
+- tests/test_openapi_scrub_budgets_requires_signal_logic_bump.py
+- tests/test_openapi_golden_endpoints.py
+- tests/test_golden_manifest_requires_signal_logic_bump.py
+
+This usually means:
+  - the file has no test_… functions, or
+  - tests are being skipped/guarded at import-time, or
+  - collection patterns were changed.
+FAILED tests/test_contract_parity_cli_api_debt_ci.py::test_contract_parity_debt_snapshot_ci - AssertionError: (b'', b'error: --out must be a relative path\r
+  ')
+assert 2 == 0
+ +  where 2 = CompletedProcess(args=['C:\\Python314\\python.exe', '-m', 'code_audit', 'debt', 'snapshot', 'C:\\Users\\thepr\\AppData...tract_parity_debt_snap0\\baseline.json'], returncode=2, stdout=b'', stderr=b'error: --out must be a relative path\r\n').returncode
+FAILED tests/test_contract_parity_cli_api_scan_ci.py::test_contract_parity_scan_subcommand_ci - FileNotFoundError: [Errno 2] No such file or directory: 'C:\\Users\\thepr\\AppData\\Local\\Temp\\pytest-of-thepr\\pytest-1813\\test_contract_parity_scan_subc0\\artifacts\\result.json'
+FAILED tests/test_contract_parity_cli_api_scan_ci.py::test_contract_default_and_subcommand_produce_same_result - FileNotFoundError: [Errno 2] No such file or directory: 'C:\\Users\\thepr\\AppData\\Local\\Temp\\pytest-of-thepr\\pytest-1813\\test_contract_default_and_subc0\\artifacts\\scan_result.json'
+FAILED tests/test_debt_snapshot_ci.py::test_debt_snapshot_out_ci_is_deterministic - AssertionError: 
+  error: --out must be a relative path
+  
+assert 2 == 0
+ +  where 2 = CompletedProcess(args=['C:\\Python314\\python.exe', '-m', 'code_audit', 'debt', 'snapshot', 'C:\\Users\\thepr\\Downloa..._snapshot_out_ci_is_d0\\snap1.json', '--ci'], returncode=2, stdout='', stderr='error: --out must be a relative path\n').returncode
+FAILED tests/test_debt_snapshot_ci.py::test_debt_compare_file_vs_file - AssertionError: 
+  error: --out must be a relative path
+  
+assert 2 == 0
+ +  where 2 = CompletedProcess(args=['C:\\Python314\\python.exe', '-m', 'code_audit', 'debt', 'snapshot', 'C:\\Users\\thepr\\Downloa...mpare_file_vs_file0\\baseline.json', '--ci'], returncode=2, stdout='', stderr='error: --out must be a relative path\n').returncode
+FAILED tests/test_debt_snapshot_schema_version_enforcement.py::test_debt_compare_rejects_wrong_schema_version_in_baseline - AssertionError: error: --out must be a relative path
+  
+assert 2 == 0
+ +  where 2 = CompletedProcess(args=['C:\\Python314\\python.exe', '-m', 'code_audit', 'debt', 'snapshot', 'C:\\Users\\thepr\\Downloa...t_debt_compare_rejects_wron0\\current.json'], returncode=2, stdout='', stderr='error: --out must be a relative path\n').returncode
+FAILED tests/test_debt_snapshot_schema_version_enforcement.py::test_debt_compare_rejects_missing_schema_version_in_baseline - AssertionError: error: --out must be a relative path
+  
+assert 2 == 0
+ +  where 2 = CompletedProcess(args=['C:\\Python314\\python.exe', '-m', 'code_audit', 'debt', 'snapshot', 'C:\\Users\\thepr\\Downloa...t_debt_compare_rejects_miss0\\current.json'], returncode=2, stdout='', stderr='error: --out must be a relative path\n').returncode
+FAILED tests/test_debt_snapshot_schema_version_enforcement.py::test_debt_compare_rejects_wrong_schema_version_in_current - AssertionError: error: --out must be a relative path
+  
+assert 2 == 0
+ +  where 2 = CompletedProcess(args=['C:\\Python314\\python.exe', '-m', 'code_audit', 'debt', 'snapshot', 'C:\\Users\\thepr\\Downloa..._debt_compare_rejects_wron1\\baseline.json'], returncode=2, stdout='', stderr='error: --out must be a relative path\n').returncode
+FAILED tests/test_exceptions_analyzer_pipeline.py::test_scan_finds_exceptions_and_emits_signal - FileNotFoundError: [Errno 2] No such file or directory: 'C:\\Users\\thepr\\AppData\\Local\\Temp\\pytest-of-thepr\\pytest-1813\\test_scan_finds_exceptions_and0\\run_result.json'
+FAILED tests/test_exceptions_analyzer_pipeline.py::test_scan_marks_swallowed_errors - FileNotFoundError: [Errno 2] No such file or directory: 'C:\\Users\\thepr\\AppData\\Local\\Temp\\pytest-of-thepr\\pytest-1813\\test_scan_marks_swallowed_erro0\\run_result.json'
+FAILED tests/test_exceptions_analyzer_pipeline.py::test_signal_evidence_emits_summary_with_counts - FileNotFoundError: [Errno 2] No such file or directory: 'C:\\Users\\thepr\\AppData\\Local\\Temp\\pytest-of-thepr\\pytest-1813\\test_signal_evidence_emits_sum0\\run_result.json'
+FAILED tests/test_exceptions_analyzer_pipeline.py::test_exceptions_card_subtext_is_strong_when_swallowed_present - FileNotFoundError: [Errno 2] No such file or directory: 'C:\\Users\\thepr\\AppData\\Local\\Temp\\pytest-of-thepr\\pytest-1813\\test_exceptions_card_subtext_i0\\run_result.json'
+FAILED tests/test_exit_code_contract.py::test_debt_compare_same_snapshot_returns_0 - AssertionError: error: --out must be a relative path
+  
+assert 2 == 0
+ +  where 2 = CompletedProcess(args=['C:\\Python314\\python.exe', '-m', 'code_audit', 'debt', 'snapshot', 'C:\\Users\\thepr\\Downloa..._debt_compare_same_snapsho0\\baseline.json'], returncode=2, stdout='', stderr='error: --out must be a relative path\n').returncode
+FAILED tests/test_exit_code_contract.py::test_debt_compare_new_debt_returns_1 - AssertionError: error: --out must be a relative path
+  
+assert 2 == 0
+ +  where 2 = CompletedProcess(args=['C:\\Python314\\python.exe', '-m', 'code_audit', 'debt', 'snapshot', 'C:\\Users\\thepr\\Downloa..._debt_compare_new_debt_ret0\\baseline.json'], returncode=2, stdout='', stderr='error: --out must be a relative path\n').returncode
+FAILED tests/test_exit_codes_contract.py::TestDebtExitCodes::test_debt_compare_clean_vs_baseline_returns_0 - AssertionError: error: --out must be a relative path
+  
+assert 2 == 0
+ +  where 2 = CompletedProcess(args=['C:\\Python314\\python.exe', '-m', 'code_audit', 'debt', 'snapshot', 'C:\\Users\\thepr\\Downloa...t_compare_clean_vs_bas0\\snap.json', '--ci'], returncode=2, stdout='', stderr='error: --out must be a relative path\n').returncode
+FAILED tests/test_exit_codes_contract.py::TestDebtExitCodes::test_debt_compare_with_new_debt_returns_1 - AssertionError: error: --out must be a relative path
+  
+assert 2 == 0
+ +  where 2 = CompletedProcess(args=['C:\\Python314\\python.exe', '-m', 'code_audit', 'debt', 'snapshot', 'C:\\Users\\thepr\\Downloa...mpare_with_new_deb0\\baseline.json', '--ci'], returncode=2, stdout='', stderr='error: --out must be a relative path\n').returncode
+FAILED tests/test_exit_codes_contract.py::TestDebtExitCodes::test_debt_compare_missing_baseline_returns_2 - AssertionError: error: --out must be a relative path
+  
+assert 2 == 0
+ +  where 2 = CompletedProcess(args=['C:\\Python314\\python.exe', '-m', 'code_audit', 'debt', 'snapshot', 'C:\\Users\\thepr\\Downloa...ompare_missing_base0\\current.json', '--ci'], returncode=2, stdout='', stderr='error: --out must be a relative path\n').returncode
+FAILED tests/test_exit_codes_contract.py::TestDebtScanExitCodes::test_scan_no_debt_returns_0 - AssertionError: error: CI environment requires deterministic mode for debt scan. Re-run with --ci/--deterministic.
+  
+assert 2 == 0
+ +  where 2 = CompletedProcess(args=['C:\\Python314\\python.exe', '-m', 'code_audit', 'debt', 'scan', 'C:\\Users\\thepr\\Downloads\\...dout='', stderr='error: CI environment requires deterministic mode for debt scan. Re-run with --ci/--deterministic.\n').returncode
+FAILED tests/test_exit_codes_contract.py::TestDebtScanExitCodes::test_scan_debt_present_returns_1 - AssertionError: error: CI environment requires deterministic mode for debt scan. Re-run with --ci/--deterministic.
+  
+assert 2 == 1
+ +  where 2 = CompletedProcess(args=['C:\\Python314\\python.exe', '-m', 'code_audit', 'debt', 'scan', 'C:\\Users\\thepr\\Downloads\\...dout='', stderr='error: CI environment requires deterministic mode for debt scan. Re-run with --ci/--deterministic.\n').returncode
+FAILED tests/test_strangler.py::TestDebtCLI::test_debt_scan_clean - assert <ExitCode.ERROR: 2> == 0
+FAILED tests/test_strangler.py::TestDebtCLI::test_debt_scan_violation - assert <ExitCode.ERROR: 2> == 1
+FAILED tests/test_strangler.py::TestDebtCLI::test_debt_snapshot_and_compare - assert <ExitCode.ERROR: 2> == 0
+FAILED tests/test_strangler.py::TestDebtCLI::test_debt_compare_new_debt_exits_1 - assert <ExitCode.ERROR: 2> == 0
+27 failed, 998 passed, 3 skipped, 9 warnings in 1192.42s (0:19:52)

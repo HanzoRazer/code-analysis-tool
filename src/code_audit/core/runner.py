@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 
 from code_audit.contracts.load import validate_instance
 from code_audit.utils.json_norm import stable_json_dumps
-from code_audit.core.discover import discover_py_files
+from code_audit.core.discover import discover_py_files, discover_source_files
 from code_audit.insights.confidence import compute_confidence
 from code_audit.insights.translator import findings_to_signals
 from code_audit.model import RiskLevel
@@ -39,6 +39,7 @@ def run_scan(
     out_dir: Path | None = None,
     emit_signals_path: str | None = None,
     ci_mode: bool = False,
+    enable_js_ts: bool = True,
     # Testing hooks for golden-fixture determinism
     _run_id: str | None = None,
     _created_at: str | None = None,
@@ -48,11 +49,13 @@ def run_scan(
     This is the **only** entry point that wires engine → insights → output.
     """
     scan_config = config or {}
-    files = discover_py_files(
+    files_by_lang = discover_source_files(
         root,
         include=scan_config.get("include"),
         exclude=scan_config.get("exclude"),
+        enable_js_ts=enable_js_ts,
     )
+    files = files_by_lang["py"]
 
     # ── 1. run every analyzer (with per-analyzer timeout) ───────────
     timeout_str = os.environ.get("CODE_AUDIT_ANALYZER_TIMEOUT", "")
@@ -87,7 +90,47 @@ def run_scan(
         else:
             all_findings.extend(analyzer.run(root, files))
 
+    # ── 1b. run multi-language analyzers (JS/TS) ────────────────────
+    if enable_js_ts:
+        for analyzer in analyzers:
+            run_ml = getattr(analyzer, "run_multilang", None)
+            if run_ml is not None:
+                analyzer_id = getattr(analyzer, "id", type(analyzer).__name__)
+                if analyzer_timeout is not None:
+                    with ThreadPoolExecutor(max_workers=1) as pool:
+                        future = pool.submit(run_ml, root, files_by_lang)
+                        try:
+                            results = future.result(timeout=analyzer_timeout)
+                            all_findings.extend(results)
+                        except FuturesTimeoutError:
+                            _logger.warning(
+                                "Multi-lang analyzer '%s' timed out after %.0fs — skipped",
+                                analyzer_id,
+                                analyzer_timeout,
+                            )
+                        except Exception:
+                            _logger.exception(
+                                "Multi-lang analyzer '%s' raised an exception — skipped",
+                                analyzer_id,
+                            )
+                else:
+                    all_findings.extend(run_ml(root, files_by_lang))
+
     # ── 2. compute confidence score ─────────────────────────────────
+    # Contract hygiene: validate each finding against finding schema.
+    from code_audit.contracts.validate import validate_finding, ContractValidationError
+
+    for f in all_findings:
+        try:
+            validate_finding(f.to_dict())
+        except ContractValidationError:
+            _logger.warning(
+                "Finding failed contract validation (rule: %s, path: %s)",
+                f.metadata.get("rule_id", "?"),
+                f.location.path,
+                exc_info=True,
+            )
+
     score = compute_confidence(all_findings)
     tier = tier_from_score(score)
 

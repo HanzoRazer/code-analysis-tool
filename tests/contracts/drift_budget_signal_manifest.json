@@ -1,6 +1,6 @@
 {
   "manifest_version": 1,
-  "signal_logic_version": "signals_v2",
+  "signal_logic_version": "signals_v4",
   "files": {
     "schemas/drift_budget_signal.schema.json": "sha256:e35d3c5a626f93d903d2eb5a4b462577abe82e07994792e1e39536a3d7ef6258",
     "scripts/generate_drift_budget_signal.py": "sha256:c95d6bea4d593b7a5d653c9581bfcca84c3f55876a584b9faa85518d25fe7ae2"

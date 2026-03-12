@@ -7,10 +7,10 @@
   "confidence_entrypoints": [
     "src/code_audit/insights/confidence.py"
   ],
-  "confidence_logic_version": "confidence_v1",
+  "confidence_logic_version": "confidence_v2",
   "files": {
-    "src/code_audit/insights/confidence.py": "59f68b3fa6611c6fa19b3dc47f45aafdef93f2aa70ff9af5a54ff758fbe717f1",
-    "src/code_audit/model/__init__.py": "c058c08783c592e944f67247df336c47ccbdcc23227201ff6f5ad667b1ba0f40",
+    "src/code_audit/insights/confidence.py": "ca2ebb57bed92d06672f0ac64932c884b5b32d1ea5879a97b1ea4cbe569e351d",
+    "src/code_audit/model/__init__.py": "001856c4acb31e1706d3d590ea395852c8edf144ce64b19a4ca54fe177bf19c0",
     "src/code_audit/model/finding.py": "b7e3f0f490a1805230596461c8c3fd9245bca106c80b9c34bf97471cfa27981c",
     "tests/fixtures/confidence/cases.json": "6146ea5a974d5145a11140ae47810acc354a674bc18edb67bea8a0be2483a283",
     "tests/fixtures/confidence/expected/many_low_dead_code.json": "2936224bcd27d744329af0d756d7cf7acad006fce1ffdebfacc877103936a9ef",
@@ -31,5 +31,5 @@
     "tests/fixtures/confidence/expected/overwhelm_threshold_crossing.json": "bytes"
   },
   "manifest_version": 1,
-  "signal_logic_version": "signals_v2"
+  "signal_logic_version": "signals_v4"
 }

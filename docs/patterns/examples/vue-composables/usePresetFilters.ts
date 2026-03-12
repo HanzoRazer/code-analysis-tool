@@ -91,8 +91,8 @@ export function usePresetFilters(
 
       const savedTag = localStorage.getItem(STORAGE_KEYS.SELECTED_TAG)
       if (savedTag) selectedTag.value = savedTag
-    } catch (error) {
-      console.error('Failed to load persisted state:', error)
+    } catch {
+      // Persistence is best-effort — fail silently
     }
   }
 
@@ -101,8 +101,8 @@ export function usePresetFilters(
       localStorage.setItem(STORAGE_KEYS.ACTIVE_TAB, activeTab.value)
       localStorage.setItem(STORAGE_KEYS.SEARCH_QUERY, searchQuery.value)
       localStorage.setItem(STORAGE_KEYS.SELECTED_TAG, selectedTag.value)
-    } catch (error) {
-      console.error('Failed to save state:', error)
+    } catch {
+      // Persistence is best-effort — fail silently
     }
   }
 

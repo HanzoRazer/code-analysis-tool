@@ -83,20 +83,8 @@ export function usePresetForm(
   // Methods
   // ========================================================================
 
-  function resetForm() {
-    formData.value = { ...DEFAULT_FORM_DATA }
-    tagsInput.value = ''
-    exportTemplate.value = DEFAULT_EXPORT_TEMPLATE
-  }
-
-  function closeModal() {
-    showCreateModal.value = false
-    editingPreset.value = null
-    resetForm()
-  }
-
-  function editPreset(preset: Preset) {
-    editingPreset.value = preset
+  /** Populate form fields from an existing preset (shared by edit & clone). */
+  function populateFormFromPreset(preset: Preset) {
     formData.value = {
       name: preset.name,
       kind: preset.kind,
@@ -114,22 +102,26 @@ export function usePresetForm(
       (preset.export_params as any)?.filename_template || DEFAULT_EXPORT_TEMPLATE
   }
 
+  function resetForm() {
+    formData.value = { ...DEFAULT_FORM_DATA }
+    tagsInput.value = ''
+    exportTemplate.value = DEFAULT_EXPORT_TEMPLATE
+  }
+
+  function closeModal() {
+    showCreateModal.value = false
+    editingPreset.value = null
+    resetForm()
+  }
+
+  function editPreset(preset: Preset) {
+    editingPreset.value = preset
+    populateFormFromPreset(preset)
+  }
+
   function clonePreset(preset: Preset) {
-    formData.value = {
-      name: `${preset.name} (Copy)`,
-      kind: preset.kind,
-      description: preset.description || '',
-      tags: preset.tags || [],
-      machine_id: preset.machine_id || '',
-      post_id: preset.post_id || '',
-      units: preset.units || 'mm',
-      cam_params: preset.cam_params || {},
-      export_params: preset.export_params || {},
-      neck_params: preset.neck_params || {},
-    }
-    tagsInput.value = (preset.tags || []).join(', ')
-    exportTemplate.value =
-      (preset.export_params as any)?.filename_template || DEFAULT_EXPORT_TEMPLATE
+    populateFormFromPreset(preset)
+    formData.value.name = `${preset.name} (Copy)`
     showCreateModal.value = true
   }
 
@@ -168,8 +160,7 @@ export function usePresetForm(
       await onSaveSuccess()
       closeModal()
     } catch (error) {
-      console.error('Failed to save preset:', error)
-      alert('Failed to save preset. Check console for details.')
+      throw new Error(`Failed to save preset: ${(error as Error).message}`)
     } finally {
       saving.value = false
     }

@@ -118,3 +118,67 @@ def discover_py_files(
                 results.append(p.resolve())
 
     return sorted(set(results))
+
+
+# ── Multi-language discovery ────────────────────────────────────────
+_JS_TS_EXTENSIONS: frozenset[str] = frozenset({".js", ".ts", ".tsx", ".mjs", ".cjs"})
+
+
+def discover_source_files(
+    root: Path,
+    *,
+    include: list[str] | None = None,
+    exclude: list[str] | None = None,
+    max_file_bytes: int = 2_000_000,
+    enable_js_ts: bool = True,
+) -> dict[str, list[Path]]:
+    """Discover source files grouped by language family.
+
+    Always discovers Python files.  When *enable_js_ts* is ``True``
+    (the default), also discovers JavaScript and TypeScript files.
+
+    Returns
+    -------
+    ``{"py": [...], "js": [...], "ts": [...]}``
+    Keys are always present; values are empty lists when the language
+    is not enabled or no matching files are found.
+    """
+    py_files = discover_py_files(
+        root, include=include, exclude=exclude, max_file_bytes=max_file_bytes,
+    )
+    result: dict[str, list[Path]] = {"py": py_files, "js": [], "ts": []}
+
+    if not enable_js_ts:
+        return result
+
+    # Discover JS/TS files using the same exclusion logic as Python.
+    skip = _DEFAULT_EXCLUDES | set(exclude or [])
+    js_files: list[Path] = []
+    ts_files: list[Path] = []
+
+    for p in root.rglob("*"):
+        try:
+            if p.is_symlink():
+                continue
+            if not p.is_file():
+                continue
+            if p.suffix.lower() not in _JS_TS_EXTENSIONS:
+                continue
+            if any(part in skip for part in p.relative_to(root).parts):
+                continue
+            try:
+                if p.stat().st_size > max_file_bytes:
+                    continue
+            except OSError:
+                continue
+            resolved = p.resolve()
+            if p.suffix.lower() == ".js" or p.suffix.lower() in {".mjs", ".cjs"}:
+                js_files.append(resolved)
+            else:
+                ts_files.append(resolved)
+        except OSError:
+            continue
+
+    result["js"] = sorted(set(js_files))
+    result["ts"] = sorted(set(ts_files))
+    return result

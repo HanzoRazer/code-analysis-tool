@@ -7,6 +7,13 @@ import { api } from '@/services/apiBase'
 import type { Preset } from './usePresetFilters'
 
 // ==========================================================================
+// Constants
+// ==========================================================================
+
+/** Tooltip offset from cursor in pixels */
+const TOOLTIP_CURSOR_OFFSET = 15
+
+// ==========================================================================
 // Types
 // ==========================================================================
 
@@ -89,7 +96,7 @@ export function useJobTooltip(
         jobDetailsCache.value[runId] = await response.json()
       }
     } catch (error) {
-      console.error('Failed to fetch job details:', error)
+      // Tooltip is non-critical — fail silently
     }
   }
 
@@ -98,8 +105,8 @@ export function useJobTooltip(
 
     hoveredPresetId.value = preset.id
     tooltipPosition.value = {
-      x: event.clientX + 15,
-      y: event.clientY + 15,
+      x: event.clientX + TOOLTIP_CURSOR_OFFSET,
+      y: event.clientY + TOOLTIP_CURSOR_OFFSET,
     }
 
     fetchJobDetails(preset.job_source_id)
@@ -110,11 +117,8 @@ export function useJobTooltip(
   }
 
   function viewJobInHistory(runId: string) {
-    // Allow custom handler or default console log
     if (onViewJob) {
       onViewJob(runId)
-    } else {
-      console.log('View job:', runId)
     }
     hideJobTooltip()
   }

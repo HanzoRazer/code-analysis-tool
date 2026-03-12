@@ -42,6 +42,7 @@ from code_audit.analyzers.deployment import DeploymentAnalyzer
 from code_audit.analyzers.sql_ecosystem import SQLEcosystemAnalyzer
 from code_audit.analyzers.vue_component import VueComponentAnalyzer
 from code_audit.analyzers.vue_coupling import VueCouplingAnalyzer
+from code_audit.analyzers.js_ts_security import JsTsSecurityPreviewAnalyzer
 from code_audit.core.discover import discover_py_files
 from code_audit.core.runner import run_scan
 from code_audit.model.run_result import RunResult
@@ -65,6 +66,7 @@ _DEFAULT_ANALYZERS = (
     SQLEcosystemAnalyzer,
     VueComponentAnalyzer,
     VueCouplingAnalyzer,
+    JsTsSecurityPreviewAnalyzer,
 )
 
 
@@ -86,6 +88,7 @@ def scan_project(
     config: Optional[dict[str, Any]] = None,
     ci_mode: bool = False,
     analyzers: Optional[list[Any]] = None,
+    enable_js_ts: bool = True,
 ) -> tuple[RunResult, dict[str, Any]]:
     """Run the standard scan pipeline programmatically.
 
@@ -125,6 +128,7 @@ def scan_project(
         "project_id": project_id,
         "config": config or {},
         "ci_mode": ci_mode,
+        "enable_js_ts": enable_js_ts,
     }
     if ci_mode:
         kwargs["_created_at"] = _DETERMINISTIC_TIMESTAMP

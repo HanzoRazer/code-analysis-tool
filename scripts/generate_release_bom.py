@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
 import sys
 from pathlib import Path
@@ -41,6 +42,8 @@ SCHEMA_GATE_ENVELOPE = ROOT / "schemas" / "release_gate_envelope.schema.json"
 SCHEMA_GRAPH_BUNDLE = ROOT / "schemas" / "schema_graph_bundle.schema.json"
 POLICY_PATH = ROOT / "tests" / "contracts" / "openapi_breaking_policy.json"
 CLASSIFIER_MANIFEST = ROOT / "tests" / "contracts" / "openapi_classifier_manifest.json"
+TREESITTER_MANIFEST = ROOT / "tests" / "contracts" / "treesitter_manifest.json"
+CONTRACT_VERSIONS = ROOT / "src" / "code_audit" / "contracts" / "versions.json"
 DIFF_REPORT_PATH = DIST / "openapi_diff_report.json"
 
 # Dist destinations
@@ -53,6 +56,8 @@ DIST_GATE_ENVELOPE_SCHEMA = DIST / "release_gate_envelope.schema.json"
 DIST_GRAPH_BUNDLE_SCHEMA = DIST / "schema_graph_bundle.schema.json"
 DIST_POLICY = DIST / "openapi_breaking_policy.json"
 DIST_CLASSIFIER_MANIFEST = DIST / "openapi_classifier_manifest.json"
+DIST_TREESITTER_MANIFEST = DIST / "treesitter_manifest.json"
+DIST_CONTRACT_VERSIONS = DIST / "versions.json"
 DIST_BEFORE_OPENAPI = DIST / "openapi_before.json"
 DIST_AFTER_OPENAPI = DIST / "openapi_after.json"
 DIST_BOM = DIST / "release_bom.json"
@@ -285,6 +290,37 @@ def main() -> int:
             },
         },
     }
+
+    # ── Optional JS/TS surface attestation ──
+    enable_js_ts = os.environ.get("RELEASE_ENABLE_JS_TS", "").lower() in ("1", "true")
+    if enable_js_ts:
+        _require_file(TREESITTER_MANIFEST, "treesitter_manifest.json")
+        _copy_into_dist(TREESITTER_MANIFEST, DIST_TREESITTER_MANIFEST)
+        ts_sha = _sha256_file(DIST_TREESITTER_MANIFEST)
+        ts_manifest_obj = json.loads(DIST_TREESITTER_MANIFEST.read_text(encoding="utf-8"))
+        bom["artifacts"]["treesitter_manifest"] = {
+            "path": str(DIST_TREESITTER_MANIFEST.relative_to(DIST)).replace("\\", "/"),
+            "sha256": ts_sha,
+            "sha256_short": ts_sha[:12],
+            "file_count": len(ts_manifest_obj.get("files", {})),
+        }
+
+        _require_file(CONTRACT_VERSIONS, "contracts/versions.json")
+        _copy_into_dist(CONTRACT_VERSIONS, DIST_CONTRACT_VERSIONS)
+        cv_sha = _sha256_file(DIST_CONTRACT_VERSIONS)
+        cv_obj = json.loads(DIST_CONTRACT_VERSIONS.read_text(encoding="utf-8"))
+        bom["artifacts"]["contract_versions"] = {
+            "path": str(DIST_CONTRACT_VERSIONS.relative_to(DIST)).replace("\\", "/"),
+            "sha256": cv_sha,
+            "sha256_short": cv_sha[:12],
+            "signal_logic_version": cv_obj.get("signal_logic_version", ""),
+        }
+
+        bom["artifacts"]["js_ts_surface"] = {
+            "enabled": True,
+            "rule_count": 4,
+            "analyzer_type": "js_ts_security",
+        }
 
     bom_target.parent.mkdir(parents=True, exist_ok=True)
     bom_target.write_text(

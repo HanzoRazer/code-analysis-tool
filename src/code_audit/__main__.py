@@ -258,6 +258,20 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--max-file-lines", type=int, default=400)
     p.add_argument("--max-func-lines", type=int, default=60)
+    _jsts_group = p.add_mutually_exclusive_group()
+    _jsts_group.add_argument(
+        "--enable-js-ts",
+        dest="enable_js_ts",
+        action="store_true",
+        default=True,
+        help="Enable JS/TS scanning (default: on).",
+    )
+    _jsts_group.add_argument(
+        "--disable-js-ts",
+        dest="enable_js_ts",
+        action="store_false",
+        help="Disable JS/TS scanning (Python-only).",
+    )
 
     # ── scan subcommand (functional pipeline) ───────────────────────
     scan_p = sub.add_parser(
@@ -299,6 +313,20 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     scan_p.add_argument("--max-file-lines", type=int, default=400)
     scan_p.add_argument("--max-func-lines", type=int, default=60)
+    _scan_jsts_group = scan_p.add_mutually_exclusive_group()
+    _scan_jsts_group.add_argument(
+        "--enable-js-ts",
+        dest="enable_js_ts",
+        action="store_true",
+        default=True,
+        help="Enable JS/TS scanning (default: on).",
+    )
+    _scan_jsts_group.add_argument(
+        "--disable-js-ts",
+        dest="enable_js_ts",
+        action="store_false",
+        help="Disable JS/TS scanning (Python-only).",
+    )
 
     # ── validate subcommand ─────────────────────────────────────────
     val_p = sub.add_parser(
@@ -1548,6 +1576,20 @@ def _build_default_parser() -> argparse.ArgumentParser:
         default=False,
         help="Enable deterministic output (stable IDs, timestamps, ordering).",
     )
+    _def_jsts_group = p.add_mutually_exclusive_group()
+    _def_jsts_group.add_argument(
+        "--enable-js-ts",
+        dest="enable_js_ts",
+        action="store_true",
+        default=True,
+        help="Enable JS/TS scanning (default: on).",
+    )
+    _def_jsts_group.add_argument(
+        "--disable-js-ts",
+        dest="enable_js_ts",
+        action="store_false",
+        help="Disable JS/TS scanning (Python-only).",
+    )
     p.set_defaults(command=None)
     return p
 
@@ -1675,6 +1717,7 @@ def main(argv: list[str] | None = None) -> int:
             root=scan_root,
             project_id=args.project_id or "",
             ci_mode=ci_mode,
+            enable_js_ts=getattr(args, "enable_js_ts", True),
         )
 
         # In CI mode, enforce minimal structural integrity
@@ -1766,6 +1809,7 @@ def main(argv: list[str] | None = None) -> int:
         root=target if target.is_dir() else target.parent,
         project_id=args.project_id or "",
         ci_mode=ci_mode,
+        enable_js_ts=getattr(args, "enable_js_ts", True),
     )
 
     # In CI mode, enforce minimal structural integrity

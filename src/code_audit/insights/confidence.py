@@ -15,7 +15,7 @@ from code_audit.model.finding import Finding
 # Confidence scoring semantic version.
 # Bump when confidence scoring behavior changes in any user-meaningful way:
 # weights, caps, thresholds, severity factors, volume penalties, etc.
-confidence_logic_version = "confidence_v1"
+confidence_logic_version = "confidence_v2"
 
 # ── type weights (how scary each category is for beginners) ──────────
 _TYPE_WEIGHT: dict[AnalyzerType, int] = {
@@ -25,6 +25,7 @@ _TYPE_WEIGHT: dict[AnalyzerType, int] = {
     AnalyzerType.GLOBAL_STATE: 6,
     AnalyzerType.COMPLEXITY: 4,
     AnalyzerType.DEAD_CODE: 1,
+    AnalyzerType.JS_TS_SECURITY: 12,
 }
 
 # ── severity multiplier ─────────────────────────────────────────────

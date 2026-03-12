@@ -215,6 +215,42 @@ def _preflight_verify_ref_edges_sorted_unique(
                 break
 
 
+def _preflight_verify_js_ts_surface(
+    bom_obj: Dict[str, Any],
+    issues: List[Dict[str, Any]],
+) -> None:
+    """When RELEASE_ENABLE_JS_TS is set, enforce treesitter artifacts are present."""
+    enable_js_ts = os.environ.get("RELEASE_ENABLE_JS_TS", "").lower() in ("1", "true")
+    if not enable_js_ts:
+        return
+
+    artifacts = bom_obj.get("artifacts")
+    if not isinstance(artifacts, dict):
+        return
+
+    if "treesitter_manifest" not in artifacts:
+        issues.append(_issue(
+            "treesitter_manifest_missing",
+            "release_bom.json:artifacts.treesitter_manifest",
+            "present when RELEASE_ENABLE_JS_TS=true",
+            "missing",
+        ))
+    if "contract_versions" not in artifacts:
+        issues.append(_issue(
+            "contract_versions_missing",
+            "release_bom.json:artifacts.contract_versions",
+            "present when RELEASE_ENABLE_JS_TS=true",
+            "missing",
+        ))
+    if "js_ts_surface" not in artifacts:
+        issues.append(_issue(
+            "js_ts_surface_missing",
+            "release_bom.json:artifacts.js_ts_surface",
+            "present when RELEASE_ENABLE_JS_TS=true",
+            "missing",
+        ))
+
+
 def main() -> int:
     json_mode = "--json" in sys.argv
     issues: List[Dict[str, Any]] = []
@@ -229,6 +265,9 @@ def main() -> int:
 
         if not issues:
             _preflight_verify_ref_edges_sorted_unique(tmp_obj, issues)
+
+        if not issues:
+            _preflight_verify_js_ts_surface(tmp_obj, issues)
 
         if not issues:
             # Single source of truth: run the same consistency runner

@@ -1,0 +1,72 @@
+{
+  "generated_by": "scripts/refresh_rules_registry.py",
+  "rules": [
+    {
+      "analyzer": "js_ts_security_preview",
+      "languages": [
+        "js",
+        "ts"
+      ],
+      "rule_id": "EXC_EMPTY_CATCH_JS_001",
+      "semantic_hash": "336aa26fac7683b2e38930c0e5976ffb3fe559b571118ac2fdfd81809ca61ce9",
+      "semantic_inputs": [
+        "src/code_audit/analyzers/js_ts_security.py"
+      ],
+      "title": "Empty catch block"
+    },
+    {
+      "analyzer": "js_ts_security_preview",
+      "languages": [
+        "js",
+        "ts"
+      ],
+      "rule_id": "GST_GLOBAL_THIS_MUTATION_001",
+      "semantic_hash": "70ac8e5ccc98fe5d8a0ca949ba530fb744ea8c2edc9b5fd11278cf20ccb97dc0",
+      "semantic_inputs": [
+        "src/code_audit/analyzers/js_ts_security.py"
+      ],
+      "title": "Mutation of globalThis/window properties"
+    },
+    {
+      "analyzer": "js_ts_security_preview",
+      "languages": [
+        "js",
+        "ts"
+      ],
+      "rule_id": "SEC_DYNAMIC_MODULE_LOAD_JS_001",
+      "semantic_hash": "df721572a7f6a393afa478d1088f6f8c96abbed2bb247dc37d2038914d9a2a0e",
+      "semantic_inputs": [
+        "src/code_audit/analyzers/js_ts_security.py"
+      ],
+      "title": "Dynamic module load via require/import non-literal"
+    },
+    {
+      "analyzer": "js_ts_security_preview",
+      "languages": [
+        "js",
+        "ts"
+      ],
+      "rule_id": "SEC_EVAL_JS_001",
+      "semantic_hash": "7f2a0458460be4d95c13d49cbde8cad7eb2b6574e8193afd9d970de1c3c6f6d7",
+      "semantic_inputs": [
+        "src/code_audit/analyzers/js_ts_security.py"
+      ],
+      "title": "Use of eval(...)"
+    },
+    {
+      "analyzer": "js_ts_security_preview",
+      "languages": [
+        "js",
+        "ts"
+      ],
+      "rule_id": "SEC_NEW_FUNCTION_JS_001",
+      "semantic_hash": "4f207233d909ad2e09e7a09377ff2a4233b9b4d151dd76b84a36ad6279440b98",
+      "semantic_inputs": [
+        "src/code_audit/analyzers/js_ts_security.py"
+      ],
+      "title": "Use of new Function(...)"
+    }
+  ],
+  "schema_version": 1,
+  "signal_logic_version": "signals_v4"
+}

@@ -30,7 +30,10 @@
                   "bom_ref_edge_trace_short_mismatch",
                   "bom_ref_edges_sha_mismatch",
                   "bom_ref_edges_duplicate",
-                  "bom_ref_edges_not_sorted"
+                  "bom_ref_edges_not_sorted",
+                  "treesitter_manifest_missing",
+                  "contract_versions_missing",
+                  "js_ts_surface_missing"
                 ]
               }
             }

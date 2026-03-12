@@ -122,14 +122,19 @@ export function useWorkflowOverrides(
     risk_tolerance: riskTolerance.value,
   }))
 
+  /** Apply saved overrides to reactive refs. */
+  function applyOverrides(saved: ExportOverrides) {
+    toolId.value = saved.tool_id
+    materialId.value = saved.material_id
+    machineProfileId.value = saved.machine_profile_id
+    camProfileId.value = saved.requested_cam_profile_id
+    riskTolerance.value = saved.risk_tolerance
+  }
+
   function hydrateOverrides() {
     const saved = readFromStorage(storageKey.value)
     if (saved) {
-      toolId.value = saved.tool_id
-      materialId.value = saved.material_id
-      machineProfileId.value = saved.machine_profile_id
-      camProfileId.value = saved.requested_cam_profile_id
-      riskTolerance.value = saved.risk_tolerance
+      applyOverrides(saved)
     }
   }
 
@@ -147,11 +152,7 @@ export function useWorkflowOverrides(
     if (newKey === oldKey) return
     const saved = readFromStorage(newKey)
     if (saved) {
-      toolId.value = saved.tool_id
-      materialId.value = saved.material_id
-      machineProfileId.value = saved.machine_profile_id
-      camProfileId.value = saved.requested_cam_profile_id
-      riskTolerance.value = saved.risk_tolerance
+      applyOverrides(saved)
       onModeChange?.(getCurrentMode() || 'unknown')
     } else {
       clearOverrides()

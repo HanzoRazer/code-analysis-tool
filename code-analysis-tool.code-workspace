@@ -2,6 +2,15 @@
     "folders": [
         {
             "path": "../code-rescue-tool"
+        },
+        {
+            "path": "../luthiers-toolbox"
+        },
+        {
+            "path": "../tap_tone_pi"
+        },
+        {
+            "path": "."
         }
     ]
 }

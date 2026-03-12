@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Rules Registry (code_audit)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "generated_by", "signal_logic_version", "rules"],
+  "properties": {
+    "schema_version": { "type": "integer", "minimum": 1 },
+    "generated_by": { "type": "string", "minLength": 1 },
+    "signal_logic_version": { "type": "string", "pattern": "^signals_v\\d+$" },
+    "rules": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/rule" }
+    }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rule_id", "analyzer", "languages", "title", "semantic_inputs", "semantic_hash"],
+      "properties": {
+        "rule_id": { "type": "string", "minLength": 1 },
+        "analyzer": { "type": "string", "minLength": 1 },
+        "languages": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1
+        },
+        "title": { "type": "string", "minLength": 1 },
+        "semantic_inputs": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1
+        },
+        "semantic_hash": { "$ref": "#/$defs/sha256" }
+      }
+    }
+  }
+}

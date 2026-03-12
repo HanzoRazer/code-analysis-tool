@@ -1,0 +1,5296 @@
+Alright — C) Multi-language analyzer support is the right “next plateau” test of your governance model, because it forces you to prove semantic determinism across non-Python parsing stacks.
+Here’s the concrete plan I’d ship next (v1: JS/TS via tree-sitter), aligned with your existing contract gates + manifest discipline.
+________________________________________
+Phase 0 — Governance decision (locks semantics before code)
+What’s “in contract” for multi-language?
+For analyzers that run on JS/TS, we define the same stability promises you already enforce for Python analyzers:
+•	Rule IDs are contract surface
+•	Signals JSON shape is unchanged
+•	Severity → risk mapping remains translator-owned
+•	Detection semantics are analyzer-owned and versioned
+•	Language parser/runtime is a governed dependency
+This means: tree-sitter grammar + query patterns become first-class “semantic levers” and must be hash-guarded.
+________________________________________
+Phase 1 — Minimal architecture changes (safe scaffolding)
+1) Add language-aware file discovery
+Add a lightweight “language router” layer in core/discovery (or adjacent) that:
+•	classifies files by extension: .py, .js, .jsx, .ts, .tsx
+•	emits (path, language) tuples to the runner
+Do not change output schema. Findings already carry file path; add language only as internal metadata unless you already have a safe field for it.
+2) Introduce a LanguageAnalyzer base
+Keep BaseAnalyzer unchanged if possible.
+Add a mixin or optional property:
+•	supported_languages: set[str]
+•	analyzer gets a filtered list of files
+This is the lowest coupling approach: registry remains the same; runner selects applicable files.
+________________________________________
+Phase 2 — Tree-sitter integration (JS/TS parsing core)
+1) Pin parsing stack deterministically
+You’ll need:
+•	tree_sitter Python binding
+•	language grammars:
+•	tree-sitter-javascript
+•	tree-sitter-typescript (includes TS + TSX)
+Governance requirement: parser versions must be locked the same way as code semantics:
+•	record exact dependency versions (and ideally grammar commit hashes if you vendor/build)
+•	include them in a new manifest gate (details below)
+2) Build a parser module with a strict contract
+New module:
+•	src/code_audit/parsers/tree_sitter_js.py
+It exposes:
+•	parse_file(path) -> Tree
+•	query(tree, query_text) -> matches
+•	node_text(node) -> str
+Important: Normalize line endings and ensure byte offsets → line/col mapping is deterministic.
+________________________________________
+Phase 3 — First JS/TS analyzers (small, high-signal, low ambiguity)
+Start with rules that are easy to detect structurally and have low false-positive risk.
+v1 candidates (good first wave)
+1.	SEC_EVAL_JS_001
+•	detect eval(...) calls
+2.	SEC_NEW_FUNCTION_JS_001
+•	detect new Function(...)
+3.	GST_GLOBAL_THIS_MUTATION_001
+•	detect assignment to globalThis.foo = ... (or window.foo in browser-target code)
+4.	EXC_EMPTY_CATCH_JS_001
+•	detect catch (e) {} empty catch blocks (or catch with only comment)
+These map cleanly into your existing severity/risk translator without changing translator semantics.
+________________________________________
+Phase 4 — Fixtures + gates (prove governance works cross-language)
+This is the real point: ship contracts that prevent drift for JS/TS analyzers exactly like Python.
+1) Add fixture repos for JS/TS
+tests/fixtures/repos/sample_repo_js_ts/
+•	minimal package with .js, .ts, .tsx
+•	include both “should detect” and “should not detect” cases
+2) Golden expected JSON fixtures
+Add expected outputs under your existing golden system:
+tests/fixtures/expected/sample_repo_js_ts.json
+This automatically brings:
+•	golden manifest hash gate
+•	signal_logic_version bump requirement if outputs change
+3) Analyzer logic hash gate extension
+Your existing analyzer AST hash gate is Python-AST based.
+For JS/TS analyzers you need analogous semantics:
+•	if analyzers are still Python code (calling tree-sitter), then the AST hash gate already covers code changes
+•	BUT grammar/query text is a semantic lever too
+So: add a parser policy / query manifest gate.
+________________________________________
+Phase 5 — New contract gate: “Tree-sitter semantic surface manifest”
+Add:
+•	tests/contracts/treesitter_manifest.json
+•	scripts/refresh_treesitter_manifest.py
+•	tests/test_treesitter_manifest_requires_signal_logic_bump.py (or separate bump variable if you prefer)
+What should be hashed?
+At minimum:
+•	the exact query files you use (if you store .scm query patterns)
+•	any parser wrapper module code that normalizes offsets/text
+•	dependency lock inputs (see next section)
+What triggers what?
+•	If only a query changes → bump analyzer version OR signal_logic_version (your choice; I’d align with analyzer version if the rule is local)
+•	If grammar/runtime changes → bump signal_logic_version (because that can affect many rules at once)
+________________________________________
+Phase 6 — Dependency governance for grammars (production-grade)
+Tree-sitter grammars are effectively compilers. If they shift, parse trees shift.
+You have two viable approaches:
+Option A (cleanest governance): vendor the grammars
+•	vendor grammar repos (or tarballs) into src/code_audit/data/treesitter/
+•	build language libraries deterministically
+•	hash the vendored sources via manifest gate
+This makes builds reproducible and eliminates “pip pulled a new grammar”.
+Option B (lighter): pin wheels + lockfile + hash
+•	pin exact versions in pyproject.toml
+•	ensure CI installs locked dependencies
+•	hash the lock file or exported dependency set
+If you want “max governance”, Option A is more aligned with your system.
+________________________________________
+Phase 7 — Runner integration + CLI flags (minimal surface)
+Add a flag:
+•	--languages py,js,ts (default auto based on repo)
+Or environment variable if you prefer CI pinning:
+•	CODE_AUDIT_LANGS=py,js,ts
+Do not change default behavior unexpectedly:
+•	if no JS/TS files exist, no change
+•	if JS/TS files exist, you can either:
+•	include them by default (bigger semantic change)
+•	or gate behind the flag first (safer rollout)
+Given your governance stance: roll out behind a flag first, then promote.
+________________________________________
+What I need from you to proceed without ambiguity
+You can answer in one line with choices:
+1.	Rollout mode: default-on vs --enable-js-ts
+2.	Grammar governance: vendor grammars vs pin dependencies
+3.	First rule set: the 4 rules above ok, or do you want a different starter set?
+If you don’t answer, I’ll assume:
+•	--enable-js-ts rollout (safer)
+•	vendor grammars (max governance)
+•	start with eval / new Function / empty catch / globalThis mutation
+
+
+You said:
+Keep it simple and go with your recommendations 
+
+
+ChatGPT said:
+Cool — we’ll do the simple, safest rollout exactly as recommended:
+•	Rollout: behind --enable-js-ts (default behavior unchanged)
+•	Governance: vendor grammars (max determinism)
+•	Starter rules (first wave):
+1.	SEC_EVAL_JS_001 (eval(...))
+2.	SEC_NEW_FUNCTION_JS_001 (new Function(...))
+3.	EXC_EMPTY_CATCH_JS_001 (catch (e) {} empty)
+4.	GST_GLOBAL_THIS_MUTATION_001 (globalThis.x = ..., window.x = ...)
+Below is the “ship order” I’d execute as a clean chain of diffs (each diff is small, reviewable, and contract-safe).
+________________________________________
+Diff 1 — Language discovery + flag gate (no analyzer yet)
+Goal: plumb language awareness without changing outputs.
+•	Add --enable-js-ts flag to CLI and API option (default false)
+•	Add internal file classification:
+•	.py → py
+•	.js/.jsx → js
+•	.ts/.tsx → ts
+Behavior:
+•	If flag is off → JS/TS files are ignored (status quo)
+•	If flag is on → JS/TS files are included in the scan input (but no JS/TS analyzers yet, so still no output change)
+Tests:
+•	One unit test: discovery returns js/ts files only when flag is enabled.
+________________________________________
+Diff 2 — Vendor tree-sitter grammars + deterministic build wrapper
+Goal: make parsing stack a governed asset, not a floating dependency.
+•	Add vendored grammar sources under something like:
+•	src/code_audit/data/treesitter/vendor/tree-sitter-javascript/
+•	src/code_audit/data/treesitter/vendor/tree-sitter-typescript/
+•	Add a tiny build/load module:
+•	src/code_audit/parsers/tree_sitter_loader.py
+•	deterministic build output location (cache under ~/.cache/... or repo-local .cache/ in CI—pick one and lock it)
+•	Hard rules:
+•	no remote downloads at runtime
+•	no “latest grammar” behavior
+Tests:
+•	Smoke test that loader can create parsers for JS and TS and parse a trivial snippet.
+________________________________________
+Diff 3 — Tree-sitter manifest gate (semantic surface lock)
+Goal: grammar + query + parser wrapper changes are governance-controlled.
+Add:
+•	tests/contracts/treesitter_manifest.json
+•	scripts/refresh_treesitter_manifest.py
+•	tests/test_treesitter_manifest_requires_signal_logic_bump.py
+What’s hashed:
+•	vendored grammar directories (hash all files)
+•	parser wrapper modules that affect parsing/offset normalization
+•	query files (once we add them)
+Trigger policy (simple + safe):
+•	Any change to tree-sitter manifest requires bump signal_logic_version (broad surface, safest)
+•	Refresh manifest required
+This matches your “close semantic backdoors” model.
+________________________________________
+Diff 4 — JS/TS analyzer scaffolding + registry wiring
+Goal: create a TreeSitterJSAnalyzerBase and wire it in, still producing no findings yet (or behind flag).
+•	New analyzer base:
+•	src/code_audit/analyzers/treesitter_base.py
+•	Add first concrete analyzer module placeholder:
+•	src/code_audit/analyzers/js_ts_security.py (starts empty / returns none)
+•	Register it in _DEFAULT_ANALYZERS (keeps registry completeness contract satisfied)
+Tests:
+•	Analyzer registry contract stays green
+•	Version bump enforcement should treat it as normal Python analyzer code
+________________________________________
+Diff 5 — First real rule: SEC_EVAL_JS_001
+Goal: first “real” JS/TS finding, fully test-locked.
+Implementation:
+•	Tree-sitter query for call_expression where callee identifier == eval
+•	Produce findings with:
+•	rule_id = "SEC_EVAL_JS_001"
+•	stable evidence snippet (source slice)
+•	stable location (line/col)
+Fixtures:
+•	tests/fixtures/repos/sample_repo_js_ts/ containing:
+•	a file with eval("...")
+•	a safe file without
+•	Golden expected JSON:
+•	tests/fixtures/expected/sample_repo_js_ts_eval.json
+Governance effects:
+•	golden fixtures update (requires signal_logic_version bump)
+•	treesitter manifest might also need refresh (if query file is added)
+________________________________________
+Diff 6 — Add remaining 3 rules + edge-case fixtures
+Add:
+•	SEC_NEW_FUNCTION_JS_001 (new Function(...))
+•	EXC_EMPTY_CATCH_JS_001 (empty catch block)
+•	GST_GLOBAL_THIS_MUTATION_001 (globalThis.foo = … and window.foo = …)
+Add golden fixtures:
+•	one combined repo fixture that hits all rules
+•	plus “negative” samples to avoid false positives
+________________________________________
+Diff 7 — CLI/API parity + “flagged mode” parity contract
+You already have CLI/API parity tests. We extend parity to cover:
+•	When --enable-js-ts is used, CLI output equals API output with the same option enabled.
+This ensures no split-brain behavior across interfaces.
+________________________________________
+Minimal rules for stable semantics (so you don’t regret it later)
+These are the “don’t surprise yourself” constraints I’d enforce immediately:
+•	No JS/TS scanning unless --enable-js-ts is set
+•	Vendored grammar only
+•	Query text stored as files (e.g., src/code_audit/data/treesitter/queries/*.scm) so it’s manifest-hashed cleanly
+•	Location computation normalized (LF normalization, stable column counting)
+________________________________________
+What you’ll get at the end of this chain
+•	A governed JS/TS pipeline that’s:
+•	deterministic
+•	manifest-locked
+•	golden-fixture-locked
+•	CLI/API parity tested
+•	And your governance framework will have proven it can handle cross-language semantics.
+________________________________________
+If you want, tell me “ship Diff 1” and I’ll write the exact patch content (file edits + tests) in a single cohesive diff.
+
+
+You said:
+“ship Diff 1” and write the exact patch content (file edits + tests) in a single cohesive diff.
+
+
+ChatGPT said:
+Thought for 7m 12s
+*** Begin Patch
+*** Update File: src/code_audit/core/discover.py
+@@
+ def discover_py_files(
+@@
+     return sorted(set(results))
++
++
++def discover_source_files(
++    root: Path,
++    *,
++    enable_js_ts: bool = False,
++    include: list[str] | None = None,
++    exclude: list[str] | None = None,
++) -> dict[str, list[Path]]:
++    """Discover source files under *root* grouped by language.
++
++    This is a **non-contract** internal helper used to stage multi-language
++    support safely.
++
++    Contract rule for this phase:
++    - Python analyzers MUST only receive Python files.
++    - JS/TS files are discovered only when explicitly enabled, but are not
++      yet passed into analyzers.
++
++    Parameters
++    ----------
++    enable_js_ts:
++        When True, also discover JavaScript and TypeScript files.
++    include/exclude:
++        Currently applied to Python discovery to preserve existing semantics.
++        JS/TS discovery uses extension-based scanning only.
++
++    Returns
++    -------
++    Mapping of language key → sorted unique absolute paths.
++    Keys: "py", and optionally "js" and "ts".
++    """
++
++    root = root.resolve()
++    skip = _DEFAULT_EXCLUDES | set(exclude or [])
++
++    out: dict[str, list[Path]] = {
++        "py": discover_py_files(root, include=include, exclude=exclude),
++    }
++
++    if not enable_js_ts:
++        return out
++
++    def _discover_exts(exts: tuple[str, ...]) -> list[Path]:
++        results: list[Path] = []
++        for p in root.rglob("*"):
++            try:
++                if p.is_dir() or not p.is_file():
++                    continue
++                if p.name in _DEFAULT_IGNORE_FILES:
++                    continue
++                if p.suffix.lower() not in exts:
++                    continue
++                if any(part in skip for part in p.relative_to(root).parts):
++                    continue
++                results.append(p.resolve())
++            except OSError:
++                continue
++        return sorted(set(results))
++
++    out["js"] = _discover_exts((".js", ".jsx"))
++    out["ts"] = _discover_exts((".ts", ".tsx"))
++    return out
+*** End Patch
+*** Begin Patch
+*** Update File: src/code_audit/core/runner.py
+@@
+-from code_audit.core.discover import discover_py_files
++from code_audit.core.discover import discover_py_files, discover_source_files
+@@
+ def run_scan(
+     root: Path,
+     analyzers: list[Analyzer],
+     *,
+     project_id: str = "",
+     config: dict | None = None,
+     out_dir: Path | None = None,
+     emit_signals_path: str | None = None,
++    enable_js_ts: bool = False,
+     # Testing hooks for golden-fixture determinism
+     _run_id: str | None = None,
+     _created_at: str | None = None,
+ ) -> RunResult:
+@@
+     This is the **only** entry point that wires engine → insights → output.
+     """
+     scan_config = config or {}
+-    files = discover_py_files(
+-        root,
+-        include=scan_config.get("include"),
+-        exclude=scan_config.get("exclude"),
+-    )
++    if enable_js_ts:
++        # Stage multi-language discovery safely: only Python files are passed
++        # into analyzers until JS/TS analyzers are introduced.
++        discovered = discover_source_files(
++            root,
++            enable_js_ts=True,
++            include=scan_config.get("include"),
++            exclude=scan_config.get("exclude"),
++        )
++        files = discovered.get("py", [])
++    else:
++        files = discover_py_files(
++            root,
++            include=scan_config.get("include"),
++            exclude=scan_config.get("exclude"),
++        )
+*** End Patch
+*** Begin Patch
+*** Update File: src/code_audit/run_result.py
+@@
+ def build_run_result(
+     *,
+     root: str,
+     tool_version: str = __version__,
+     project_id: str = "",
+@@
+     engine_version: str = "engine_v1",
+     signal_logic_version: str = "signals_v2",
+     copy_version: str = "i18n@dev",
++    enable_js_ts: bool = False,
+     # Testing hooks for golden-fixture determinism
+     _run_id: str | None = None,
+     _created_at: str | None = None,
+ ) -> dict[str, Any]:
+@@
+     result = run_scan(
+         root=root_path,
+         analyzers=analyzers,
+         project_id=project_id or "",
++        enable_js_ts=enable_js_ts,
+         _run_id=_run_id,
+         _created_at=_created_at,
+     )
+*** End Patch
+*** Begin Patch
+*** Update File: src/code_audit/__main__.py
+@@
+ def _exit_code_from_result(result_dict: dict) -> int:
+@@
+     score = summary.get("confidence_score", 0)
+     return _exit_code_from_score(int(score) if isinstance(score, int) else 0)
++
++
++def _enable_js_ts_from_args(args: argparse.Namespace) -> bool:
++    """Return True if JS/TS discovery should be enabled for this invocation."""
++    return bool(getattr(args, "enable_js_ts", False))
+@@
+ def _build_parser() -> argparse.ArgumentParser:
+@@
+     p.add_argument("--max-file-lines", type=int, default=400)
+     p.add_argument("--max-func-lines", type=int, default=60)
++    p.add_argument(
++        "--enable-js-ts",
++        dest="enable_js_ts",
++        action="store_true",
++        default=False,
++        help="(preview) Discover JS/TS files. No JS/TS analyzers are enabled yet.",
++    )
+@@
+     scan_p.add_argument("--max-file-lines", type=int, default=400)
+     scan_p.add_argument("--max-func-lines", type=int, default=60)
++    scan_p.add_argument(
++        "--enable-js-ts",
++        dest="enable_js_ts",
++        action="store_true",
++        default=False,
++        help="(preview) Discover JS/TS files. No JS/TS analyzers are enabled yet.",
++    )
+@@
+ def _handle_export(args: argparse.Namespace) -> int:
+@@
+     result = run_scan(
+         root=target if target.is_dir() else target.parent,
+         analyzers=analyzers,
+         project_id="",
++        enable_js_ts=_enable_js_ts_from_args(args),
+     )
+@@
+ def _handle_dashboard(args: argparse.Namespace) -> int:
+@@
+     result = run_scan(
+         root=target if target.is_dir() else target.parent,
+         analyzers=analyzers,
+         project_id="",
++        enable_js_ts=_enable_js_ts_from_args(args),
+     )
+@@
+     if args.command == "scan":
+         result_dict = build_run_result(
+             root=args.root,
+             tool_version=__version__,
+             project_id=args.project_id or "",
++            enable_js_ts=_enable_js_ts_from_args(args),
+         )
+@@
+     result = run_scan(
+         root=target if target.is_dir() else target.parent,
+         analyzers=analyzers,
+         project_id=args.project_id or "",
++        enable_js_ts=_enable_js_ts_from_args(args),
+     )
+*** End Patch
+*** Begin Patch
+*** Add File: tests/test_language_discovery_js_ts_flag.py
++from __future__ import annotations
++
++from pathlib import Path
++
++from code_audit.core.discover import discover_source_files
++
++
++def _touch(p: Path, text: str = "x") -> None:
++    p.parent.mkdir(parents=True, exist_ok=True)
++    p.write_text(text, encoding="utf-8")
++
++
++def test_discover_source_files_js_ts_flag_controls_visibility(tmp_path: Path) -> None:
++    # Arrange: a tiny mixed-language repo
++    _touch(tmp_path / "app.py", "print('hi')\n")
++    _touch(tmp_path / "web" / "main.js", "eval('1+1')\n")
++    _touch(tmp_path / "web" / "main.ts", "const x: number = 1\n")
++    _touch(tmp_path / "web" / "view.tsx", "export const V = () => null\n")
++    _touch(tmp_path / "node_modules" / "lib.js", "eval('nope')\n")
++
++    # Default (flag off): only Python is returned; JS/TS keys are not present.
++    res = discover_source_files(tmp_path, enable_js_ts=False)
++    assert set(res.keys()) == {"py"}
++    assert (tmp_path / "app.py").resolve() in res["py"]
++
++    # Flag on: JS/TS are discovered, but excluded directories are still honored.
++    res2 = discover_source_files(tmp_path, enable_js_ts=True)
++    assert set(res2.keys()) == {"py", "js", "ts"}
++    assert (tmp_path / "app.py").resolve() in res2["py"]
++
++    assert (tmp_path / "web" / "main.js").resolve() in res2["js"]
++    assert (tmp_path / "web" / "main.ts").resolve() in res2["ts"]
++    assert (tmp_path / "web" / "view.tsx").resolve() in res2["ts"]
++
++    # node_modules is excluded by default
++    assert (tmp_path / "node_modules" / "lib.js").resolve() not in res2["js"]
++
+*** End Patch
+Notes on Diff 1 behavior (as shipped)
+•	--enable-js-ts does not change outputs yet: run_scan() still passes only Python files into analyzers.
+•	It does deterministically discover JS/TS files (for the next diff where JS/TS analyzers are introduced).
+•	New test locks the flag behavior + default exclusion (node_modules).
+
+
+You said:
+Ship the next diff in this progression 
+
+
+ChatGPT said:
+Thought for 27s
+*** Begin Patch
+*** Update File: pyproject.toml
+@@
+ [project]
+ name = "code_audit"
+@@
+ dependencies = [
+@@
+ ]
++
++[project.optional-dependencies]
++# Multi-language parsing (preview). Kept optional so existing installs/CI don't break
++# until we wire a dedicated workflow/job to install these extras.
++treesitter = [
++  "tree-sitter>=0.22.0,<0.23.0",
++]
+*** End Patch
+*** Begin Patch
+*** Add File: src/code_audit/parsers/__init__.py
++"""Parser backends (preview).
++
++This package is introduced to stage multi-language analyzer support (JS/TS).
++No JS/TS analyzers are enabled yet in the engine.
++"""
++
+*** End Patch
+*** Begin Patch
+*** Add File: src/code_audit/parsers/tree_sitter_loader.py
++from __future__ import annotations
++
++import os
++import platform
++from dataclasses import dataclass
++from pathlib import Path
++from typing import Optional
++
++
++class TreeSitterUnavailable(RuntimeError):
++    pass
++
++
++@dataclass(frozen=True)
++class TreeSitterConfig:
++    """Configuration for loading/building Tree-sitter language libraries.
++
++    This is intentionally deterministic:
++    - Uses vendored grammar sources when present.
++    - Produces a single shared library in a stable cache location.
++    - Never downloads grammars at runtime.
++    """
++
++    vendor_root: Path
++    cache_dir: Path
++    library_name: str = "code_audit_treesitter_langs"
++
++    @staticmethod
++    def default() -> "TreeSitterConfig":
++        pkg_root = Path(__file__).resolve().parents[2]
++        vendor_root = pkg_root / "data" / "treesitter" / "vendor"
++        cache_dir = Path(os.environ.get("CODE_AUDIT_TS_CACHE", "")) or (Path.home() / ".cache" / "code_audit")
++        return TreeSitterConfig(vendor_root=vendor_root, cache_dir=cache_dir)
++
++
++def _lib_suffix() -> str:
++    sys = platform.system().lower()
++    if sys == "darwin":
++        return ".dylib"
++    if sys == "windows":
++        return ".dll"
++    return ".so"
++
++
++def _import_tree_sitter():
++    try:
++        from tree_sitter import Language, Parser  # type: ignore
++    except Exception as e:  # pragma: no cover
++        raise TreeSitterUnavailable(
++            "tree-sitter is not installed. Install extras: pip install .[treesitter]"
++        ) from e
++    return Language, Parser
++
++
++def language_library_path(cfg: Optional[TreeSitterConfig] = None) -> Path:
++    cfg = cfg or TreeSitterConfig.default()
++    cfg.cache_dir.mkdir(parents=True, exist_ok=True)
++    return (cfg.cache_dir / (cfg.library_name + _lib_suffix())).resolve()
++
++
++def vendored_grammar_dirs(cfg: Optional[TreeSitterConfig] = None) -> list[Path]:
++    """Return vendored grammar directories if present.
++
++    Expected layout:
++      vendor/tree-sitter-javascript/
++      vendor/tree-sitter-typescript/typescript/
++      vendor/tree-sitter-typescript/tsx/
++    """
++    cfg = cfg or TreeSitterConfig.default()
++    v = cfg.vendor_root.resolve()
++    candidates = [
++        v / "tree-sitter-javascript",
++        v / "tree-sitter-typescript" / "typescript",
++        v / "tree-sitter-typescript" / "tsx",
++    ]
++    return [p for p in candidates if p.exists() and p.is_dir()]
++
++
++def build_language_library(cfg: Optional[TreeSitterConfig] = None) -> Path:
++    """Build the shared language library from vendored grammars.
++
++    Raises TreeSitterUnavailable if vendored grammars are missing.
++    """
++    cfg = cfg or TreeSitterConfig.default()
++    Language, _Parser = _import_tree_sitter()
++    out = language_library_path(cfg)
++    grammars = vendored_grammar_dirs(cfg)
++    if len(grammars) < 3:
++        raise TreeSitterUnavailable(
++            "Vendored tree-sitter grammars are missing. Expected:\n"
++            f"  {cfg.vendor_root}/tree-sitter-javascript\n"
++            f"  {cfg.vendor_root}/tree-sitter-typescript/typescript\n"
++            f"  {cfg.vendor_root}/tree-sitter-typescript/tsx\n"
++            "See src/code_audit/data/treesitter/vendor/README.md"
++        )
++
++    # Deterministic build: input is vendored dirs, output is fixed file path.
++    # Note: tree_sitter.Language.build_library compiles grammar C sources.
++    Language.build_library(str(out), [str(p) for p in grammars])
++    return out
++
++
++def load_language(name: str, cfg: Optional[TreeSitterConfig] = None):
++    """Load a tree-sitter Language for 'javascript' or 'typescript' (or 'tsx')."""
++    cfg = cfg or TreeSitterConfig.default()
++    Language, _Parser = _import_tree_sitter()
++    lib = language_library_path(cfg)
++    if not lib.exists():
++        # Build on demand from vendored sources (no downloads).
++        lib = build_language_library(cfg)
++    return Language(str(lib), name)
++
++
++def make_parser(language_name: str, cfg: Optional[TreeSitterConfig] = None):
++    """Create a Parser bound to a language."""
++    cfg = cfg or TreeSitterConfig.default()
++    _Language, Parser = _import_tree_sitter()
++    lang = load_language(language_name, cfg)
++    p = Parser()
++    p.set_language(lang)
++    return p
++
+*** End Patch
+*** Begin Patch
+*** Add File: src/code_audit/parsers/tree_sitter_js.py
++from __future__ import annotations
++
++from dataclasses import dataclass
++from pathlib import Path
++from typing import Optional
++
++from code_audit.parsers.tree_sitter_loader import TreeSitterConfig, TreeSitterUnavailable, make_parser
++
++
++@dataclass(frozen=True)
++class ParsedTree:
++    language: str
++    path: Path
++    source_bytes: bytes
++    tree: object  # tree_sitter.Tree at runtime
++
++
++def parse_file(path: Path, *, language: str, cfg: Optional[TreeSitterConfig] = None) -> ParsedTree:
++    """Parse a JS/TS file using tree-sitter.
++
++    - Input is read as bytes (stable byte offsets).
++    - Newline normalization is NOT performed here (offset mapping comes later).
++    """
++    p = path.resolve()
++    try:
++        src = p.read_bytes()
++    except OSError as e:  # pragma: no cover
++        raise RuntimeError(f"Unable to read source file: {p}") from e
++
++    parser = make_parser(language, cfg)
++    tree = parser.parse(src)
++    return ParsedTree(language=language, path=p, source_bytes=src, tree=tree)
++
++
++def smoke_parse_snippet(snippet: str, *, language: str) -> None:
++    """Small utility used by tests to validate parser wiring."""
++    from code_audit.parsers.tree_sitter_loader import _import_tree_sitter  # local import
++
++    _Language, Parser = _import_tree_sitter()
++    parser = make_parser(language)
++    tree = parser.parse(snippet.encode("utf-8"))
++    if tree is None:  # pragma: no cover
++        raise TreeSitterUnavailable("tree-sitter parse returned None")
++
+*** End Patch
+*** Begin Patch
+*** Add File: src/code_audit/data/treesitter/vendor/README.md
++# Vendored Tree-sitter grammars (JS/TS) — preview
++
++This directory is the **governed** source-of-truth for Tree-sitter grammar sources.
++
++Expected layout:
++
++```
++src/code_audit/data/treesitter/vendor/
++├── tree-sitter-javascript/
++└── tree-sitter-typescript/
++    ├── typescript/
++    └── tsx/
++```
++
++Notes:
++- These grammars must be vendored (checked into the repo) for deterministic builds.
++- The engine will never download grammars at runtime.
++- The shared library is built into a stable cache location:
++  - `~/.cache/code_audit/code_audit_treesitter_langs.(so|dylib|dll)`
++  - override with `CODE_AUDIT_TS_CACHE=/path/to/cache`
++
++Build can be triggered implicitly by running JS/TS parsing code, or explicitly by:
++
++```
++python scripts/build_treesitter_langs.py
++```
++
+*** End Patch
+*** Begin Patch
+*** Add File: scripts/build_treesitter_langs.py
++from __future__ import annotations
++
++import sys
++
++from code_audit.parsers.tree_sitter_loader import TreeSitterConfig, build_language_library, language_library_path
++
++
++def main() -> int:
++    cfg = TreeSitterConfig.default()
++    out = language_library_path(cfg)
++    try:
++        built = build_language_library(cfg)
++    except Exception as e:
++        print(f"[code-audit] tree-sitter build failed: {e}", file=sys.stderr)
++        return 1
++    print(f"[code-audit] tree-sitter language library built: {built}")
++    return 0
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())
++
+*** End Patch
+*** Begin Patch
+*** Add File: tests/test_treesitter_loader_smoke.py
++from __future__ import annotations
++
++import os
++from pathlib import Path
++
++import pytest
++
++
++def _have_tree_sitter() -> bool:
++    try:
++        import tree_sitter  # noqa: F401
++    except Exception:
++        return False
++    return True
++
++
++@pytest.mark.skipif(not _have_tree_sitter(), reason="tree-sitter extra not installed")
++def test_treesitter_smoke_parse_requires_vendored_grammars(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
++    """
++    This test is intentionally conservative:
++    - If vendored grammars are present, we should be able to build+parse.
++    - If vendored grammars are missing, loader must raise a clear error (not silently download).
++    """
++    from code_audit.parsers.tree_sitter_loader import TreeSitterConfig, TreeSitterUnavailable, vendored_grammar_dirs
++    from code_audit.parsers.tree_sitter_js import smoke_parse_snippet
++
++    # Use an isolated cache dir
++    monkeypatch.setenv("CODE_AUDIT_TS_CACHE", str(tmp_path / "ts_cache"))
++
++    cfg = TreeSitterConfig.default()
++    grammars = vendored_grammar_dirs(cfg)
++    if len(grammars) < 3:
++        with pytest.raises(TreeSitterUnavailable):
++            smoke_parse_snippet("var x = 1;", language="javascript")
++        return
++
++    # Grammars exist: build should succeed and parse should work.
++    smoke_parse_snippet("var x = 1;", language="javascript")
++    smoke_parse_snippet("const x: number = 1;", language="typescript")
++
+*** End Patch
+What this diff does (and does not do)
+•	✅ Adds a vendored-only tree-sitter loader that can build a language library deterministically.
+•	✅ Keeps dependencies optional via pip install .[treesitter] (so current CI won’t break yet).
+•	✅ Adds a smoke test that:
+•	parses when grammars exist, or
+•	fails loudly (no downloads) when they don’t.
+•	❌ Does not yet add any JS/TS analyzers or manifests/gates (that’s the next diff).
+If you want, the next diff after this is Diff 3: tree-sitter manifest gate (hash vendored grammars + parser wrappers; require signal_logic_version bump).
+
+
+You said:
+Ship Diff 3: tree-sitter manifest gate (hash vendored grammars + parser wrappers; require signal_logic_version bump).
+
+
+ChatGPT said:
+*** Begin Patch
+*** Add File: tests/contracts/treesitter_manifest.json
++{
++  "manifest_version": 1,
++  "signal_logic_version": "signals_v2",
++  "generated_by": "scripts/refresh_treesitter_manifest.py",
++  "files": {}
++}
++
+*** End Patch
+*** Begin Patch
+*** Add File: scripts/refresh_treesitter_manifest.py
++from __future__ import annotations
++
++import hashlib
++import json
++from pathlib import Path
++from typing import Dict
++
++
++ROOT = Path(__file__).resolve().parents[1]
++MANIFEST_PATH = ROOT / "tests" / "contracts" / "treesitter_manifest.json"
++
++# Semantic surface for Tree-sitter:
++# - Vendored grammars (must be deterministic, no downloads)
++# - Parser wrapper modules (affect parsing, offsets, and matching)
++VENDORED_DIR = ROOT / "src" / "code_audit" / "data" / "treesitter" / "vendor"
++WRAPPER_FILES = [
++    ROOT / "src" / "code_audit" / "parsers" / "tree_sitter_loader.py",
++    ROOT / "src" / "code_audit" / "parsers" / "tree_sitter_js.py",
++]
++
++
++def _sha256_bytes(b: bytes) -> str:
++    return hashlib.sha256(b).hexdigest()
++
++
++def _sha256_file(path: Path) -> str:
++    return _sha256_bytes(path.read_bytes())
++
++
++def _iter_vendor_files(vendor_root: Path) -> list[Path]:
++    if not vendor_root.exists():
++        return []
++    out: list[Path] = []
++    for p in vendor_root.rglob("*"):
++        if p.is_file():
++            out.append(p)
++    return sorted(out, key=lambda x: str(x))
++
++
++def build_manifest() -> dict:
++    files: Dict[str, str] = {}
++
++    # Vendored grammars (if present)
++    for p in _iter_vendor_files(VENDORED_DIR):
++        rel = p.relative_to(ROOT).as_posix()
++        files[rel] = _sha256_file(p)
++
++    # Wrapper modules (must exist if the feature exists)
++    for p in WRAPPER_FILES:
++        rel = p.relative_to(ROOT).as_posix()
++        if not p.exists():
++            raise SystemExit(f"Missing Tree-sitter wrapper file: {rel}")
++        files[rel] = _sha256_file(p)
++
++    return {
++        "manifest_version": 1,
++        "signal_logic_version": "signals_v2",
++        "generated_by": "scripts/refresh_treesitter_manifest.py",
++        "files": files,
++    }
++
++
++def main() -> int:
++    manifest = build_manifest()
++    MANIFEST_PATH.parent.mkdir(parents=True, exist_ok=True)
++    MANIFEST_PATH.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
++    print(f"[code-audit] wrote {MANIFEST_PATH.relative_to(ROOT)} ({len(manifest['files'])} files)")
++    return 0
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())
++
+*** End Patch
+*** Begin Patch
+*** Add File: tests/test_treesitter_manifest_requires_signal_logic_bump.py
++from __future__ import annotations
++
++import hashlib
++import json
++from pathlib import Path
++
++import pytest
++
++
++ROOT = Path(__file__).resolve().parents[1]
++MANIFEST_PATH = ROOT / "tests" / "contracts" / "treesitter_manifest.json"
++REFRESH_SCRIPT = ROOT / "scripts" / "refresh_treesitter_manifest.py"
++
++
++def _sha256_bytes(b: bytes) -> str:
++    return hashlib.sha256(b).hexdigest()
++
++
++def _sha256_file(path: Path) -> str:
++    return _sha256_bytes(path.read_bytes())
++
++
++def _load_manifest() -> dict:
++    if not MANIFEST_PATH.exists():
++        raise AssertionError(
++            "Missing tests/contracts/treesitter_manifest.json\n"
++            "Run: python scripts/refresh_treesitter_manifest.py"
++        )
++    return json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
++
++
++def _current_signal_logic_version() -> str:
++    # Anchor lives in src/code_audit/model/run_result.py in this repo’s contract gates.
++    # Fallback: src/code_audit/run_result.py for older layouts.
++    candidates = [
++        ROOT / "src" / "code_audit" / "model" / "run_result.py",
++        ROOT / "src" / "code_audit" / "run_result.py",
++    ]
++    for p in candidates:
++        if not p.exists():
++            continue
++        txt = p.read_text(encoding="utf-8")
++        for line in txt.splitlines():
++            if "signal_logic_version" in line and ("signals_v" in line):
++                # Very small parser: look for "signals_vX" literal
++                idx = line.find("signals_v")
++                if idx >= 0:
++                    tail = line[idx:]
++                    q1 = tail.find('"')
++                    q2 = tail.find("'", 0)
++                    # Extract between quotes in the original line
++                    # Prefer double quotes
++                # Simpler: regex-free parse by scanning for quotes
++        # Use a robust parse: load as python module is not safe in tests.
++    # If we cannot find it, fail loudly—this is contract critical.
++    raise AssertionError("Unable to locate current signal_logic_version in run_result.py")
++
++
++def _extract_signal_logic_version_from_run_result_py() -> str:
++    candidates = [
++        ROOT / "src" / "code_audit" / "model" / "run_result.py",
++        ROOT / "src" / "code_audit" / "run_result.py",
++    ]
++    for p in candidates:
++        if not p.exists():
++            continue
++        txt = p.read_text(encoding="utf-8")
++        # Look for: signal_logic_version: str = "signals_v1"
++        for quote in ('"', "'"):
++            needle = f"{quote}signals_v"
++            i = txt.find(needle)
++            if i >= 0:
++                j = txt.find(quote, i + 1)
++                if j > i:
++                    return txt[i + 1 : j]
++    raise AssertionError("Unable to locate signal_logic_version literal in run_result.py")
++
++
++def _current_semantic_file_hashes() -> dict[str, str]:
++    # Must match scripts/refresh_treesitter_manifest.py inputs
++    vendor_dir = ROOT / "src" / "code_audit" / "data" / "treesitter" / "vendor"
++    wrapper_files = [
++        ROOT / "src" / "code_audit" / "parsers" / "tree_sitter_loader.py",
++        ROOT / "src" / "code_audit" / "parsers" / "tree_sitter_js.py",
++    ]
++
++    files: dict[str, str] = {}
++    if vendor_dir.exists():
++        for p in sorted([x for x in vendor_dir.rglob("*") if x.is_file()], key=lambda x: str(x)):
++            files[p.relative_to(ROOT).as_posix()] = _sha256_file(p)
++
++    for p in wrapper_files:
++        rel = p.relative_to(ROOT).as_posix()
++        if not p.exists():
++            pytest.skip(f"Tree-sitter wrapper file missing (feature not present): {rel}")
++        files[rel] = _sha256_file(p)
++
++    return files
++
++
++def test_treesitter_manifest_matches_current_semantic_surface() -> None:
++    manifest = _load_manifest()
++    assert manifest.get("manifest_version") == 1
++    assert manifest.get("generated_by") == "scripts/refresh_treesitter_manifest.py"
++
++    current = _current_semantic_file_hashes()
++    recorded = manifest.get("files") or {}
++
++    if current != recorded:
++        raise AssertionError(
++            "Tree-sitter semantic surface changed.\n"
++            "If intentional: bump signal_logic_version and refresh manifest:\n"
++            "  python scripts/refresh_treesitter_manifest.py\n"
++            "If unintentional: revert the Tree-sitter semantic change.\n"
++        )
++
++
++def test_treesitter_manifest_requires_signal_logic_bump_on_change() -> None:
++    manifest = _load_manifest()
++    recorded_signal = manifest.get("signal_logic_version")
++    assert isinstance(recorded_signal, str) and recorded_signal.startswith("signals_v")
++
++    current_signal = _extract_signal_logic_version_from_run_result_py()
++    assert isinstance(current_signal, str) and current_signal.startswith("signals_v")
++
++    current_hashes = _current_semantic_file_hashes()
++    recorded_hashes = manifest.get("files") or {}
++
++    if current_hashes != recorded_hashes:
++        assert (
++            current_signal != recorded_signal
++        ), "Tree-sitter semantic surface changed but signal_logic_version was not bumped."
++
+*** End Patch
+*** Begin Patch
+*** Update File: .github/workflows/pytest.yml
+@@
+       - name: Run tests
+         run: |
+           python -m pytest
++
+*** End Patch
+How to use this diff
+1.	Refresh the manifest after vendoring grammars (or even with empty vendor dir):
+python scripts/refresh_treesitter_manifest.py
+2.	Commit tests/contracts/treesitter_manifest.json.
+Gate behavior
+•	Any change to:
+•	src/code_audit/parsers/tree_sitter_loader.py
+•	src/code_audit/parsers/tree_sitter_js.py
+•	any file under src/code_audit/data/treesitter/vendor/**
+will cause CI to fail unless:
+•	you bump signal_logic_version (in src/code_audit/model/run_result.py or src/code_audit/run_result.py depending on layout)
+•	and refresh the manifest.
+If you want the stricter follow-on, next diff is:
+“treesitter manifest is included in release BOM and shipped to dist/” so releases attest this semantic surface too.
+
+
+You said:
+Ship the stricter follow-on, next diff: “treesitter manifest is included in release BOM and shipped to dist/” so releases attest this semantic surface too.
+
+
+ChatGPT said:
+Thought for 26s
+*** Begin Patch
+*** Update File: scripts/generate_release_bom.py
+@@
+ from __future__ import annotations
+ 
+ import hashlib
+ import json
+ from pathlib import Path
+ from typing import Any, Dict, List, Set, Tuple
+ 
+ ROOT = Path(__file__).resolve().parents[1]
+ DIST = ROOT / "dist"
+ 
++# Producer-side semantic manifests that must be shipped into dist/ and attested in the BOM.
++TREESITTER_MANIFEST_SRC = ROOT / "tests" / "contracts" / "treesitter_manifest.json"
++TREESITTER_MANIFEST_DIST = DIST / "contracts" / "treesitter_manifest.json"
++
+@@
+ def _sha256_file(path: Path) -> str:
+     return hashlib.sha256(path.read_bytes()).hexdigest()
+ 
++def _load_json(path: Path) -> dict[str, Any]:
++    return json.loads(path.read_text(encoding="utf-8"))
++
+@@
+ def _copy_into_dist(src: Path, name: str) -> Path:
+     DIST.mkdir(parents=True, exist_ok=True)
+     dst = DIST / name
+     dst.write_bytes(src.read_bytes())
+     return dst
+ 
++def _copy_into_dist_path(src: Path, dst: Path) -> Path:
++    dst.parent.mkdir(parents=True, exist_ok=True)
++    dst.write_bytes(src.read_bytes())
++    return dst
++
+@@
+ def generate_release_bom(*, write: bool = True) -> dict[str, Any]:
+@@
+     # --- existing BOM generation logic above ---
+@@
+     artifacts: dict[str, Any] = {}
+ 
+     # --- existing artifact population continues ---
++
++    # ---------------------------------------------------------------------
++    # Tree-sitter semantic surface attestation (producer contract manifest)
++    #
++    # If multi-language support is present, the manifest is part of the
++    # release audit kit: it is shipped into dist/ and referenced from the BOM
++    # with its sha256 and recorded signal_logic_version.
++    # ---------------------------------------------------------------------
++    if TREESITTER_MANIFEST_SRC.exists():
++        _copy_into_dist_path(TREESITTER_MANIFEST_SRC, TREESITTER_MANIFEST_DIST)
++        treesitter_manifest_sha = _sha256_file(TREESITTER_MANIFEST_DIST)
++        treesitter_obj = _load_json(TREESITTER_MANIFEST_DIST)
++        artifacts["treesitter_manifest"] = {
++            "path": str(TREESITTER_MANIFEST_DIST.relative_to(ROOT)),
++            "sha256": treesitter_manifest_sha,
++            "signal_logic_version": treesitter_obj.get("signal_logic_version", ""),
++            "manifest_version": treesitter_obj.get("manifest_version", 0),
++        }
+ 
+@@
+     bom: dict[str, Any] = {
+         "schema_version": "release_bom_v1",
+         "artifacts": artifacts,
+@@
+     }
+ 
+     if write:
+         DIST.mkdir(parents=True, exist_ok=True)
+         (DIST / "release_bom.json").write_text(json.dumps(bom, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+     return bom
+*** End Patch
+*** Begin Patch
+*** Update File: schemas/release_bom.schema.json
+@@
+   "type": "object",
+   "additionalProperties": false,
+   "required": ["schema_version", "artifacts"],
+   "properties": {
+     "schema_version": { "type": "string" },
+     "artifacts": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
++        "treesitter_manifest": { "$ref": "#/$defs/treesitter_manifest_artifact" }
+       }
+     }
+   },
+   "$defs": {
++    "sha256": {
++      "type": "string",
++      "pattern": "^[a-f0-9]{64}$"
++    },
++    "signals_version": {
++      "type": "string",
++      "pattern": "^signals_v\\d+$"
++    },
++    "treesitter_manifest_artifact": {
++      "type": "object",
++      "additionalProperties": false,
++      "required": ["path", "sha256", "signal_logic_version", "manifest_version"],
++      "properties": {
++        "path": {
++          "type": "string",
++          "pattern": "^dist/contracts/treesitter_manifest\\.json$"
++        },
++        "sha256": { "$ref": "#/$defs/sha256" },
++        "signal_logic_version": { "$ref": "#/$defs/signals_version" },
++        "manifest_version": { "type": "integer", "minimum": 1 }
++      }
++    }
+   }
+ }
+*** End Patch
+*** Begin Patch
+*** Update File: scripts/check_release_bom_consistency.py
+@@
+ from __future__ import annotations
+ 
+ import hashlib
+ import json
+ from pathlib import Path
+ from typing import Any
+ 
+ ROOT = Path(__file__).resolve().parents[1]
+ DIST = ROOT / "dist"
+ 
+@@
+ def _sha256_file(path: Path) -> str:
+     return hashlib.sha256(path.read_bytes()).hexdigest()
+ 
++def _req(d: dict, key: str, ctx: str) -> Any:
++    if key not in d:
++        raise AssertionError(f"Missing required key {key!r} in {ctx}")
++    return d[key]
++
+@@
+ def check_release_bom_consistency(bom: dict[str, Any]) -> None:
+@@
+     artifacts = bom.get("artifacts") or {}
+ 
++    # ------------------------------------------------------------------
++    # Tree-sitter manifest attestation (if present in BOM, must exist in dist
++    # and hash must match).
++    # ------------------------------------------------------------------
++    if "treesitter_manifest" in artifacts:
++        a = artifacts["treesitter_manifest"]
++        ctx = "artifacts.treesitter_manifest"
++        rel_path = _req(a, "path", ctx)
++        expected_sha = _req(a, "sha256", ctx)
++        manifest_version = _req(a, "manifest_version", ctx)
++        sig_ver = _req(a, "signal_logic_version", ctx)
++
++        p = (ROOT / rel_path).resolve()
++        assert p.exists(), f"{ctx}.path does not exist: {rel_path}"
++        got_sha = _sha256_file(p)
++        assert got_sha == expected_sha, f"{ctx}.sha256 mismatch: expected={expected_sha} got={got_sha}"
++
++        # Lightweight sanity: ensure the file is JSON and has required fields.
++        obj = json.loads(p.read_text(encoding="utf-8"))
++        assert obj.get("manifest_version") == manifest_version, f"{ctx}.manifest_version mismatch vs file"
++        assert obj.get("signal_logic_version") == sig_ver, f"{ctx}.signal_logic_version mismatch vs file"
++
+     # --- existing consistency checks continue below ---
+*** End Patch
+*** Begin Patch
+*** Update File: scripts/check_release_bom_generator_gate.py
+@@
+ def run_preflight() -> int:
+@@
+     tmp_obj = _load_json_or_issue(TMP_BOM, "tmp_bom", issues)
+     if isinstance(tmp_obj, dict):
+         _validate_bom_against_dist_schema(tmp_obj, issues)
+         if not issues:
+             _preflight_verify_ref_edges_hashes(tmp_obj, issues)
+         if not issues:
+             _preflight_verify_ref_edges_sorted_unique(tmp_obj, issues)
++        if not issues:
++            # If the treesitter manifest is referenced, require the shipped dist copy exists.
++            arts = tmp_obj.get("artifacts") or {}
++            if isinstance(arts, dict) and "treesitter_manifest" in arts:
++                a = arts["treesitter_manifest"]
++                p = None
++                if isinstance(a, dict):
++                    rel = a.get("path")
++                    if isinstance(rel, str):
++                        p = (ROOT / rel).resolve()
++                if p is None or not p.exists():
++                    issues.append(_issue(
++                        "missing_dist_artifact",
++                        "release_bom.json:artifacts.treesitter_manifest.path",
++                        "existing dist/contracts/treesitter_manifest.json",
++                        p and str(p) or "<missing>",
++                    ))
+         if not issues:
+             issues.extend(run_release_bom_consistency_check(bom_obj=tmp_obj, root=ROOT))
+*** End Patch
+*** Begin Patch
+*** Update File: schemas/release_bom_generator_gate_result.schema.json
+@@
+       "properties": {
+         "kind": {
+           "type": "string",
+           "enum": [
+@@
++            "missing_dist_artifact",
+             "bom_invalid_artifacts",
+             "bom_invalid_ref_edges",
+             "bom_invalid_ref_edges_sha",
+             "bom_invalid_ref_edge_item",
+             "bom_ref_edge_trace_short_mismatch",
+             "bom_ref_edges_sha_mismatch",
+             "bom_ref_edges_duplicate",
+             "bom_ref_edges_not_sorted"
+           ]
+         },
+         "path": { "type": "string" }
+       }
+     }
+*** End Patch
+What this “stricter follow-on” guarantees
+•	If tests/contracts/treesitter_manifest.json exists in the producer repo, the BOM generator:
+•	copies it into dist/contracts/treesitter_manifest.json
+•	includes it in the BOM as artifacts.treesitter_manifest with sha256, manifest_version, and signal_logic_version
+•	The BOM consistency gate verifies:
+•	the dist copy exists
+•	the sha256 matches
+•	JSON fields match the BOM metadata
+•	The BOM generator preflight fails early if the BOM references it but the dist artifact is missing.
+If you want the “max tightness” next step: make it required (not optional) whenever --enable-js-ts is used in release mode, and add it to your release BOM manifest gate list so changes to this inclusion logic also require the appropriate version bump.
+
+
+You said:
+Ship the stricter follow-on, next diff: “treesitter manifest is included in release BOM and shipped to dist/” so releases attest this semantic surface too.
+
+
+ChatGPT said:
+*** Begin Patch
+*** Update File: scripts/generate_release_bom.py
+@@
+ from __future__ import annotations
+ 
+ import hashlib
+ import json
+ from pathlib import Path
+ from typing import Any, Dict
+ 
+ ROOT = Path(__file__).resolve().parents[1]
+ DIST = ROOT / "dist"
+ 
++# Producer-side semantic manifests that must be shipped into dist/ and attested in the BOM.
++TREESITTER_MANIFEST_SRC = ROOT / "tests" / "contracts" / "treesitter_manifest.json"
++TREESITTER_MANIFEST_DIST = DIST / "contracts" / "treesitter_manifest.json"
++
+ 
+ def _sha256_file(path: Path) -> str:
+     return hashlib.sha256(path.read_bytes()).hexdigest()
+ 
++def _load_json(path: Path) -> dict[str, Any]:
++    return json.loads(path.read_text(encoding="utf-8"))
++
+ 
+ def _copy_into_dist(src: Path, name: str) -> Path:
+     DIST.mkdir(parents=True, exist_ok=True)
+     dst = DIST / name
+     dst.write_bytes(src.read_bytes())
+     return dst
+ 
++def _copy_into_dist_path(src: Path, dst: Path) -> Path:
++    dst.parent.mkdir(parents=True, exist_ok=True)
++    dst.write_bytes(src.read_bytes())
++    return dst
++
+ 
+ def generate_release_bom(*, write: bool = True) -> dict[str, Any]:
+@@
+-    artifacts: dict[str, Any] = {}
++    artifacts: dict[str, Any] = {}
+ 
+     # --- existing artifact population continues ---
+ 
++    # ---------------------------------------------------------------------
++    # Tree-sitter semantic surface attestation (producer contract manifest)
++    #
++    # If multi-language support is present, this manifest is part of the
++    # release audit kit: it is shipped into dist/ and referenced from the BOM
++    # with its sha256 and recorded signal_logic_version.
++    # ---------------------------------------------------------------------
++    if TREESITTER_MANIFEST_SRC.exists():
++        _copy_into_dist_path(TREESITTER_MANIFEST_SRC, TREESITTER_MANIFEST_DIST)
++        manifest_sha = _sha256_file(TREESITTER_MANIFEST_DIST)
++        manifest_obj = _load_json(TREESITTER_MANIFEST_DIST)
++        artifacts["treesitter_manifest"] = {
++            "path": str(TREESITTER_MANIFEST_DIST.relative_to(ROOT)),
++            "sha256": manifest_sha,
++            "manifest_version": int(manifest_obj.get("manifest_version", 0) or 0),
++            "signal_logic_version": str(manifest_obj.get("signal_logic_version", "") or ""),
++        }
++
+     bom: dict[str, Any] = {
+         "schema_version": "release_bom_v1",
+         "artifacts": artifacts,
+@@
+     if write:
+         DIST.mkdir(parents=True, exist_ok=True)
+         (DIST / "release_bom.json").write_text(json.dumps(bom, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+     return bom
+*** End Patch
+*** Begin Patch
+*** Update File: schemas/release_bom.schema.json
+@@
+   "type": "object",
+   "additionalProperties": false,
+   "required": ["schema_version", "artifacts"],
+   "properties": {
+     "schema_version": { "type": "string" },
+     "artifacts": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
++        "treesitter_manifest": { "$ref": "#/$defs/treesitter_manifest_artifact" }
+       }
+     }
+   },
+   "$defs": {
++    "sha256": {
++      "type": "string",
++      "pattern": "^[a-f0-9]{64}$"
++    },
++    "signals_version": {
++      "type": "string",
++      "pattern": "^signals_v\\d+$"
++    },
++    "treesitter_manifest_artifact": {
++      "type": "object",
++      "additionalProperties": false,
++      "required": ["path", "sha256", "manifest_version", "signal_logic_version"],
++      "properties": {
++        "path": {
++          "type": "string",
++          "pattern": "^dist/contracts/treesitter_manifest\\.json$"
++        },
++        "sha256": { "$ref": "#/$defs/sha256" },
++        "manifest_version": { "type": "integer", "minimum": 1 },
++        "signal_logic_version": { "$ref": "#/$defs/signals_version" }
++      }
++    }
+   }
+ }
+*** End Patch
+*** Begin Patch
+*** Update File: scripts/check_release_bom_consistency.py
+@@
+ from __future__ import annotations
+ 
+ import hashlib
+ import json
+ from pathlib import Path
+ from typing import Any
+ 
+ ROOT = Path(__file__).resolve().parents[1]
+ 
+@@
+ def _sha256_file(path: Path) -> str:
+     return hashlib.sha256(path.read_bytes()).hexdigest()
+ 
++def _req(d: dict, key: str, ctx: str) -> Any:
++    if key not in d:
++        raise AssertionError(f"Missing required key {key!r} in {ctx}")
++    return d[key]
++
+ 
+ def check_release_bom_consistency(bom: dict[str, Any]) -> None:
+@@
+     artifacts = bom.get("artifacts") or {}
+ 
++    # ------------------------------------------------------------------
++    # Tree-sitter manifest attestation (if present in BOM, must exist in dist
++    # and sha256 must match).
++    # ------------------------------------------------------------------
++    if "treesitter_manifest" in artifacts:
++        a = artifacts["treesitter_manifest"]
++        assert isinstance(a, dict), "artifacts.treesitter_manifest must be an object"
++        ctx = "artifacts.treesitter_manifest"
++        rel_path = _req(a, "path", ctx)
++        expected_sha = _req(a, "sha256", ctx)
++        expected_mv = _req(a, "manifest_version", ctx)
++        expected_slv = _req(a, "signal_logic_version", ctx)
++
++        p = (ROOT / rel_path).resolve()
++        assert p.exists(), f"{ctx}.path does not exist: {rel_path}"
++        got_sha = _sha256_file(p)
++        assert got_sha == expected_sha, f"{ctx}.sha256 mismatch: expected={expected_sha} got={got_sha}"
++
++        obj = json.loads(p.read_text(encoding="utf-8"))
++        assert obj.get("manifest_version") == expected_mv, f"{ctx}.manifest_version mismatch vs file"
++        assert obj.get("signal_logic_version") == expected_slv, f"{ctx}.signal_logic_version mismatch vs file"
++
+     # --- existing consistency checks continue below ---
+*** End Patch
+*** Begin Patch
+*** Update File: scripts/check_release_bom_generator_gate.py
+@@
+ def run_preflight() -> int:
+@@
+     tmp_obj = _load_json_or_issue(TMP_BOM, "tmp_bom", issues)
+     if isinstance(tmp_obj, dict):
+         _validate_bom_against_dist_schema(tmp_obj, issues)
+         if not issues:
+             _preflight_verify_ref_edges_hashes(tmp_obj, issues)
+         if not issues:
+             _preflight_verify_ref_edges_sorted_unique(tmp_obj, issues)
++        if not issues:
++            # If the treesitter manifest is referenced, require the shipped dist copy exists.
++            arts = tmp_obj.get("artifacts") or {}
++            if isinstance(arts, dict) and "treesitter_manifest" in arts:
++                a = arts["treesitter_manifest"]
++                rel = a.get("path") if isinstance(a, dict) else None
++                p = (ROOT / rel).resolve() if isinstance(rel, str) else None
++                if p is None or not p.exists():
++                    issues.append(_issue(
++                        "missing_dist_artifact",
++                        "release_bom.json:artifacts.treesitter_manifest.path",
++                        "existing dist/contracts/treesitter_manifest.json",
++                        str(p) if p is not None else "<missing>",
++                    ))
+         if not issues:
+             issues.extend(run_release_bom_consistency_check(bom_obj=tmp_obj, root=ROOT))
+*** End Patch
+*** Begin Patch
+*** Update File: schemas/release_bom_generator_gate_result.schema.json
+@@
+       "properties": {
+         "kind": {
+           "type": "string",
+           "enum": [
+@@
++            "missing_dist_artifact",
+             "bom_invalid_artifacts",
+             "bom_invalid_ref_edges",
+             "bom_invalid_ref_edges_sha",
+             "bom_invalid_ref_edge_item",
+             "bom_ref_edge_trace_short_mismatch",
+             "bom_ref_edges_sha_mismatch",
+             "bom_ref_edges_duplicate",
+             "bom_ref_edges_not_sorted"
+           ]
+         },
+         "path": { "type": "string" }
+       }
+     }
+*** End Patch
+What this enforces
+•	If tests/contracts/treesitter_manifest.json exists:
+•	it is copied into dist/contracts/treesitter_manifest.json
+•	it is listed in the Release BOM as artifacts.treesitter_manifest with sha256, manifest_version, and signal_logic_version
+•	The release BOM consistency checker verifies:
+•	dist artifact exists
+•	sha256 matches
+•	JSON fields match what BOM claims
+•	The BOM generator preflight fails early if the BOM references the manifest but the dist copy is missing.
+If you want the “even stricter” variant next: make treesitter_manifest required whenever a release includes any JS/TS-related shipped artifacts (or when a RELEASE_ENABLE_JS_TS=true env is set), and fail if it’s absent.
+
+
+You said:
+Ship the “even stricter” variant next: make treesitter_manifest required whenever a release includes any JS/TS-related shipped artifacts (or when a RELEASE_ENABLE_JS_TS=true env is set), and fail if it’s absent.
+
+
+ChatGPT said:
+*** Begin Patch
+*** Update File: scripts/generate_release_bom.py
+@@
+ from __future__ import annotations
+ 
+ import hashlib
+ import json
++import os
+ from pathlib import Path
+ from typing import Any, Dict
+ 
+ ROOT = Path(__file__).resolve().parents[1]
+ DIST = ROOT / "dist"
+@@
+ TREESITTER_MANIFEST_SRC = ROOT / "tests" / "contracts" / "treesitter_manifest.json"
+ TREESITTER_MANIFEST_DIST = DIST / "contracts" / "treesitter_manifest.json"
+ 
++# Release-mode strictness toggle:
++# - If RELEASE_ENABLE_JS_TS=true, treesitter_manifest becomes REQUIRED.
++RELEASE_ENABLE_JS_TS = (os.environ.get("RELEASE_ENABLE_JS_TS", "") or "").strip().lower() in ("1", "true", "yes", "y", "on")
++
+@@
+ def generate_release_bom(*, write: bool = True) -> dict[str, Any]:
+@@
+     artifacts: dict[str, Any] = {}
+ 
+     # --- existing artifact population continues ---
+ 
++    # Detect whether the release includes any JS/TS-related shipped artifacts.
++    # This intentionally keys off artifact names so the requirement is enforced
++    # even if other pipeline steps change.
++    def _includes_js_ts_surface(arts: dict[str, Any]) -> bool:
++        js_ts_tokens = ("treesitter", "js_ts", "javascript", "typescript", "tsx")
++        return any(any(tok in k for tok in js_ts_tokens) for k in arts.keys())
++
+     # ---------------------------------------------------------------------
+     # Tree-sitter semantic surface attestation (producer contract manifest)
+@@
+-    if TREESITTER_MANIFEST_SRC.exists():
++    if TREESITTER_MANIFEST_SRC.exists():
+         _copy_into_dist_path(TREESITTER_MANIFEST_SRC, TREESITTER_MANIFEST_DIST)
+         manifest_sha = _sha256_file(TREESITTER_MANIFEST_DIST)
+         manifest_obj = _load_json(TREESITTER_MANIFEST_DIST)
+         artifacts["treesitter_manifest"] = {
+             "path": str(TREESITTER_MANIFEST_DIST.relative_to(ROOT)),
+             "sha256": manifest_sha,
+             "manifest_version": int(manifest_obj.get("manifest_version", 0) or 0),
+             "signal_logic_version": str(manifest_obj.get("signal_logic_version", "") or ""),
+         }
++
++    # Even stricter requirement:
++    # - If RELEASE_ENABLE_JS_TS=true OR if any JS/TS-related artifacts exist in the release,
++    #   then treesitter_manifest MUST be present (and shipped into dist/).
++    if RELEASE_ENABLE_JS_TS or _includes_js_ts_surface(artifacts):
++        if "treesitter_manifest" not in artifacts:
++            raise SystemExit(
++                "[release-bom] treesitter_manifest is required for releases that include JS/TS surfaces "
++                "or when RELEASE_ENABLE_JS_TS=true.\n"
++                "Fix: ensure tests/contracts/treesitter_manifest.json exists and is shipped to dist/, "
++                "then re-run BOM generation."
++            )
+ 
+     bom: dict[str, Any] = {
+         "schema_version": "release_bom_v1",
+         "artifacts": artifacts,
+*** End Patch
+*** Begin Patch
+*** Update File: scripts/check_release_bom_generator_gate.py
+@@
+ def run_preflight() -> int:
+@@
+     tmp_obj = _load_json_or_issue(TMP_BOM, "tmp_bom", issues)
+     if isinstance(tmp_obj, dict):
+         _validate_bom_against_dist_schema(tmp_obj, issues)
+         if not issues:
+             _preflight_verify_ref_edges_hashes(tmp_obj, issues)
+         if not issues:
+             _preflight_verify_ref_edges_sorted_unique(tmp_obj, issues)
+         if not issues:
++            # Enforce the "even stricter" treesitter manifest requirement in preflight too:
++            # - If RELEASE_ENABLE_JS_TS=true OR any JS/TS-related artifacts exist, require treesitter_manifest.
++            import os
++
++            rel_enable = (os.environ.get("RELEASE_ENABLE_JS_TS", "") or "").strip().lower() in ("1", "true", "yes", "y", "on")
++            arts = tmp_obj.get("artifacts") or {}
++            js_ts_tokens = ("treesitter", "js_ts", "javascript", "typescript", "tsx")
++            includes_js_ts = isinstance(arts, dict) and any(any(tok in k for tok in js_ts_tokens) for k in arts.keys())
++
++            if rel_enable or includes_js_ts:
++                if not (isinstance(arts, dict) and "treesitter_manifest" in arts):
++                    issues.append(_issue(
++                        "missing_required_artifact",
++                        "release_bom.json:artifacts.treesitter_manifest",
++                        "present (required when RELEASE_ENABLE_JS_TS=true or JS/TS artifacts exist)",
++                        "<missing>",
++                    ))
++
+             # If the treesitter manifest is referenced, require the shipped dist copy exists.
+             arts = tmp_obj.get("artifacts") or {}
+             if isinstance(arts, dict) and "treesitter_manifest" in arts:
+                 a = arts["treesitter_manifest"]
+                 rel = a.get("path") if isinstance(a, dict) else None
+                 p = (ROOT / rel).resolve() if isinstance(rel, str) else None
+                 if p is None or not p.exists():
+                     issues.append(_issue(
+                         "missing_dist_artifact",
+                         "release_bom.json:artifacts.treesitter_manifest.path",
+                         "existing dist/contracts/treesitter_manifest.json",
+                         str(p) if p is not None else "<missing>",
+                     ))
+         if not issues:
+             issues.extend(run_release_bom_consistency_check(bom_obj=tmp_obj, root=ROOT))
+*** End Patch
+*** Begin Patch
+*** Update File: schemas/release_bom_generator_gate_result.schema.json
+@@
+       "properties": {
+         "kind": {
+           "type": "string",
+           "enum": [
+@@
++            "missing_required_artifact",
+             "missing_dist_artifact",
+             "bom_invalid_artifacts",
+             "bom_invalid_ref_edges",
+             "bom_invalid_ref_edges_sha",
+             "bom_invalid_ref_edge_item",
+             "bom_ref_edge_trace_short_mismatch",
+             "bom_ref_edges_sha_mismatch",
+             "bom_ref_edges_duplicate",
+             "bom_ref_edges_not_sorted"
+           ]
+         },
+         "path": { "type": "string" }
+       }
+     }
+*** End Patch
+*** Begin Patch
+*** Update File: scripts/check_release_bom_consistency.py
+@@
+ def check_release_bom_consistency(bom: dict[str, Any]) -> None:
+@@
+     artifacts = bom.get("artifacts") or {}
+ 
++    # Mirror the stricter release rule in the consistency checker:
++    # If RELEASE_ENABLE_JS_TS=true OR any JS/TS-related artifacts exist, treesitter_manifest is required.
++    import os
++    rel_enable = (os.environ.get("RELEASE_ENABLE_JS_TS", "") or "").strip().lower() in ("1", "true", "yes", "y", "on")
++    if isinstance(artifacts, dict):
++        js_ts_tokens = ("treesitter", "js_ts", "javascript", "typescript", "tsx")
++        includes_js_ts = any(any(tok in k for tok in js_ts_tokens) for k in artifacts.keys())
++        if (rel_enable or includes_js_ts) and ("treesitter_manifest" not in artifacts):
++            raise AssertionError(
++                "treesitter_manifest is required when RELEASE_ENABLE_JS_TS=true or when JS/TS artifacts exist in the BOM."
++            )
++
+     # ------------------------------------------------------------------
+     # Tree-sitter manifest attestation (if present in BOM, must exist in dist
+     # and sha256 must match).
+     # ------------------------------------------------------------------
+     if "treesitter_manifest" in artifacts:
+         a = artifacts["treesitter_manifest"]
+         assert isinstance(a, dict), "artifacts.treesitter_manifest must be an object"
+         ctx = "artifacts.treesitter_manifest"
+         rel_path = _req(a, "path", ctx)
+         expected_sha = _req(a, "sha256", ctx)
+         expected_mv = _req(a, "manifest_version", ctx)
+         expected_slv = _req(a, "signal_logic_version", ctx)
+*** End Patch
+Semantics (tight + explicit)
+•	RELEASE_ENABLE_JS_TS=true (or 1/yes/on) forces treesitter_manifest to exist in the BOM.
+•	Even if that env var isn’t set, the BOM generator auto-detects JS/TS surfaces by scanning artifact keys for tokens:
+•	treesitter, js_ts, javascript, typescript, tsx
+and then requires treesitter_manifest.
+•	Enforcement happens in three places:
+1.	generator (hard fail, earliest)
+2.	generator preflight gate (structured failure)
+3.	BOM consistency checker (hard fail, defense-in-depth)
+If you want the “absolute strictest” micro-step after this: replace token scanning with an explicit artifacts.js_ts_surface = true flag (or a dedicated artifacts.js_ts_runtime object) so the requirement can’t be bypassed by naming changes.
+
+
+You said:
+Ship the “absolute strictest” micro-step after this: replace token scanning with an explicit
+
+
+ChatGPT said:
+*** Begin Patch
+*** Update File: scripts/generate_release_bom.py
+@@
+ from __future__ import annotations
+ 
+ import hashlib
+ import json
+ import os
+ from pathlib import Path
+ from typing import Any, Dict
+ 
+ ROOT = Path(__file__).resolve().parents[1]
+ DIST = ROOT / "dist"
+@@
+ TREESITTER_MANIFEST_SRC = ROOT / "tests" / "contracts" / "treesitter_manifest.json"
+ TREESITTER_MANIFEST_DIST = DIST / "contracts" / "treesitter_manifest.json"
+ 
+ # Release-mode strictness toggle:
+ # - If RELEASE_ENABLE_JS_TS=true, treesitter_manifest becomes REQUIRED.
+ RELEASE_ENABLE_JS_TS = (os.environ.get("RELEASE_ENABLE_JS_TS", "") or "").strip().lower() in ("1", "true", "yes", "y", "on")
+ 
+@@
+ def generate_release_bom(*, write: bool = True) -> dict[str, Any]:
+@@
+     artifacts: dict[str, Any] = {}
+ 
+     # --- existing artifact population continues ---
+ 
+-    # Detect whether the release includes any JS/TS-related shipped artifacts.
+-    # This intentionally keys off artifact names so the requirement is enforced
+-    # even if other pipeline steps change.
+-    def _includes_js_ts_surface(arts: dict[str, Any]) -> bool:
+-        js_ts_tokens = ("treesitter", "js_ts", "javascript", "typescript", "tsx")
+-        return any(any(tok in k for tok in js_ts_tokens) for k in arts.keys())
++    # ---------------------------------------------------------------------
++    # Absolute strictest mode: explicit JS/TS surface declaration
++    #
++    # Rationale:
++    # - Token scanning can be bypassed by renaming artifacts.
++    # - This explicit boolean is a contract-governed surface in the BOM.
++    #
++    # Contract:
++    # - If js_ts_surface is True, treesitter_manifest MUST be present.
++    # - If RELEASE_ENABLE_JS_TS=true, js_ts_surface is forced True.
++    # ---------------------------------------------------------------------
++    js_ts_surface = bool(RELEASE_ENABLE_JS_TS)
++    artifacts["js_ts_surface"] = js_ts_surface
+ 
+     # ---------------------------------------------------------------------
+     # Tree-sitter semantic surface attestation (producer contract manifest)
+@@
+     if TREESITTER_MANIFEST_SRC.exists():
+         _copy_into_dist_path(TREESITTER_MANIFEST_SRC, TREESITTER_MANIFEST_DIST)
+         manifest_sha = _sha256_file(TREESITTER_MANIFEST_DIST)
+         manifest_obj = _load_json(TREESITTER_MANIFEST_DIST)
+         artifacts["treesitter_manifest"] = {
+             "path": str(TREESITTER_MANIFEST_DIST.relative_to(ROOT)),
+             "sha256": manifest_sha,
+             "manifest_version": int(manifest_obj.get("manifest_version", 0) or 0),
+             "signal_logic_version": str(manifest_obj.get("signal_logic_version", "") or ""),
+         }
+ 
+-    # Even stricter requirement:
+-    # - If RELEASE_ENABLE_JS_TS=true OR if any JS/TS-related artifacts exist in the release,
+-    #   then treesitter_manifest MUST be present (and shipped into dist/).
+-    if RELEASE_ENABLE_JS_TS or _includes_js_ts_surface(artifacts):
+-        if "treesitter_manifest" not in artifacts:
+-            raise SystemExit(
+-                "[release-bom] treesitter_manifest is required for releases that include JS/TS surfaces "
+-                "or when RELEASE_ENABLE_JS_TS=true.\n"
+-                "Fix: ensure tests/contracts/treesitter_manifest.json exists and is shipped to dist/, "
+-                "then re-run BOM generation."
+-            )
++    # Absolute strictest requirement:
++    # - If js_ts_surface is True, treesitter_manifest MUST be present.
++    if artifacts.get("js_ts_surface") is True and "treesitter_manifest" not in artifacts:
++        raise SystemExit(
++            "[release-bom] js_ts_surface=true requires artifacts.treesitter_manifest.\n"
++            "Fix: ensure tests/contracts/treesitter_manifest.json exists and is shipped to dist/, "
++            "then re-run BOM generation (or unset RELEASE_ENABLE_JS_TS).\n"
++        )
+ 
+     bom: dict[str, Any] = {
+         "schema_version": "release_bom_v1",
+         "artifacts": artifacts,
+*** End Patch
+*** Begin Patch
+*** Update File: schemas/release_bom.schema.json
+@@
+   "properties": {
+     "schema_version": { "type": "string" },
+     "artifacts": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
++        "js_ts_surface": { "type": "boolean" },
+         "treesitter_manifest": { "$ref": "#/$defs/treesitter_manifest_artifact" }
+       }
+     }
+   },
+*** End Patch
+*** Begin Patch
+*** Update File: scripts/check_release_bom_generator_gate.py
+@@
+ def run_preflight() -> int:
+@@
+     tmp_obj = _load_json_or_issue(TMP_BOM, "tmp_bom", issues)
+     if isinstance(tmp_obj, dict):
+         _validate_bom_against_dist_schema(tmp_obj, issues)
+         if not issues:
+             _preflight_verify_ref_edges_hashes(tmp_obj, issues)
+         if not issues:
+             _preflight_verify_ref_edges_sorted_unique(tmp_obj, issues)
+         if not issues:
+-            # Enforce the "even stricter" treesitter manifest requirement in preflight too:
+-            # - If RELEASE_ENABLE_JS_TS=true OR any JS/TS-related artifacts exist, require treesitter_manifest.
++            # Absolute strictest enforcement in preflight:
++            # - artifacts.js_ts_surface is the canonical declaration.
++            # - If true, artifacts.treesitter_manifest must be present.
+             import os
+ 
+-            rel_enable = (os.environ.get("RELEASE_ENABLE_JS_TS", "") or "").strip().lower() in ("1", "true", "yes", "y", "on")
+             arts = tmp_obj.get("artifacts") or {}
+-            js_ts_tokens = ("treesitter", "js_ts", "javascript", "typescript", "tsx")
+-            includes_js_ts = isinstance(arts, dict) and any(any(tok in k for tok in js_ts_tokens) for k in arts.keys())
++            rel_enable = (os.environ.get("RELEASE_ENABLE_JS_TS", "") or "").strip().lower() in ("1", "true", "yes", "y", "on")
+ 
+-            if rel_enable or includes_js_ts:
+-                if not (isinstance(arts, dict) and "treesitter_manifest" in arts):
++            if isinstance(arts, dict):
++                js_ts_surface = arts.get("js_ts_surface")
++                # Defense-in-depth: if env forces JS/TS, require declaration true.
++                if rel_enable and js_ts_surface is not True:
+                     issues.append(_issue(
+-                        "missing_required_artifact",
+-                        "release_bom.json:artifacts.treesitter_manifest",
+-                        "present (required when RELEASE_ENABLE_JS_TS=true or JS/TS artifacts exist)",
+-                        "<missing>",
++                        "invalid_required_artifact",
++                        "release_bom.json:artifacts.js_ts_surface",
++                        True,
++                        js_ts_surface,
+                     ))
++                if js_ts_surface is True and "treesitter_manifest" not in arts:
++                    issues.append(_issue(
++                        "missing_required_artifact",
++                        "release_bom.json:artifacts.treesitter_manifest",
++                        "present (required when artifacts.js_ts_surface=true)",
++                        "<missing>",
++                    ))
+ 
+             # If the treesitter manifest is referenced, require the shipped dist copy exists.
+             arts = tmp_obj.get("artifacts") or {}
+             if isinstance(arts, dict) and "treesitter_manifest" in arts:
+                 a = arts["treesitter_manifest"]
+                 rel = a.get("path") if isinstance(a, dict) else None
+                 p = (ROOT / rel).resolve() if isinstance(rel, str) else None
+                 if p is None or not p.exists():
+                     issues.append(_issue(
+                         "missing_dist_artifact",
+                         "release_bom.json:artifacts.treesitter_manifest.path",
+                         "existing dist/contracts/treesitter_manifest.json",
+                         str(p) if p is not None else "<missing>",
+                     ))
+         if not issues:
+             issues.extend(run_release_bom_consistency_check(bom_obj=tmp_obj, root=ROOT))
+*** End Patch
+*** Begin Patch
+*** Update File: schemas/release_bom_generator_gate_result.schema.json
+@@
+       "properties": {
+         "kind": {
+           "type": "string",
+           "enum": [
+             "missing_required_artifact",
++            "invalid_required_artifact",
+             "missing_dist_artifact",
+             "bom_invalid_artifacts",
+             "bom_invalid_ref_edges",
+             "bom_invalid_ref_edges_sha",
+             "bom_invalid_ref_edge_item",
+             "bom_ref_edge_trace_short_mismatch",
+             "bom_ref_edges_sha_mismatch",
+             "bom_ref_edges_duplicate",
+             "bom_ref_edges_not_sorted"
+           ]
+         },
+         "path": { "type": "string" }
+       }
+     }
+*** End Patch
+*** Begin Patch
+*** Update File: scripts/check_release_bom_consistency.py
+@@
+ def check_release_bom_consistency(bom: dict[str, Any]) -> None:
+@@
+     artifacts = bom.get("artifacts") or {}
+ 
+-    # Mirror the stricter release rule in the consistency checker:
+-    # If RELEASE_ENABLE_JS_TS=true OR any JS/TS-related artifacts exist, treesitter_manifest is required.
++    # Absolute strictest rule in consistency checker:
++    # - artifacts.js_ts_surface is canonical declaration.
++    # - If true, treesitter_manifest is required.
++    # - Defense-in-depth: RELEASE_ENABLE_JS_TS=true requires js_ts_surface=true.
+     import os
+     rel_enable = (os.environ.get("RELEASE_ENABLE_JS_TS", "") or "").strip().lower() in ("1", "true", "yes", "y", "on")
+-    if isinstance(artifacts, dict):
+-        js_ts_tokens = ("treesitter", "js_ts", "javascript", "typescript", "tsx")
+-        includes_js_ts = any(any(tok in k for tok in js_ts_tokens) for k in artifacts.keys())
+-        if (rel_enable or includes_js_ts) and ("treesitter_manifest" not in artifacts):
+-            raise AssertionError(
+-                "treesitter_manifest is required when RELEASE_ENABLE_JS_TS=true or when JS/TS artifacts exist in the BOM."
+-            )
++    assert isinstance(artifacts, dict), "release_bom.artifacts must be an object"
++    js_ts_surface = artifacts.get("js_ts_surface")
++    if rel_enable and js_ts_surface is not True:
++        raise AssertionError("RELEASE_ENABLE_JS_TS=true requires artifacts.js_ts_surface=true in the BOM.")
++    if js_ts_surface is True and ("treesitter_manifest" not in artifacts):
++        raise AssertionError("artifacts.js_ts_surface=true requires artifacts.treesitter_manifest.")
+ 
+     # ------------------------------------------------------------------
+     # Tree-sitter manifest attestation (if present in BOM, must exist in dist
+     # and sha256 must match).
+     # ------------------------------------------------------------------
+     if "treesitter_manifest" in artifacts:
+         a = artifacts["treesitter_manifest"]
+         assert isinstance(a, dict), "artifacts.treesitter_manifest must be an object"
+*** End Patch
+Semantics after this micro-step (absolute strictest)
+•	The BOM contains an explicit canonical declaration:
+artifacts.js_ts_surface: true|false
+•	RELEASE_ENABLE_JS_TS=true forces artifacts.js_ts_surface=true and fails if not.
+•	If artifacts.js_ts_surface=true, then:
+•	artifacts.treesitter_manifest must exist
+•	dist copy must exist
+•	sha256 + manifest fields must match the file
+This removes all reliance on token/name scanning and makes the requirement un-bypassable by naming changes.
+If you want the final micro-tightening after this: require js_ts_surface to be present in the BOM schema’s required list (so it can’t be omitted).
+
+
+You said:
+Ship the final micro-tightening after this: require js_ts_surface to be present in the BOM schema’s required list (so it can’t be omitted).
+
+
+ChatGPT said:
+*** Begin Patch
+*** Update File: schemas/release_bom.schema.json
+@@
+   "type": "object",
+   "additionalProperties": false,
+   "required": ["schema_version", "artifacts"],
+   "properties": {
+     "schema_version": { "type": "string" },
+     "artifacts": {
+       "type": "object",
+       "additionalProperties": false,
++      "required": ["js_ts_surface"],
+       "properties": {
+         "js_ts_surface": { "type": "boolean" },
+         "treesitter_manifest": { "$ref": "#/$defs/treesitter_manifest_artifact" }
+       }
+     }
+   },
+*** End Patch
+
+
+*** Begin Patch
+*** Update File: src/code_audit/parsers/tree_sitter_loader.py
+@@
+from future import annotations
+import os
+import platform
++import shutil
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Optional
+class TreeSitterUnavailable(RuntimeError):
+pass
+@dataclass(frozen=True)
+class TreeSitterConfig:
+@@
+vendor_root: Path
+cache_dir: Path
+library_name: str = "code_audit_treesitter_langs"
+ @staticmethod
+ def default() -> "TreeSitterConfig":
+     pkg_root = Path(__file__).resolve().parents[2]
+     vendor_root = pkg_root / "data" / "treesitter" / "vendor"
+•	   cache_dir = Path(os.environ.get("CODE_AUDIT_TS_CACHE", "")) or (Path.home() / ".cache" / "code_audit")
+•	
+•	   cache_dir = Path(os.environ.get("CODE_AUDIT_TS_CACHE", "")) or (Path.home() / ".cache" / "code_audit")
+•	   return TreeSitterConfig(vendor_root=vendor_root, cache_dir=cache_dir)
+•	
+@@
+def language_library_path(cfg: Optional[TreeSitterConfig] = None) -> Path:
+cfg = cfg or TreeSitterConfig.default()
+cfg.cache_dir.mkdir(parents=True, exist_ok=True)
+return (cfg.cache_dir / (cfg.library_name + _lib_suffix())).resolve()
++def _is_ci() -> bool:
+•	return (os.environ.get("CI", "") or "").strip().lower() in ("1", "true", "yes", "y", "on")
+•	
++def _deterministic_build_dir(cfg: TreeSitterConfig) -> Path:
+•	"""
+•	Deterministic build directory for language library compilation.
+•	
+o	In CI, prefer a repo-local cache so builds don't depend on shared runner state.
+•	
+o	Can be overridden with CODE_AUDIT_TS_BUILD_DIR for advanced scenarios.
+•	"""
+•	override = (os.environ.get("CODE_AUDIT_TS_BUILD_DIR", "") or "").strip()
+•	if override:
+•	   return Path(override).expanduser().resolve()
+•	
+•	
+•	if _is_ci():
+•	   # Repository root is three levels up from this file: src/code_audit/parsers/...
+•	
+•	   repo_root = Path(__file__).resolve().parents[3]
+•	
+•	   return (repo_root / ".cache" / "treesitter").resolve()
+•	
+•	
+•	Local dev default: isolate under the configured cache_dir
+•	return (cfg.cache_dir / "treesitter_build").resolve()
+•	
+@@
+def build_language_library(cfg: Optional[TreeSitterConfig] = None) -> Path:
+"""Build the shared language library from vendored grammars.
+ Raises TreeSitterUnavailable if vendored grammars are missing.
+ """
+ cfg = cfg or TreeSitterConfig.default()
+ Language, _Parser = _import_tree_sitter()
+ out = language_library_path(cfg)
+ grammars = vendored_grammar_dirs(cfg)
+ if len(grammars) < 3:
+     raise TreeSitterUnavailable(
+         "Vendored tree-sitter grammars are missing. Expected:\n"
+         f"  {cfg.vendor_root}/tree-sitter-javascript\n"
+         f"  {cfg.vendor_root}/tree-sitter-typescript/typescript\n"
+         f"  {cfg.vendor_root}/tree-sitter-typescript/tsx\n"
+         "See src/code_audit/data/treesitter/vendor/README.md"
+     )
+•	Deterministic build environment:
+•	- Use a stable build directory
+•	- In CI, wipe build dir and output before building to avoid cache/state leaks.
+•	build_dir = _deterministic_build_dir(cfg)
+•	build_dir.mkdir(parents=True, exist_ok=True)
+•	
+•	old_cwd = os.getcwd()
+•	old_tmp = os.environ.get("TMPDIR")
+•	old_temp = os.environ.get("TEMP")
+•	old_tmp_win = os.environ.get("TMP")
+•	
+•	try:
+•	   if _is_ci():
+•	
+•	       # Ensure no stale artifacts influence the build.
+•	
+•	       if build_dir.exists():
+•	
+•	           shutil.rmtree(build_dir, ignore_errors=True)
+•	
+•	       build_dir.mkdir(parents=True, exist_ok=True)
+•	
+•	       if out.exists():
+•	
+•	           try:
+•	
+•	               out.unlink()
+•	
+•	           except OSError:
+•	
+•	               pass
+•	
+•	
+•	   # Encourage deterministic intermediate file placement
+•	
+•	   os.environ["TMPDIR"] = str(build_dir)
+•	
+•	   os.environ["TEMP"] = str(build_dir)
+•	
+•	   os.environ["TMP"] = str(build_dir)
+•	
+•	   os.chdir(build_dir)
+•	
+•	
+•	   # Deterministic build: input is vendored dirs, output is fixed file path.
+•	
+•	   # Note: tree_sitter.Language.build_library compiles grammar C sources.
+•	
+•	   Language.build_library(str(out), [str(p) for p in grammars])
+•	
+•	finally:
+•	   os.chdir(old_cwd)
+•	
+•	   if old_tmp is None:
+•	
+•	       os.environ.pop("TMPDIR", None)
+•	
+•	   else:
+•	
+•	       os.environ["TMPDIR"] = old_tmp
+•	
+•	   if old_temp is None:
+•	
+•	       os.environ.pop("TEMP", None)
+•	
+•	   else:
+•	
+•	       os.environ["TEMP"] = old_temp
+•	
+•	   if old_tmp_win is None:
+•	
+•	       os.environ.pop("TMP", None)
+•	
+•	   else:
+•	
+•	       os.environ["TMP"] = old_tmp_win
+•	
+•	
+•	Deterministic build: input is vendored dirs, output is fixed file path.
+•	Note: tree_sitter.Language.build_library compiles grammar C sources.
+•	Language.build_library(str(out), [str(p) for p in grammars])
+return out
+*** End Patch
+*** Begin Patch
+*** Update File: tests/test_treesitter_loader_smoke.py
+@@
+@pytest.mark.skipif(not _have_tree_sitter(), reason="tree-sitter extra not installed")
+def test_treesitter_smoke_parse_requires_vendored_grammars(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+@@
+Use an isolated cache dir
+monkeypatch.setenv("CODE_AUDIT_TS_CACHE", str(tmp_path / "ts_cache"))
+•	monkeypatch.setenv("CI", "true")
+•	monkeypatch.setenv("CODE_AUDIT_TS_BUILD_DIR", str(tmp_path / "ts_build"))
+cfg = TreeSitterConfig.default()
+grammars = vendored_grammar_dirs(cfg)
+if len(grammars) < 3:
+with pytest.raises(TreeSitterUnavailable):
+smoke_parse_snippet("var x = 1;", language="javascript")
+return
+Grammars exist: build should succeed and parse should work.
+smoke_parse_snippet("var x = 1;", language="javascript")
+smoke_parse_snippet("const x: number = 1;", language="typescript")
+*** End Patch
+
+*** Begin Patch
+*** Add File: src/code_audit/contracts/init.py
++"""Contract-version anchors (governed).
++
++This package centralizes version strings that are referenced by contract gates
++and manifests (e.g., signal_logic_version).
++"""
++
+*** End Patch
+*** Begin Patch
+*** Add File: src/code_audit/contracts/versions.json
++{
+•	"signal_logic_version": "signals_v2"
++}
+•	
+*** End Patch
+*** Begin Patch
+*** Add File: src/code_audit/contracts/versions.py
++from future import annotations
++
++import json
++from pathlib import Path
++from typing import Any
++
++
++_VERSIONS_JSON = Path(file).with_name("versions.json")
++
++
++def load_versions() -> dict[str, Any]:
+•	return json.loads(_VERSIONS_JSON.read_text(encoding="utf-8"))
+•	
+•	
++def signal_logic_version() -> str:
+•	v = load_versions().get("signal_logic_version")
+•	if not isinstance(v, str) or not v.startswith("signals_v"):
+•	   raise RuntimeError("Invalid contracts/versions.json: signal_logic_version must be like 'signals_vN'")
+•	
+•	return v
+•	
+*** End Patch
+*** Begin Patch
+*** Update File: src/code_audit/run_result.py
+@@
+from future import annotations
+from pathlib import Path
+from typing import Any
+from code_audit import version
+from code_audit.core.runner import run_scan
++from code_audit.contracts.versions import signal_logic_version as _signal_logic_version
+def build_run_result(
+*,
+root: str,
+tool_version: str = version,
+project_id: str = "",
+@@
+engine_version: str = "engine_v1",
+•	signal_logic_version: str = "signals_v2",
+•	signal_logic_version: str | None = None,
+copy_version: str = "i18n@dev",
+enable_js_ts: bool = False,
+Testing hooks for golden-fixture determinism
+_run_id: str | None = None,
+_created_at: str | None = None,
+) -> dict[str, Any]:
+@@
+•	result = run_scan(
+•	slv = signal_logic_version or _signal_logic_version()
+•	
+•	result = run_scan(
+root=root_path,
+analyzers=analyzers,
+project_id=project_id or "",
+enable_js_ts=enable_js_ts,
+_run_id=_run_id,
+_created_at=_created_at,
+)
+@@
+•	out: dict[str, Any] = {
+•	out: dict[str, Any] = {
+"schema_version": "run_result_v1",
+"tool_version": tool_version,
+"engine_version": engine_version,
+•	   "signal_logic_version": signal_logic_version,
+•	
+•	   "signal_logic_version": slv,
+•	   "copy_version": copy_version,
+•	   "project_id": project_id or "",
+•	   "root": str(root_path),
+•	   # ... rest unchanged ...
+•	}
+return out
+*** End Patch
+*** Begin Patch
+*** Update File: scripts/refresh_treesitter_manifest.py
+@@
+import hashlib
+import json
+from pathlib import Path
+from typing import Dict
++from code_audit.contracts.versions import signal_logic_version as _signal_logic_version
+@@
+def build_manifest() -> dict:
+files: Dict[str, str] = {}
+@@
+return {
+"manifest_version": 1,
+•	   "signal_logic_version": "signals_v2",
+•	
+•	   "signal_logic_version": _signal_logic_version(),
+•	   "generated_by": "scripts/refresh_treesitter_manifest.py",
+•	   "files": files,
+•	}
+*** End Patch
+*** Begin Patch
+*** Update File: tests/test_treesitter_manifest_requires_signal_logic_bump.py
+@@
+import hashlib
+import json
+from pathlib import Path
+import pytest
+@@
+def _extract_signal_logic_version_from_run_result_py() -> str:
+•	candidates = [
+•	   ROOT / "src" / "code_audit" / "model" / "run_result.py",
+•	
+•	   ROOT / "src" / "code_audit" / "run_result.py",
+•	
+•	]
+•	for p in candidates:
+•	   if not p.exists():
+•	
+•	       continue
+•	
+•	   txt = p.read_text(encoding="utf-8")
+•	
+•	   # Look for: signal_logic_version: str = "signals_v1"
+•	
+•	   for quote in ('"', "'"):
+•	
+•	       needle = f"{quote}signals_v"
+•	
+•	       i = txt.find(needle)
+•	
+•	       if i >= 0:
+•	
+•	           j = txt.find(quote, i + 1)
+•	
+•	           if j > i:
+•	
+•	               return txt[i + 1 : j]
+•	
+•	raise AssertionError("Unable to locate signal_logic_version literal in run_result.py")
+•	Canonical source-of-truth for contract version anchors.
+•	p = ROOT / "src" / "code_audit" / "contracts" / "versions.json"
+•	if not p.exists():
+•	   raise AssertionError("Missing src/code_audit/contracts/versions.json")
+•	
+•	obj = json.loads(p.read_text(encoding="utf-8"))
+•	v = obj.get("signal_logic_version")
+•	if not isinstance(v, str) or not v.startswith("signals_v"):
+•	   raise AssertionError("Invalid src/code_audit/contracts/versions.json: signal_logic_version")
+•	
+•	return v
+*** End Patch
+
+*** Begin Patch
+*** Update File: scripts/refresh_treesitter_manifest.py
+@@
+from future import annotations
+import hashlib
+import json
+from pathlib import Path
+from typing import Dict
+ROOT = Path(file).resolve().parents[1]
+MANIFEST_PATH = ROOT / "tests" / "contracts" / "treesitter_manifest.json"
++VERSIONS_PATH = ROOT / "src" / "code_audit" / "contracts" / "versions.json"
+Semantic surface for Tree-sitter:
+- Vendored grammars (must be deterministic, no downloads)
+- Parser wrapper modules (affect parsing, offsets, and matching)
+VENDORED_DIR = ROOT / "src" / "code_audit" / "data" / "treesitter" / "vendor"
+WRAPPER_FILES = [
+@@
+def _sha256_file(path: Path) -> str:
+return _sha256_bytes(path.read_bytes())
++def _load_signal_logic_version() -> str:
+•	if not VERSIONS_PATH.exists():
+•	   raise SystemExit(
+•	
+•	       f"Missing {VERSIONS_PATH.relative_to(ROOT)}\n"
+•	
+•	       "This file is the single source-of-truth for signal_logic_version."
+•	
+•	   )
+•	
+•	obj = json.loads(VERSIONS_PATH.read_text(encoding="utf-8"))
+•	v = obj.get("signal_logic_version")
+•	if not isinstance(v, str) or not v.startswith("signals_v"):
+•	   raise SystemExit(f"Invalid signal_logic_version in {VERSIONS_PATH.relative_to(ROOT)}: {v!r}")
+•	
+•	return v
+•	
+@@
+def build_manifest() -> dict:
+files: Dict[str, str] = {}
+@@
+return {
+"manifest_version": 1,
+•	   "signal_logic_version": "signals_v2",
+•	
+•	   "signal_logic_version": _load_signal_logic_version(),
+•	   "generated_by": "scripts/refresh_treesitter_manifest.py",
+•	   "files": files,
+•	}
+*** End Patch
+*** Begin Patch
+*** Update File: tests/contracts/treesitter_manifest.json
+@@
+{
+"manifest_version": 1,
+•	"signal_logic_version": "signals_v2",
+•	"signal_logic_version": "signals_v2",
+"generated_by": "scripts/refresh_treesitter_manifest.py",
+"files": {}
+}
+*** End Patch
+
+
+* Begin Patch
+*** Add File: schemas/contracts_versions.schema.json
++{
+•	"$schema": "https://json-schema.org/draft/2020-12/schema",
+•	"title": "Contract Versions (code_audit)",
+•	"type": "object",
+•	"additionalProperties": false,
+•	"required": ["schema_version", "signal_logic_version"],
+•	"properties": {
+•	"schema_version": {
+•	 "type": "integer",
+•	 "minimum": 1
+•	},
+•	"signal_logic_version": {
+•	 "type": "string",
+•	 "pattern": "^signals_v\\d+$"
+•	}
+•	}
++}
+•	
+*** End Patch
+*** Begin Patch
+*** Add File: tests/test_contract_versions_json_valid.py
++from future import annotations
++
++import json
++from pathlib import Path
++
++import jsonschema
++
++
++ROOT = Path(file).resolve().parents[1]
++VERSIONS = ROOT / "src" / "code_audit" / "contracts" / "versions.json"
++SCHEMA = ROOT / "schemas" / "contracts_versions.schema.json"
++
++
++def test_contract_versions_json_exists_and_validates() -> None:
+•	assert VERSIONS.exists(), "Missing src/code_audit/contracts/versions.json"
+•	assert SCHEMA.exists(), "Missing schemas/contracts_versions.schema.json"
+•	
+•	obj = json.loads(VERSIONS.read_text(encoding="utf-8"))
+•	schema = json.loads(SCHEMA.read_text(encoding="utf-8"))
+•	jsonschema.validate(instance=obj, schema=schema)
+•	
+•	
++def test_contract_versions_signal_logic_version_is_nonempty() -> None:
+•	obj = json.loads(VERSIONS.read_text(encoding="utf-8"))
+•	v = obj.get("signal_logic_version")
+•	assert isinstance(v, str) and v.strip(), "signal_logic_version must be a non-empty string"
+•	
+*** End Patch
+
+
+*** Begin Patch
+*** Add File: src/code_audit/analyzers/treesitter_base.py
++from future import annotations
++
++from dataclasses import dataclass
++from pathlib import Path
++from typing import Iterable, Protocol, Sequence
++
++
++class FindingSink(Protocol):
+•	"""Minimal protocol for emitting findings without coupling to engine internals."""
+•	
+•	def add(self, finding: dict) -> None: ...
+•	
+•	
++@dataclass(frozen=True)
++class SourceFile:
+•	path: Path
+•	language: str # "js" | "ts" (and later "py" etc.)
+•	
+•	
++class TreeSitterAnalyzerBase:
+•	"""
+•	Base class for Tree-sitter-backed analyzers (JS/TS preview).
+•	
+•	Contract constraints for this scaffolding diff:
+•	
+o	Produces NO findings yet.
+•	
+o	Only participates when enable_js_ts=True is set by the runner.
+•	
+o	Does not change output schema.
+•	"""
+•	
+•	name: str = "treesitter_base"
+•	version: str = "0.0.0"
+•	supported_languages: set[str] = {"js", "ts"}
+•	
+•	def filter_files(self, files_by_lang: dict[str, Sequence[Path]]) -> list[SourceFile]:
+•	   out: list[SourceFile] = []
+•	
+•	   for lang in sorted(self.supported_languages):
+•	
+•	       for p in files_by_lang.get(lang, ()):
+•	
+•	           out.append(SourceFile(path=Path(p), language=lang))
+•	
+•	   return out
+•	
+•	
+•	def analyze(self, files_by_lang: dict[str, Sequence[Path]], sink: FindingSink) -> None:
+•	   # Scaffolding: no-op until concrete rules land.
+•	
+•	   _ = self.filter_files(files_by_lang)
+•	
+•	   return
+•	
+•	
+*** End Patch
+*** Begin Patch
+*** Add File: src/code_audit/analyzers/js_ts_security.py
++from future import annotations
++
++from code_audit.analyzers.treesitter_base import TreeSitterAnalyzerBase, FindingSink
++
++
++class JsTsSecurityPreviewAnalyzer(TreeSitterAnalyzerBase):
+•	"""
+•	JS/TS security analyzer (preview).
+•	
+•	This module is intentionally a no-op in the scaffolding diff.
+•	Concrete rules (eval/new Function/empty catch/globalThis mutation) land next.
+•	"""
+•	
+•	name = "js_ts_security_preview"
+•	version = "0.1.0"
+•	supported_languages = {"js", "ts"}
+•	
+•	def analyze(self, files_by_lang, sink: FindingSink) -> None: # type: ignore[override]
+•	   # No findings yet by design.
+•	
+•	   _ = self.filter_files(files_by_lang)
+•	
+•	   return
+•	
+•	
+*** End Patch
+*** Begin Patch
+*** Update File: src/code_audit/core/runner.py
+@@
+-from code_audit.core.discover import discover_py_files, discover_source_files
++from code_audit.core.discover import discover_py_files, discover_source_files
++
++# Preview JS/TS analyzer (wired but produces no findings yet)
++from code_audit.analyzers.js_ts_security import JsTsSecurityPreviewAnalyzer
+@@
+def run_scan(
+root: Path,
+analyzers: list[Analyzer],
+@@
+if enable_js_ts:
+# Stage multi-language discovery safely: only Python files are passed
+# into analyzers until JS/TS analyzers are introduced.
+discovered = discover_source_files(
+root,
+enable_js_ts=True,
+include=scan_config.get("include"),
+exclude=scan_config.get("exclude"),
+)
+files = discovered.get("py", [])
+else:
+files = discover_py_files(
+root,
+include=scan_config.get("include"),
+exclude=scan_config.get("exclude"),
+)
++
+•	Preview wiring: when JS/TS is enabled, allow preview analyzers to run over
+•	the discovered JS/TS file sets. This does not affect outputs yet because
+•	the preview analyzer is a no-op.
+•	js_ts_analyzers = [JsTsSecurityPreviewAnalyzer()] if enable_js_ts else []
+*** End Patch
+*** Begin Patch
+*** Add File: tests/test_js_ts_analyzer_scaffold_no_output_change.py
++from future import annotations
+•	
++from pathlib import Path
++
++from code_audit.core.runner import run_scan
++
++
++class _NoopPyAnalyzer:
+•	Minimal analyzer stub that produces no findings.
+•	name = "noop_py"
+•	version = "0.0.0"
+•	
+•	def analyze(self, files: list[Path], sink) -> None: # pragma: no cover
+•	   return
+•	
+•	
+•	
++def _touch(p: Path, text: str = "x") -> None:
+•	p.parent.mkdir(parents=True, exist_ok=True)
+•	p.write_text(text, encoding="utf-8")
+•	
+•	
++def test_enable_js_ts_scaffold_produces_no_findings(tmp_path: Path) -> None:
+•	_touch(tmp_path / "app.py", "print('hi')\n")
+•	_touch(tmp_path / "web" / "main.js", "eval('1+1')\n")
+•	_touch(tmp_path / "web" / "main.ts", "const x: number = 1\n")
+•	
+•	With JS/TS enabled, scaffold analyzers are wired but must not change outputs yet.
+•	res = run_scan(root=tmp_path, analyzers=[_NoopPyAnalyzer()], enable_js_ts=True)
+•	d = res.to_dict() if hasattr(res, "to_dict") else dict(res) # tolerate older RunResult shapes
+•	
+•	findings = d.get("findings") or []
+•	assert findings == [] or len(findings) == 0
+•	
+*** End Patch
+
+*** Begin Patch
+*** Update File: src/code_audit/core/runner.py
+@@
+-from code_audit.core.discover import discover_py_files, discover_source_files
+-# Preview JS/TS analyzer (wired but produces no findings yet)
+-from code_audit.analyzers.js_ts_security import JsTsSecurityPreviewAnalyzer
++from code_audit.core.discover import discover_py_files, discover_source_files
++
++# Preview JS/TS analyzer (wired but produces no findings yet)
++from code_audit.analyzers.js_ts_security import JsTsSecurityPreviewAnalyzer
+@@
+def run_scan(
+root: Path,
+analyzers: list[Analyzer],
+@@
+•	if enable_js_ts:
+•	discovered: dict[str, list[Path]] | None = None
+•	if enable_js_ts:
+# Stage multi-language discovery safely: only Python files are passed
+# into analyzers until JS/TS analyzers are introduced.
+•	   discovered = discover_source_files(
+•	
+•	   discovered = discover_source_files(
+•	       root,
+•	       enable_js_ts=True,
+•	       include=scan_config.get("include"),
+•	       exclude=scan_config.get("exclude"),
+•	   )
+•	   files = discovered.get("py", [])
+•	else:
+files = discover_py_files(
+root,
+include=scan_config.get("include"),
+exclude=scan_config.get("exclude"),
+)
+•	Preview wiring: when JS/TS is enabled, allow preview analyzers to run over
+•	the discovered JS/TS file sets. This does not affect outputs yet because
+•	the preview analyzer is a no-op.
+•	js_ts_analyzers = [JsTsSecurityPreviewAnalyzer()] if enable_js_ts else []
+•	Preview wiring: when JS/TS is enabled, we add preview analyzers to the run.
+•	These analyzers are no-ops in this phase, so outputs remain unchanged.
+•	if enable_js_ts:
+•	   analyzers = list(analyzers) + [JsTsSecurityPreviewAnalyzer()]
+•	
+@@
+•	for analyzer in analyzers:
+•	   findings.extend(analyzer.analyze(files))
+•	
+•	for analyzer in analyzers:
+•	   # Backwards-compatible multi-language hook:
+•	
+•	   # - Existing analyzers keep receiving the Python-only file list.
+•	
+•	   # - Multi-language analyzers may optionally implement:
+•	
+•	   #     analyze_multilang(files_by_lang: dict[str, list[Path]], sink) -> None
+•	
+•	   #   and will receive the full discovered map when enable_js_ts=True.
+•	
+•	   analyze_ml = getattr(analyzer, "analyze_multilang", None)
+•	
+•	   if enable_js_ts and discovered is not None and callable(analyze_ml):
+•	
+•	       analyze_ml(discovered, sink)  # type: ignore[misc]
+•	
+•	   else:
+•	
+•	       analyzer.analyze(files, sink)
+•	
+*** End Patch
+*** Begin Patch
+*** Update File: src/code_audit/analyzers/js_ts_security.py
+@@
+class JsTsSecurityPreviewAnalyzer(TreeSitterAnalyzerBase):
+@@
+•	def analyze(self, files_by_lang, sink: FindingSink) -> None: # type: ignore[override]
+•	   # No findings yet by design.
+•	
+•	   _ = self.filter_files(files_by_lang)
+•	
+•	   return
+•	
+•	def analyze_multilang(self, files_by_lang, sink: FindingSink) -> None:
+•	   """
+•	
+•	   Multi-language entry point used by the runner when enable_js_ts=True.
+•	
+•	   No findings yet by design (scaffolding only).
+•	
+•	   """
+•	
+•	   _ = self.filter_files(files_by_lang)
+•	
+•	   return
+•	
+*** End Patch
+*** Begin Patch
+*** Update File: tests/test_js_ts_analyzer_scaffold_no_output_change.py
+@@
+class _NoopPyAnalyzer:
+@@
+•	def analyze(self, files: list[Path], sink) -> None: # pragma: no cover
+•	def analyze(self, files: list[Path], sink) -> None: # pragma: no cover
+return
+@@
+def test_enable_js_ts_scaffold_produces_no_findings(tmp_path: Path) -> None:
+@@
+•	res = run_scan(root=tmp_path, analyzers=[_NoopPyAnalyzer()], enable_js_ts=True)
+•	res = run_scan(root=tmp_path, analyzers=[_NoopPyAnalyzer()], enable_js_ts=True)
+d = res.to_dict() if hasattr(res, "to_dict") else dict(res) # tolerate older RunResult shapes
+findings = d.get("findings") or []
+assert findings == [] or len(findings) == 0
+*** End Patch
+
+*** Begin Patch
+*** Update File: src/code_audit/parsers/tree_sitter_js.py
+@@
+from future import annotations
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Optional
+from code_audit.parsers.tree_sitter_loader import TreeSitterConfig, TreeSitterUnavailable, make_parser
+@dataclass(frozen=True)
+class ParsedTree:
+language: str
+path: Path
+source_bytes: bytes
+tree: object # tree_sitter.Tree at runtime
+def parse_file(path: Path, *, language: str, cfg: Optional[TreeSitterConfig] = None) -> ParsedTree:
+@@
+tree = parser.parse(src)
+return ParsedTree(language=language, path=p, source_bytes=src, tree=tree)
++def _byte_offset_to_line_col(source: bytes, byte_offset: int) -> tuple[int, int]:
+•	"""
+•	Deterministic byte_offset -> (line, col) mapping.
+•	
+o	Line/col are 1-based.
+•	
+o	Treats LF as newline; CRLF counts as two bytes but still increments line on LF.
+•	"""
+•	if byte_offset < 0:
+•	   byte_offset = 0
+•	
+•	if byte_offset > len(source):
+•	   byte_offset = len(source)
+•	
+•	
+•	prefix = source[:byte_offset]
+•	line = prefix.count(b"\n") + 1
+•	last_nl = prefix.rfind(b"\n")
+•	if last_nl < 0:
+•	   col = len(prefix) + 1
+•	
+•	else:
+•	   col = len(prefix) - last_nl
+•	
+•	return line, col
+•	
+•	
++def query(tree_obj: object, query_text: str, *, language: str, cfg: Optional[TreeSitterConfig] = None):
+•	"""
+•	Run a Tree-sitter query against a parsed tree.
+•	
+•	Returns a list of capture tuples: (capture_name, node).
+•	"""
+•	try:
+•	   from tree_sitter import Query  # type: ignore
+•	
+•	except Exception as e: # pragma: no cover
+•	   raise TreeSitterUnavailable("tree-sitter is not installed. Install extras: pip install .[treesitter]") from e
+•	
+•	
+•	lang = make_parser(language, cfg).language # type: ignore[attr-defined]
+•	q = Query(lang, query_text)
+•	captures = q.captures(tree_obj.root_node) # type: ignore[attr-defined]
+•	return captures
+•	
+•	
++def node_text(source_bytes: bytes, node: object) -> str:
+•	"""Extract node text deterministically from source bytes."""
+•	start = int(getattr(node, "start_byte"))
+•	end = int(getattr(node, "end_byte"))
+•	return source_bytes[start:end].decode("utf-8", errors="replace")
+•	
+•	
++def node_start_line_col(source_bytes: bytes, node: object) -> tuple[int, int]:
+•	start = int(getattr(node, "start_byte"))
+•	return _byte_offset_to_line_col(source_bytes, start)
+•	
+def smoke_parse_snippet(snippet: str, *, language: str) -> None:
+@@
+tree = parser.parse(snippet.encode("utf-8"))
+if tree is None: # pragma: no cover
+raise TreeSitterUnavailable("tree-sitter parse returned None")
+*** End Patch
+*** Begin Patch
+*** Update File: src/code_audit/analyzers/js_ts_security.py
+@@
+from future import annotations
+from code_audit.analyzers.treesitter_base import TreeSitterAnalyzerBase, FindingSink
++from code_audit.parsers.tree_sitter_js import parse_file, query as ts_query, node_text, node_start_line_col
+class JsTsSecurityPreviewAnalyzer(TreeSitterAnalyzerBase):
+@@
+name = "js_ts_security_preview"
+version = "0.1.0"
+supported_languages = {"js", "ts"}
+ def analyze_multilang(self, files_by_lang, sink: FindingSink) -> None:
+     """
+     Multi-language entry point used by the runner when enable_js_ts=True.
+     No findings yet by design (scaffolding only).
+     """
+•	   _ = self.filter_files(files_by_lang)
+•	
+•	   return
+•	
+•	   files = self.filter_files(files_by_lang)
+•	
+•	   for sf in files:
+•	
+•	       if sf.language == "js":
+•	
+•	           lang = "javascript"
+•	
+•	       else:
+•	
+•	           # Treat ts + tsx as "typescript" grammar for now.
+•	
+•	           lang = "typescript"
+•	
+•	
+•	       parsed = parse_file(sf.path, language=lang)
+•	
+•	
+•	       # Rule: SEC_EVAL_JS_001 — eval(...)
+•	
+•	       # Query matches: call_expression where callee identifier text == "eval"
+•	
+•	       q = r"""
+•	
+•	       (call_expression
+•	
+•	         function: (identifier) @fn
+•	
+•	         arguments: (arguments) @args)
+•	
+•	       """
+•	
+•	       try:
+•	
+•	           caps = ts_query(parsed.tree, q, language=lang)
+•	
+•	       except Exception:
+•	
+•	           # If the grammar differs unexpectedly, keep analyzer conservative.
+•	
+•	           continue
+•	
+•	
+•	       # Group captures by node; we only care about @fn identifier
+•	
+•	       for cap_name, node in caps:
+•	
+•	           if cap_name != "fn":
+•	
+•	               continue
+•	
+•	           if node_text(parsed.source_bytes, node) != "eval":
+•	
+•	               continue
+•	
+•	
+•	           line, col = node_start_line_col(parsed.source_bytes, node)
+•	
+•	           sink.add(
+•	
+•	               {
+•	
+•	                   "rule_id": "SEC_EVAL_JS_001",
+•	
+•	                   "path": str(parsed.path),
+•	
+•	                   "message": "Use of eval(...) detected (JS/TS).",
+•	
+•	                   "location": {"line": line, "col": col},
+•	
+•	                   "evidence": {"callee": "eval"},
+•	
+•	                   "language": sf.language,
+•	
+•	               }
+•	
+•	           )
+•	
+*** End Patch
+*** Begin Patch
+*** Add File: tests/test_js_ts_eval_rule_flagged.py
++from future import annotations
++
++from pathlib import Path
++
++from code_audit.core.runner import run_scan
++
++
++class _NoopPyAnalyzer:
+•	name = "noop_py"
+•	version = "0.0.0"
+•	
+•	def analyze(self, files: list[Path], sink) -> None: # pragma: no cover
+•	   return
+•	
+•	
+•	
++def _touch(p: Path, text: str) -> None:
+•	p.parent.mkdir(parents=True, exist_ok=True)
+•	p.write_text(text, encoding="utf-8")
+•	
+•	
++def test_eval_rule_emits_finding_only_when_flag_enabled(tmp_path: Path) -> None:
+•	_touch(tmp_path / "app.py", "print('hi')\n")
+•	_touch(tmp_path / "web" / "main.js", "eval('1+1')\n")
+•	
+•	Flag off: JS not scanned, so no findings.
+•	res0 = run_scan(root=tmp_path, analyzers=[_NoopPyAnalyzer()], enable_js_ts=False)
+•	d0 = res0.to_dict() if hasattr(res0, "to_dict") else dict(res0)
+•	f0 = d0.get("findings") or []
+•	assert len(f0) == 0
+•	
+•	Flag on: JS is scanned by JS/TS analyzer.
+•	res1 = run_scan(root=tmp_path, analyzers=[_NoopPyAnalyzer()], enable_js_ts=True)
+•	d1 = res1.to_dict() if hasattr(res1, "to_dict") else dict(res1)
+•	f1 = d1.get("findings") or []
+•	assert any((x.get("rule_id") == "SEC_EVAL_JS_001") for x in f1)
+•	
+*** End Patch
+*** Begin Patch
+*** Add File: tests/fixtures/repos/sample_repo_js_ts_eval/app.py
++print("hello")
++
+*** End Patch
+*** Begin Patch
+*** Add File: tests/fixtures/repos/sample_repo_js_ts_eval/web/main.js
++// should trigger SEC_EVAL_JS_001
++eval("1+1");
++
+*** End Patch
+*** Begin Patch
+*** Add File: tests/fixtures/repos/sample_repo_js_ts_eval/web/safe.js
++// should NOT trigger
++function safe_eval(x) {
+•	return x;
++}
+•	
+*** End Patch
+*** Begin Patch
+*** Add File: tests/fixtures/expected/sample_repo_js_ts_eval.json
++{
+•	"project_id": "",
+•	"findings": [
+•	{
+•	 "rule_id": "SEC_EVAL_JS_001",
+•	
+•	 "path": "web/main.js",
+•	
+•	 "message": "Use of eval(...) detected (JS/TS).",
+•	
+•	 "location": { "line": 2, "col": 1 },
+•	
+•	 "evidence": { "callee": "eval" },
+•	
+•	 "language": "js"
+•	
+•	}
+•	]
++}
+•	
+*** End Patch
+*** Begin Patch
+*** Add File: tests/test_golden_js_ts_eval_fixture.py
++from future import annotations
++
++import json
++from pathlib import Path
++
++from code_audit.core.runner import run_scan
++
++
++ROOT = Path(file).resolve().parents[1]
++REPO = ROOT / "tests" / "fixtures" / "repos" / "sample_repo_js_ts_eval"
++EXPECTED = ROOT / "tests" / "fixtures" / "expected" / "sample_repo_js_ts_eval.json"
++
++
++class _NoopPyAnalyzer:
+•	name = "noop_py"
+•	version = "0.0.0"
+•	
+•	def analyze(self, files: list[Path], sink) -> None: # pragma: no cover
+•	   return
+•	
+•	
+•	
++def _relativize_paths(obj: dict, *, root: Path) -> dict:
+•	"""
+•	Convert absolute paths emitted by the engine into repo-relative paths
+•	so golden fixtures are stable across machines.
+•	"""
+•	out = json.loads(json.dumps(obj)) # deep copy via JSON
+•	findings = out.get("findings") or []
+•	for f in findings:
+•	   p = f.get("path")
+•	
+•	   if isinstance(p, str):
+•	
+•	       try:
+•	
+•	           f["path"] = str(Path(p).resolve().relative_to(root.resolve()).as_posix())
+•	
+•	       except Exception:
+•	
+•	           # If already relative, keep as-is.
+•	
+•	           pass
+•	
+•	return out
+•	
+•	
++def test_golden_js_ts_eval_fixture() -> None:
+•	assert REPO.exists(), f"Missing fixture repo: {REPO}"
+•	assert EXPECTED.exists(), f"Missing expected fixture: {EXPECTED}"
+•	
+•	res = run_scan(root=REPO, analyzers=[_NoopPyAnalyzer()], enable_js_ts=True)
+•	d = res.to_dict() if hasattr(res, "to_dict") else dict(res)
+•	
+•	Keep the golden minimal and stable (only what we care about here).
+•	got = {
+•	   "project_id": d.get("project_id", ""),
+•	
+•	   "findings": d.get("findings") or [],
+•	
+•	}
+•	got = _relativize_paths(got, root=REPO)
+•	
+•	expected = json.loads(EXPECTED.read_text(encoding="utf-8"))
+•	assert got == expected
+•	
+*** End Patch
+
+
+*** Begin Patch
+*** Update File: tests/test_treesitter_manifest_requires_signal_logic_bump.py
+@@
+def _current_semantic_file_hashes() -> dict[str, str]:
+# Must match scripts/refresh_treesitter_manifest.py inputs
+vendor_dir = ROOT / "src" / "code_audit" / "data" / "treesitter" / "vendor"
+wrapper_files = [
+ROOT / "src" / "code_audit" / "parsers" / "tree_sitter_loader.py",
+ROOT / "src" / "code_audit" / "parsers" / "tree_sitter_js.py",
+•	   ROOT / "src" / "code_audit" / "analyzers" / "js_ts_security.py",
+•	]
+files: dict[str, str] = {}
+if vendor_dir.exists():
+for p in sorted([x for x in vendor_dir.rglob("*") if x.is_file()], key=lambda x: str(x)):
+files[p.relative_to(ROOT).as_posix()] = _sha256_file(p)
+@@
+return files
+*** End Patch
+*** Begin Patch
+*** Update File: scripts/refresh_treesitter_manifest.py
+@@
+WRAPPER_FILES = [
+ROOT / "src" / "code_audit" / "parsers" / "tree_sitter_loader.py",
+ROOT / "src" / "code_audit" / "parsers" / "tree_sitter_js.py",
+•	ROOT / "src" / "code_audit" / "analyzers" / "js_ts_security.py",
+]
+*** End Patch
+*** Begin Patch
+*** Update File: tests/contracts/treesitter_manifest.json
+@@
+{
+"manifest_version": 1,
+"signal_logic_version": "signals_v2",
+"generated_by": "scripts/refresh_treesitter_manifest.py",
+"files": {
+•	"src/code_audit/analyzers/js_ts_security.py": "",
+"src/code_audit/parsers/tree_sitter_js.py": "",
+"src/code_audit/parsers/tree_sitter_loader.py": ""
+}
+}
+*** End Patch
+
+
+
+*** Begin Patch
+*** Update File: src/code_audit/analyzers/js_ts_security.py
+@@
+def analyze_multilang(self, files_by_lang, sink: FindingSink) -> None:
+@@
+for sf in files:
+if sf.language == "js":
+lang = "javascript"
+else:
+# Treat ts + tsx as "typescript" grammar for now.
+lang = "typescript"
+         parsed = parse_file(sf.path, language=lang)
+
+         # ------------------------------------------------------------------
+         # SEC_EVAL_JS_001 — eval(...)
+         # ------------------------------------------------------------------
+@@
+sink.add(
+{
+"rule_id": "SEC_EVAL_JS_001",
+"path": str(parsed.path),
+"message": "Use of eval(...) detected (JS/TS).",
+"location": {"line": line, "col": col},
+"evidence": {"callee": "eval"},
+"language": sf.language,
+}
+)
++
+•	       # ------------------------------------------------------------------
+•	
+•	       # SEC_NEW_FUNCTION_JS_001 — new Function(...)
+•	
+•	       # ------------------------------------------------------------------
+•	
+•	       q_new_fn = r"""
+•	
+•	       (new_expression
+•	
+•	         constructor: (identifier) @ctor
+•	
+•	         arguments: (arguments) @args)
+•	
+•	       """
+•	
+•	       try:
+•	
+•	           caps_new = ts_query(parsed.tree, q_new_fn, language=lang)
+•	
+•	       except Exception:
+•	
+•	           caps_new = []
+•	
+•	
+•	       for cap_name, node in caps_new:
+•	
+•	           if cap_name != "ctor":
+•	
+•	               continue
+•	
+•	           if node_text(parsed.source_bytes, node) != "Function":
+•	
+•	               continue
+•	
+•	
+•	           line, col = node_start_line_col(parsed.source_bytes, node)
+•	
+•	           sink.add(
+•	
+•	               {
+•	
+•	                   "rule_id": "SEC_NEW_FUNCTION_JS_001",
+•	
+•	                   "path": str(parsed.path),
+•	
+•	                   "message": "Use of new Function(...) detected (JS/TS).",
+•	
+•	                   "location": {"line": line, "col": col},
+•	
+•	                   "evidence": {"constructor": "Function"},
+•	
+•	                   "language": sf.language,
+•	
+•	               }
+•	
+•	           )
+•	
+•	
+•	       # ------------------------------------------------------------------
+•	
+•	       # EXC_EMPTY_CATCH_JS_001 — empty catch block
+•	
+•	       # ------------------------------------------------------------------
+•	
+•	       q_empty_catch = r"""
+•	
+•	       (catch_clause
+•	
+•	         body: (statement_block) @body)
+•	
+•	       """
+•	
+•	       try:
+•	
+•	           caps_catch = ts_query(parsed.tree, q_empty_catch, language=lang)
+•	
+•	       except Exception:
+•	
+•	           caps_catch = []
+•	
+•	
+•	       for cap_name, node in caps_catch:
+•	
+•	           if cap_name != "body":
+•	
+•	               continue
+•	
+•	           # Empty block = no named children inside
+•	
+•	           children = getattr(node, "named_children", [])
+•	
+•	           if children:
+•	
+•	               continue
+•	
+•	
+•	           line, col = node_start_line_col(parsed.source_bytes, node)
+•	
+•	           sink.add(
+•	
+•	               {
+•	
+•	                   "rule_id": "EXC_EMPTY_CATCH_JS_001",
+•	
+•	                   "path": str(parsed.path),
+•	
+•	                   "message": "Empty catch block detected (JS/TS).",
+•	
+•	                   "location": {"line": line, "col": col},
+•	
+•	                   "evidence": {"type": "empty_catch"},
+•	
+•	                   "language": sf.language,
+•	
+•	               }
+•	
+•	           )
+•	
+•	
+•	       # ------------------------------------------------------------------
+•	
+•	       # GST_GLOBAL_THIS_MUTATION_001 — globalThis.x = ... or window.x = ...
+•	
+•	       # ------------------------------------------------------------------
+•	
+•	       q_global_assign = r"""
+•	
+•	       (assignment_expression
+•	
+•	         left: (member_expression
+•	
+•	           object: (identifier) @obj
+•	
+•	           property: (property_identifier) @prop))
+•	
+•	       """
+•	
+•	       try:
+•	
+•	           caps_assign = ts_query(parsed.tree, q_global_assign, language=lang)
+•	
+•	       except Exception:
+•	
+•	           caps_assign = []
+•	
+•	
+•	       # Capture pairs: obj + prop in sequence; we filter by obj value.
+•	
+•	       for cap_name, node in caps_assign:
+•	
+•	           if cap_name != "obj":
+•	
+•	               continue
+•	
+•	
+•	           obj_name = node_text(parsed.source_bytes, node)
+•	
+•	           if obj_name not in ("globalThis", "window"):
+•	
+•	               continue
+•	
+•	
+•	           line, col = node_start_line_col(parsed.source_bytes, node)
+•	
+•	           sink.add(
+•	
+•	               {
+•	
+•	                   "rule_id": "GST_GLOBAL_THIS_MUTATION_001",
+•	
+•	                   "path": str(parsed.path),
+•	
+•	                   "message": f"Assignment to {obj_name}.<property> detected (JS/TS).",
+•	
+•	                   "location": {"line": line, "col": col},
+•	
+•	                   "evidence": {"object": obj_name},
+•	
+•	                   "language": sf.language,
+•	
+•	               }
+•	
+•	           )
+•	
+*** End Patch
+*** Begin Patch
+*** Add File: tests/test_js_ts_additional_rules.py
++from future import annotations
++
++from pathlib import Path
++
++from code_audit.core.runner import run_scan
++
++
++class _NoopPyAnalyzer:
+•	name = "noop_py"
+•	version = "0.0.0"
+•	
+•	def analyze(self, files, sink): # pragma: no cover
+•	   return
+•	
+•	
+•	
++def _touch(p: Path, text: str) -> None:
+•	p.parent.mkdir(parents=True, exist_ok=True)
+•	p.write_text(text, encoding="utf-8")
+•	
+•	
++def test_new_function_rule(tmp_path: Path) -> None:
+•	_touch(tmp_path / "a.js", "new Function('return 1');\n")
+•	
+•	res = run_scan(root=tmp_path, analyzers=[_NoopPyAnalyzer()], enable_js_ts=True)
+•	d = res.to_dict() if hasattr(res, "to_dict") else dict(res)
+•	findings = d.get("findings") or []
+•	assert any(f.get("rule_id") == "SEC_NEW_FUNCTION_JS_001" for f in findings)
+•	
+•	
++def test_empty_catch_rule(tmp_path: Path) -> None:
+•	_touch(tmp_path / "b.js", "try { x(); } catch (e) {}\n")
+•	
+•	res = run_scan(root=tmp_path, analyzers=[_NoopPyAnalyzer()], enable_js_ts=True)
+•	d = res.to_dict() if hasattr(res, "to_dict") else dict(res)
+•	findings = d.get("findings") or []
+•	assert any(f.get("rule_id") == "EXC_EMPTY_CATCH_JS_001" for f in findings)
+•	
+•	
++def test_global_this_mutation_rule(tmp_path: Path) -> None:
+•	_touch(tmp_path / "c.js", "globalThis.foo = 1;\nwindow.bar = 2;\n")
+•	
+•	res = run_scan(root=tmp_path, analyzers=[_NoopPyAnalyzer()], enable_js_ts=True)
+•	d = res.to_dict() if hasattr(res, "to_dict") else dict(res)
+•	findings = d.get("findings") or []
+•	assert any(f.get("rule_id") == "GST_GLOBAL_THIS_MUTATION_001" for f in findings)
+•	
+*** End Patch
+
+
+*** Begin Patch
+*** Add File: tests/test_cli_api_parity_js_ts_flagged.py
++from future import annotations
++
++import json
++import subprocess
++import sys
++from pathlib import Path
++
++
++def _touch(p: Path, text: str) -> None:
+•	p.parent.mkdir(parents=True, exist_ok=True)
+•	p.write_text(text, encoding="utf-8")
+•	
+•	
++def _run_cli_scan(root: Path) -> dict:
+•	"""
+•	Run CLI in flagged mode and parse JSON from stdout.
+•	
+•	Assumptions (consistent with current CLI wiring):
+•	
+o	module entrypoint: python -m code_audit
+•	
+o	command: scan
+•	
+o	root arg: --root (or positional root)
+•	
+o	emits JSON to stdout
+•	"""
+•	cmd = [
+•	   sys.executable,
+•	
+•	   "-m",
+•	
+•	   "code_audit",
+•	
+•	   "scan",
+•	
+•	   "--root",
+•	
+•	   str(root),
+•	
+•	   "--enable-js-ts",
+•	
+•	]
+•	p = subprocess.run(cmd, capture_output=True, text=True)
+•	assert p.returncode == 0, f"CLI failed.\nSTDOUT:\n{p.stdout}\nSTDERR:\n{p.stderr}"
+•	try:
+•	   return json.loads(p.stdout)
+•	
+•	except Exception as e:
+•	   raise AssertionError(f"CLI did not emit JSON.\nSTDOUT:\n{p.stdout}\nSTDERR:\n{p.stderr}") from e
+•	
+•	
+•	
++def _run_api_scan(root: Path) -> dict:
+•	"""
+•	Run API in flagged mode and return result dict.
+•	
+•	Uses build_run_result() which now accepts enable_js_ts.
+•	"""
+•	try:
+•	   from code_audit.run_result import build_run_result  # new-ish layout
+•	
+•	except Exception:
+•	   from code_audit.model.run_result import build_run_result  # older layout
+•	
+•	
+•	return build_run_result(
+•	   root=str(root),
+•	
+•	   project_id="",
+•	
+•	   enable_js_ts=True,
+•	
+•	   # Determinism hooks (if supported by your build_run_result signature)
+•	
+•	   _run_id="cli_api_parity",
+•	
+•	   _created_at="1970-01-01T00:00:00Z",
+•	
+•	)
+•	
+•	
++def _normalize_for_parity(obj: dict, *, root: Path) -> dict:
+•	"""
+•	Normalize both CLI and API outputs to a comparable shape:
+•	
+o	Compare only findings rule_id + relative path
+•	
+o	Ignore timestamps/run ids/extra fields that may differ across front-ends
+•	"""
+•	findings = obj.get("findings") or []
+•	norm_findings: list[dict] = []
+•	for f in findings:
+•	   if not isinstance(f, dict):
+•	
+•	       continue
+•	
+•	   rid = f.get("rule_id")
+•	
+•	   path = f.get("path")
+•	
+•	   if isinstance(path, str):
+•	
+•	       try:
+•	
+•	           path = str(Path(path).resolve().relative_to(root.resolve()).as_posix())
+•	
+•	       except Exception:
+•	
+•	           # already relative or non-path; keep as-is
+•	
+•	           path = path.replace("\\", "/")
+•	
+•	   norm_findings.append({"rule_id": rid, "path": path})
+•	
+•	
+•	sort for stable comparison
+•	norm_findings.sort(key=lambda x: (str(x.get("rule_id")), str(x.get("path"))))
+•	return {"findings": norm_findings}
+•	
+•	
++def test_cli_api_parity_enable_js_ts(tmp_path: Path) -> None:
+•	"""
+•	Parity contract for flagged mode:
+•	CLI scan with --enable-js-ts must match API scan with enable_js_ts=True.
+•	"""
+•	_touch(tmp_path / "app.py", "print('hi')\n")
+•	_touch(tmp_path / "web" / "main.js", "eval('1+1')\n")
+•	_touch(tmp_path / "web" / "main.ts", "new Function('return 1')\n")
+•	
+•	cli = _run_cli_scan(tmp_path)
+•	api = _run_api_scan(tmp_path)
+•	
+•	cli_n = _normalize_for_parity(cli, root=tmp_path)
+•	api_n = _normalize_for_parity(api, root=tmp_path)
+•	
+•	assert cli_n == api_n
+•	
+*** End Patch
+
+
+*** Begin Patch
+*** Add File: src/code_audit/data/treesitter/queries/js_ts_security.scm
++; JS/TS security queries (governed)
++
++; SEC_EVAL_JS_001: eval(...)
++(call_expression
+•	function: (identifier) @sec_eval.callee
+•	arguments: (arguments) @sec_eval.args)
+•	
++; SEC_NEW_FUNCTION_JS_001: new Function(...)
++(new_expression
+•	constructor: (identifier) @sec_new_function.ctor
+•	arguments: (arguments) @sec_new_function.args)
+•	
++; EXC_EMPTY_CATCH_JS_001: empty catch block
++(catch_clause
+•	body: (statement_block) @exc_empty_catch.body)
+•	
++; GST_GLOBAL_THIS_MUTATION_001: globalThis.foo = ... or window.foo = ...
++(assignment_expression
+•	left: (member_expression
+•	object: (identifier) @gst_global_mutation.obj
+•	property: (property_identifier) @gst_global_mutation.prop))
+•	
+*** End Patch
+*** Begin Patch
+*** Update File: src/code_audit/analyzers/js_ts_security.py
+@@
+from future import annotations
++from pathlib import Path
++
+from code_audit.analyzers.treesitter_base import TreeSitterAnalyzerBase, FindingSink
+from code_audit.parsers.tree_sitter_js import parse_file, query as ts_query, node_text, node_start_line_col
+class JsTsSecurityPreviewAnalyzer(TreeSitterAnalyzerBase):
+@@
+name = "js_ts_security_preview"
+version = "0.1.0"
+supported_languages = {"js", "ts"}
+•	_QUERY_PATH = (
+•	   Path(__file__).resolve().parents[1]
+•	
+•	   / "data"
+•	
+•	   / "treesitter"
+•	
+•	   / "queries"
+•	
+•	   / "js_ts_security.scm"
+•	
+•	)
+•	def analyze_multilang(self, files_by_lang, sink: FindingSink) -> None:
+@@
+files = self.filter_files(files_by_lang)
+•	   query_text = ""
+•	
+•	   try:
+•	
+•	       query_text = self._QUERY_PATH.read_text(encoding="utf-8")
+•	
+•	   except OSError:
+•	
+•	       # Conservative: no query file, no findings.
+•	
+•	       return
+•	
+•	   for sf in files:
+•	       if sf.language == "js":
+•	           lang = "javascript"
+•	       else:
+•	           # Treat ts + tsx as "typescript" grammar for now.
+•	           lang = "typescript"
+•	
+•	       parsed = parse_file(sf.path, language=lang)
+•	
+•	       # ------------------------------------------------------------------
+•	       # SEC_EVAL_JS_001 — eval(...)
+•	       # ------------------------------------------------------------------
+•	
+•	       q = r"""
+•	
+•	       (call_expression
+•	
+•	         function: (identifier) @fn
+•	
+•	         arguments: (arguments) @args)
+•	
+•	       """
+•	       try:
+•	
+•	           caps = ts_query(parsed.tree, q, language=lang)
+•	
+•	           caps = ts_query(parsed.tree, query_text, language=lang)
+•	       except Exception:
+•	           # If the grammar differs unexpectedly, keep analyzer conservative.
+•	           continue
+•	
+•	       # Group captures by node; we only care about @fn identifier
+•	       for cap_name, node in caps:
+•	
+•	           if cap_name != "fn":
+•	
+•	           if cap_name != "sec_eval.callee":
+•	               continue
+•	           if node_text(parsed.source_bytes, node) != "eval":
+•	               continue
+•	
+@@
+# ------------------------------------------------------------------
+# SEC_NEW_FUNCTION_JS_001 — new Function(...)
+# ------------------------------------------------------------------
+•	       q_new_fn = r"""
+•	
+•	       (new_expression
+•	
+•	         constructor: (identifier) @ctor
+•	
+•	         arguments: (arguments) @args)
+•	
+•	       """
+•	       try:
+•	
+•	           caps_new = ts_query(parsed.tree, q_new_fn, language=lang)
+•	
+•	           caps_new = caps  # single combined query; reuse captures
+•	       except Exception:
+•	           caps_new = []
+•	
+•	       for cap_name, node in caps_new:
+•	
+•	           if cap_name != "ctor":
+•	
+•	           if cap_name != "sec_new_function.ctor":
+•	               continue
+•	           if node_text(parsed.source_bytes, node) != "Function":
+•	               continue
+•	
+@@
+# ------------------------------------------------------------------
+# EXC_EMPTY_CATCH_JS_001 — empty catch block
+# ------------------------------------------------------------------
+•	       q_empty_catch = r"""
+•	
+•	       (catch_clause
+•	
+•	         body: (statement_block) @body)
+•	
+•	       """
+•	       try:
+•	
+•	           caps_catch = ts_query(parsed.tree, q_empty_catch, language=lang)
+•	
+•	           caps_catch = caps  # single combined query; reuse captures
+•	       except Exception:
+•	           caps_catch = []
+•	
+•	       for cap_name, node in caps_catch:
+•	
+•	           if cap_name != "body":
+•	
+•	           if cap_name != "exc_empty_catch.body":
+•	               continue
+•	           # Empty block = no named children inside
+•	           children = getattr(node, "named_children", [])
+•	           if children:
+•	               continue
+•	
+@@
+# ------------------------------------------------------------------
+# GST_GLOBAL_THIS_MUTATION_001 — globalThis.x = ... or window.x = ...
+# ------------------------------------------------------------------
+•	       q_global_assign = r"""
+•	
+•	       (assignment_expression
+•	
+•	         left: (member_expression
+•	
+•	           object: (identifier) @obj
+•	
+•	           property: (property_identifier) @prop))
+•	
+•	       """
+•	       try:
+•	
+•	           caps_assign = ts_query(parsed.tree, q_global_assign, language=lang)
+•	
+•	           caps_assign = caps  # single combined query; reuse captures
+•	       except Exception:
+•	           caps_assign = []
+•	
+•	       # Capture pairs: obj + prop in sequence; we filter by obj value.
+•	       for cap_name, node in caps_assign:
+•	
+•	           if cap_name != "obj":
+•	
+•	           if cap_name != "gst_global_mutation.obj":
+•	               continue
+•	
+•	           obj_name = node_text(parsed.source_bytes, node)
+•	           if obj_name not in ("globalThis", "window"):
+•	               continue
+•	
+*** End Patch
+*** Begin Patch
+*** Update File: scripts/refresh_treesitter_manifest.py
+@@
+VENDORED_DIR = ROOT / "src" / "code_audit" / "data" / "treesitter" / "vendor"
++QUERIES_DIR = ROOT / "src" / "code_audit" / "data" / "treesitter" / "queries"
+WRAPPER_FILES = [
+ROOT / "src" / "code_audit" / "parsers" / "tree_sitter_loader.py",
+ROOT / "src" / "code_audit" / "parsers" / "tree_sitter_js.py",
+ROOT / "src" / "code_audit" / "analyzers" / "js_ts_security.py",
+]
+@@
+def build_manifest() -> dict:
+files: Dict[str, str] = {}
+@@
+# Vendored grammars (if present)
+for p in _iter_vendor_files(VENDORED_DIR):
+rel = p.relative_to(ROOT).as_posix()
+files[rel] = _sha256_file(p)
+•	Query files (semantic levers)
+•	if QUERIES_DIR.exists():
+•	   for p in sorted([x for x in QUERIES_DIR.rglob("*") if x.is_file()], key=lambda x: str(x)):
+•	
+•	       rel = p.relative_to(ROOT).as_posix()
+•	
+•	       files[rel] = _sha256_file(p)
+•	
+•	Wrapper modules (must exist if the feature exists)
+for p in WRAPPER_FILES:
+rel = p.relative_to(ROOT).as_posix()
+if not p.exists():
+raise SystemExit(f"Missing Tree-sitter wrapper file: {rel}")
+files[rel] = _sha256_file(p)
+*** End Patch
+*** Begin Patch
+*** Add File: src/code_audit/data/treesitter/queries/js_ts_security.scm
++; JS/TS security queries (governed)
++
++; SEC_EVAL_JS_001: eval(...)
++(call_expression
+•	function: (identifier) @sec_eval.callee
+•	arguments: (arguments) @sec_eval.args)
+•	
++; SEC_NEW_FUNCTION_JS_001: new Function(...)
++(new_expression
+•	constructor: (identifier) @sec_new_function.ctor
+•	arguments: (arguments) @sec_new_function.args)
+•	
++; EXC_EMPTY_CATCH_JS_001: empty catch block
++(catch_clause
+•	body: (statement_block) @exc_empty_catch.body)
+•	
++; GST_GLOBAL_THIS_MUTATION_001: globalThis.foo = ... or window.foo = ...
++(assignment_expression
+•	left: (member_expression
+•	object: (identifier) @gst_global_mutation.obj
+•	property: (property_identifier) @gst_global_mutation.prop))
+•	
+*** End Patch
+*** Begin Patch
+*** Update File: src/code_audit/analyzers/js_ts_security.py
+@@
+from future import annotations
++from pathlib import Path
++
+from code_audit.analyzers.treesitter_base import TreeSitterAnalyzerBase, FindingSink
+from code_audit.parsers.tree_sitter_js import parse_file, query as ts_query, node_text, node_start_line_col
+class JsTsSecurityPreviewAnalyzer(TreeSitterAnalyzerBase):
+@@
+name = "js_ts_security_preview"
+version = "0.1.0"
+supported_languages = {"js", "ts"}
+•	_QUERY_PATH = (
+•	   Path(__file__).resolve().parents[1]
+•	
+•	   / "data"
+•	
+•	   / "treesitter"
+•	
+•	   / "queries"
+•	
+•	   / "js_ts_security.scm"
+•	
+•	)
+•	def analyze_multilang(self, files_by_lang, sink: FindingSink) -> None:
+@@
+files = self.filter_files(files_by_lang)
+•	   query_text = ""
+•	
+•	   try:
+•	
+•	       query_text = self._QUERY_PATH.read_text(encoding="utf-8")
+•	
+•	   except OSError:
+•	
+•	       # Conservative: no query file, no findings.
+•	
+•	       return
+•	
+•	   for sf in files:
+•	       if sf.language == "js":
+•	           lang = "javascript"
+•	       else:
+•	           # Treat ts + tsx as "typescript" grammar for now.
+•	           lang = "typescript"
+•	
+•	       parsed = parse_file(sf.path, language=lang)
+•	
+•	       # ------------------------------------------------------------------
+•	       # SEC_EVAL_JS_001 — eval(...)
+•	       # ------------------------------------------------------------------
+•	
+•	       q = r"""
+•	
+•	       (call_expression
+•	
+•	         function: (identifier) @fn
+•	
+•	         arguments: (arguments) @args)
+•	
+•	       """
+•	       try:
+•	
+•	           caps = ts_query(parsed.tree, q, language=lang)
+•	
+•	           caps = ts_query(parsed.tree, query_text, language=lang)
+•	       except Exception:
+•	           # If the grammar differs unexpectedly, keep analyzer conservative.
+•	           continue
+•	
+•	       # Group captures by node; we only care about @fn identifier
+•	       for cap_name, node in caps:
+•	
+•	           if cap_name != "fn":
+•	
+•	           if cap_name != "sec_eval.callee":
+•	               continue
+•	           if node_text(parsed.source_bytes, node) != "eval":
+•	               continue
+•	
+@@
+# ------------------------------------------------------------------
+# SEC_NEW_FUNCTION_JS_001 — new Function(...)
+# ------------------------------------------------------------------
+•	       q_new_fn = r"""
+•	
+•	       (new_expression
+•	
+•	         constructor: (identifier) @ctor
+•	
+•	         arguments: (arguments) @args)
+•	
+•	       """
+•	       try:
+•	
+•	           caps_new = ts_query(parsed.tree, q_new_fn, language=lang)
+•	
+•	           caps_new = caps  # single combined query; reuse captures
+•	       except Exception:
+•	           caps_new = []
+•	
+•	       for cap_name, node in caps_new:
+•	
+•	           if cap_name != "ctor":
+•	
+•	           if cap_name != "sec_new_function.ctor":
+•	               continue
+•	           if node_text(parsed.source_bytes, node) != "Function":
+•	               continue
+•	
+@@
+# ------------------------------------------------------------------
+# EXC_EMPTY_CATCH_JS_001 — empty catch block
+# ------------------------------------------------------------------
+•	       q_empty_catch = r"""
+•	
+•	       (catch_clause
+•	
+•	         body: (statement_block) @body)
+•	
+•	       """
+•	       try:
+•	
+•	           caps_catch = ts_query(parsed.tree, q_empty_catch, language=lang)
+•	
+•	           caps_catch = caps  # single combined query; reuse captures
+•	       except Exception:
+•	           caps_catch = []
+•	
+•	       for cap_name, node in caps_catch:
+•	
+•	           if cap_name != "body":
+•	
+•	           if cap_name != "exc_empty_catch.body":
+•	               continue
+•	           # Empty block = no named children inside
+•	           children = getattr(node, "named_children", [])
+•	           if children:
+•	               continue
+•	
+@@
+# ------------------------------------------------------------------
+# GST_GLOBAL_THIS_MUTATION_001 — globalThis.x = ... or window.x = ...
+# ------------------------------------------------------------------
+•	       q_global_assign = r"""
+•	
+•	       (assignment_expression
+•	
+•	         left: (member_expression
+•	
+•	           object: (identifier) @obj
+•	
+•	           property: (property_identifier) @prop))
+•	
+•	       """
+•	       try:
+•	
+•	           caps_assign = ts_query(parsed.tree, q_global_assign, language=lang)
+•	
+•	           caps_assign = caps  # single combined query; reuse captures
+•	       except Exception:
+•	           caps_assign = []
+•	
+•	       # Capture pairs: obj + prop in sequence; we filter by obj value.
+•	       for cap_name, node in caps_assign:
+•	
+•	           if cap_name != "obj":
+•	
+•	           if cap_name != "gst_global_mutation.obj":
+•	               continue
+•	
+•	           obj_name = node_text(parsed.source_bytes, node)
+•	           if obj_name not in ("globalThis", "window"):
+•	               continue
+•	
+*** End Patch
+*** Begin Patch
+*** Update File: scripts/refresh_treesitter_manifest.py
+@@
+VENDORED_DIR = ROOT / "src" / "code_audit" / "data" / "treesitter" / "vendor"
++QUERIES_DIR = ROOT / "src" / "code_audit" / "data" / "treesitter" / "queries"
+WRAPPER_FILES = [
+ROOT / "src" / "code_audit" / "parsers" / "tree_sitter_loader.py",
+ROOT / "src" / "code_audit" / "parsers" / "tree_sitter_js.py",
+ROOT / "src" / "code_audit" / "analyzers" / "js_ts_security.py",
+]
+@@
+def build_manifest() -> dict:
+files: Dict[str, str] = {}
+@@
+# Vendored grammars (if present)
+for p in _iter_vendor_files(VENDORED_DIR):
+rel = p.relative_to(ROOT).as_posix()
+files[rel] = _sha256_file(p)
+•	Query files (semantic levers)
+•	if QUERIES_DIR.exists():
+•	   for p in sorted([x for x in QUERIES_DIR.rglob("*") if x.is_file()], key=lambda x: str(x)):
+•	
+•	       rel = p.relative_to(ROOT).as_posix()
+•	
+•	       files[rel] = _sha256_file(p)
+•	
+•	Wrapper modules (must exist if the feature exists)
+for p in WRAPPER_FILES:
+rel = p.relative_to(ROOT).as_posix()
+if not p.exists():
+raise SystemExit(f"Missing Tree-sitter wrapper file: {rel}")
+files[rel] = _sha256_file(p)
+*** End Patch
+*** Begin Patch
+*** Add File: tests/fixtures/repos/sample_repo_js_ts_all/app.py
++print("hello")
++
+*** End Patch
+*** Begin Patch
+*** Add File: tests/fixtures/repos/sample_repo_js_ts_all/web/all_rules.js
++// Triggers all starter rules
++
++// SEC_EVAL_JS_001
++eval("1+1");
++
++// SEC_NEW_FUNCTION_JS_001
++new Function("return 1");
++
++// EXC_EMPTY_CATCH_JS_001
++try { foo(); } catch (e) {}
++
++// GST_GLOBAL_THIS_MUTATION_001
++globalThis.foo = 1;
++window.bar = 2;
++
+*** End Patch
+*** Begin Patch
+*** Add File: tests/fixtures/repos/sample_repo_js_ts_all/web/negative.js
++// Should not trigger:
++// - eval used as identifier inside string
++const s = "eval('nope')";
++// - Function mentioned but not constructed
++function FunctionName() {}
++// - catch block not empty
++try { foo(); } catch (e) { console.log(e); }
++// - property read, not assignment
++void globalThis.foo;
++
+*** End Patch
+*** Begin Patch
+*** Add File: tests/fixtures/expected/sample_repo_js_ts_all.json
++{
+•	"project_id": "",
+•	"findings": [
+•	{
+•	 "rule_id": "SEC_EVAL_JS_001",
+•	
+•	 "path": "web/all_rules.js",
+•	
+•	 "message": "Use of eval(...) detected (JS/TS).",
+•	
+•	 "location": { "line": 5, "col": 1 },
+•	
+•	 "evidence": { "callee": "eval" },
+•	
+•	 "language": "js"
+•	
+•	},
+•	{
+•	 "rule_id": "SEC_NEW_FUNCTION_JS_001",
+•	
+•	 "path": "web/all_rules.js",
+•	
+•	 "message": "Use of new Function(...) detected (JS/TS).",
+•	
+•	 "location": { "line": 8, "col": 5 },
+•	
+•	 "evidence": { "constructor": "Function" },
+•	
+•	 "language": "js"
+•	
+•	},
+•	{
+•	 "rule_id": "EXC_EMPTY_CATCH_JS_001",
+•	
+•	 "path": "web/all_rules.js",
+•	
+•	 "message": "Empty catch block detected (JS/TS).",
+•	
+•	 "location": { "line": 11, "col": 22 },
+•	
+•	 "evidence": { "type": "empty_catch" },
+•	
+•	 "language": "js"
+•	
+•	},
+•	{
+•	 "rule_id": "GST_GLOBAL_THIS_MUTATION_001",
+•	
+•	 "path": "web/all_rules.js",
+•	
+•	 "message": "Assignment to globalThis.<property> detected (JS/TS).",
+•	
+•	 "location": { "line": 14, "col": 1 },
+•	
+•	 "evidence": { "object": "globalThis" },
+•	
+•	 "language": "js"
+•	
+•	},
+•	{
+•	 "rule_id": "GST_GLOBAL_THIS_MUTATION_001",
+•	
+•	 "path": "web/all_rules.js",
+•	
+•	 "message": "Assignment to window.<property> detected (JS/TS).",
+•	
+•	 "location": { "line": 15, "col": 1 },
+•	
+•	 "evidence": { "object": "window" },
+•	
+•	 "language": "js"
+•	
+•	}
+•	]
++}
+•	
+*** End Patch
+*** Begin Patch
+*** Add File: tests/test_golden_js_ts_all_rules_fixture.py
++from future import annotations
++
++import json
++from pathlib import Path
++
++from code_audit.core.runner import run_scan
++
++
++ROOT = Path(file).resolve().parents[1]
++REPO = ROOT / "tests" / "fixtures" / "repos" / "sample_repo_js_ts_all"
++EXPECTED = ROOT / "tests" / "fixtures" / "expected" / "sample_repo_js_ts_all.json"
++
++
++class _NoopPyAnalyzer:
+•	name = "noop_py"
+•	version = "0.0.0"
+•	
+•	def analyze(self, files: list[Path], sink) -> None: # pragma: no cover
+•	   return
+•	
+•	
+•	
++def _relativize_paths(obj: dict, *, root: Path) -> dict:
+•	out = json.loads(json.dumps(obj))
+•	findings = out.get("findings") or []
+•	for f in findings:
+•	   p = f.get("path")
+•	
+•	   if isinstance(p, str):
+•	
+•	       try:
+•	
+•	           f["path"] = str(Path(p).resolve().relative_to(root.resolve()).as_posix())
+•	
+•	       except Exception:
+•	
+•	           pass
+•	
+•	return out
+•	
+•	
++def test_golden_js_ts_all_rules_fixture() -> None:
+•	assert REPO.exists(), f"Missing fixture repo: {REPO}"
+•	assert EXPECTED.exists(), f"Missing expected fixture: {EXPECTED}"
+•	
+•	res = run_scan(root=REPO, analyzers=[_NoopPyAnalyzer()], enable_js_ts=True)
+•	d = res.to_dict() if hasattr(res, "to_dict") else dict(res)
+•	
+•	got = {
+•	   "project_id": d.get("project_id", ""),
+•	
+•	   "findings": d.get("findings") or [],
+•	
+•	}
+•	got = _relativize_paths(got, root=REPO)
+•	
+•	expected = json.loads(EXPECTED.read_text(encoding="utf-8"))
+•	assert got == expected
+•	
+*** End Patch
+
+Thought for 17s
+*** Begin Patch
+*** Update File: src/code_audit/contracts/versions.json
+@@
+{
+"schema_version": 1,
+•	"signal_logic_version": "signals_v2"
+•	"signal_logic_version": "signals_v3"
+}
+*** End Patch
+*** Begin Patch
+*** Update File: scripts/refresh_golden_manifest.py
+@@
+def iter_expected_json_files() -> list[Path]:
+•	return sorted(EXPECTED_DIR.glob("*.json"))
+•	Include nested expected fixtures deterministically (some suites may nest)
+•	return sorted(EXPECTED_DIR.rglob("*.json"))
+*** End Patch
+*** Begin Patch
+*** Update File: tests/contracts/golden_fixtures_manifest.json
+@@
+{
+"manifest_version": 1,
+•	"signal_logic_version": "signals_v2",
+•	"signal_logic_version": "signals_v2",
+"generated_by": "scripts/refresh_golden_manifest.py",
+"files": {
+•	"tests/fixtures/expected/sample_repo_js_ts_eval.json": "",
+•	"tests/fixtures/expected/sample_repo_js_ts_all.json": "",
+"tests/fixtures/expected/": ""
+}
+}
+*** End Patch
+
+
+*** Begin Patch
+*** Update File: src/code_audit/core/runner.py
+@@
+def run_scan(
+@@
+for analyzer in analyzers:
+@@
+else:
+analyzer.analyze(files, sink)
+•	Deterministic output: findings order must be stable across platforms and
+•	independent of tree-sitter capture ordering or filesystem traversal.
+•	
+•	Sort key: (rule_id, path, location.line, location.col)
+•	def _sort_key(f: dict) -> tuple:
+•	   rid = f.get("rule_id") or ""
+•	
+•	   path = f.get("path") or ""
+•	
+•	   loc = f.get("location") or {}
+•	
+•	   line = 0
+•	
+•	   col = 0
+•	
+•	   if isinstance(loc, dict):
+•	
+•	       line = int(loc.get("line") or 0)
+•	
+•	       col = int(loc.get("col") or 0)
+•	
+•	   return (str(rid), str(path), line, col)
+•	
+•	
+•	try:
+•	   findings.sort(key=_sort_key)  # type: ignore[name-defined]
+•	
+•	except Exception:
+•	   # Never fail the scan due to ordering; leave as-is if unexpected types appear.
+•	
+•	   pass
+•	
+•	return RunResult(
+project_id=project_id,
+findings=findings,
+signals=signals,
+summary=summary,
+metadata=metadata,
+)
+*** End Patch
+
+
+
+*** Begin Patch
+*** Update File: src/code_audit/core/runner.py
+@@
+def run_scan(
+@@
+for analyzer in analyzers:
+@@
+else:
+analyzer.analyze(files, sink)
+•	------------------------------------------------------------------
+•	Contract hygiene: ensure findings remain schema-compliant.
+•	
+•	JS/TS analyzers introduced new optional metadata. To avoid accidental
+•	contract expansion, we strip non-contract keys here (most notably
+•	"language") and normalize types for common fields.
+•	------------------------------------------------------------------
+•	def _normalize_finding_for_contract(f: dict) -> dict:
+•	   # Keep a conservative allowlist that matches typical finding contract keys.
+•	   # (If a field is not in the contract, it must not leak to output.)
+•	   allowed = {
+•	       "rule_id",
+•	       "path",
+•	       "message",
+•	       "location",
+•	       "evidence",
+•	       "severity",
+•	       "confidence",
+•	       "category",
+•	   }
+•	
+•	   out: dict = {}
+•	   for k in allowed:
+•	       if k in f:
+•	           out[k] = f[k]
+•	
+•	   # Hard drop known non-contract metadata keys
+•	   # (These are safe internally, but not part of the public JSON contract.)
+•	   # NOTE: do not preserve "language" in output.
+•	   out.pop("language", None)
+•	
+•	   # Normalize types for stable schema validation
+•	   if "rule_id" in out and out["rule_id"] is not None:
+•	       out["rule_id"] = str(out["rule_id"])
+•	   if "path" in out and out["path"] is not None:
+•	       out["path"] = str(out["path"])
+•	   if "message" in out and out["message"] is not None:
+•	       out["message"] = str(out["message"])
+•	
+•	   loc = out.get("location")
+•	   if loc is None:
+•	       pass
+•	   elif isinstance(loc, dict):
+•	       # Coerce line/col if present
+•	       if "line" in loc:
+•	           try:
+•	               loc["line"] = int(loc["line"])
+•	           except Exception:
+•	               loc["line"] = 0
+•	       if "col" in loc:
+•	           try:
+•	               loc["col"] = int(loc["col"])
+•	           except Exception:
+•	               loc["col"] = 0
+•	       out["location"] = loc
+•	   else:
+•	       # Invalid location type; remove to avoid schema breakage.
+•	       out.pop("location", None)
+•	
+•	   ev = out.get("evidence")
+•	   if ev is None:
+•	       pass
+•	   elif isinstance(ev, (dict, list, str, int, float, bool)):
+•	       # leave as-is (schema usually allows object; we keep conservative types)
+•	       out["evidence"] = ev
+•	   else:
+•	       out.pop("evidence", None)
+•	
+•	   return out
+•	
+•	try:
+•	   findings[:] = [_normalize_finding_for_contract(f) if isinstance(f, dict) else f for f in findings]
+•	except Exception:
+•	   pass
+•	Deterministic output: findings order must be stable across platforms and
+independent of tree-sitter capture ordering or filesystem traversal.
+Sort key: (rule_id, path, location.line, location.col)
+def _sort_key(f: dict) -> tuple:
+rid = f.get("rule_id") or ""
+path = f.get("path") or ""
+loc = f.get("location") or {}
+line = 0
+col = 0
+if isinstance(loc, dict):
+line = int(loc.get("line") or 0)
+col = int(loc.get("col") or 0)
+return (str(rid), str(path), line, col)
+try:
+findings.sort(key=_sort_key) # type: ignore[name-defined]
+except Exception:
+# Never fail the scan due to ordering; leave as-is if unexpected types appear.
+pass
+*** End Patch
+Ship Treesitter manifest “real hash” refresh • You added query file hashing. The manifest JSON in repo still has placeholder empty hashes in earlier diffs; you’ll need to run python scripts/refresh_treesitter_manifest.py and commit the real hashes. 
+I can’t legitimately “ship” the updated tests/contracts/treesitter_manifest.json contents here because the real sha256 values depend on your current repo files (vendored grammars, wrappers, query file). I’d be guessing.
+What you should commit is exactly what your refresh script writes:
+python scripts/refresh_treesitter_manifest.py
+git add tests/contracts/treesitter_manifest.json
+git commit -m "Refresh treesitter manifest hashes"
+If you want this enforced so placeholders can’t slip in again, I can ship a diff next that makes the manifest gate fail if any hash value is empty/blank.
+Ok ship the correct diff
+*** Begin Patch
+*** Update File: tests/test_treesitter_manifest_requires_signal_logic_bump.py
+@@
+def test_treesitter_manifest_matches_current_semantic_surface() -> None:
+manifest = _load_manifest()
+assert manifest.get("manifest_version") == 1
+assert manifest.get("generated_by") == "scripts/refresh_treesitter_manifest.py"
+ current = _current_semantic_file_hashes()
+ recorded = manifest.get("files") or {}
+•	Hard guard: no placeholder / empty hashes allowed.
+•	for path, h in recorded.items():
+•	   if not isinstance(h, str) or not h.strip():
+•	       raise AssertionError(
+•	           f"Tree-sitter manifest contains empty hash for {path}.\n"
+•	           "Run: python scripts/refresh_treesitter_manifest.py\n"
+•	           "and commit the updated manifest."
+•	       )
+•	if current != recorded:
+raise AssertionError(
+"Tree-sitter semantic surface changed.\n"
+"If intentional: bump signal_logic_version and refresh manifest:\n"
+" python scripts/refresh_treesitter_manifest.py\n"
+"If unintentional: revert the Tree-sitter semantic change.\n"
+)
+*** End Patch
+Ship the next tightening step
+Here’s the next tightening step:
+🔒 Make signal_logic_version bump mandatory when golden fixtures change
+Right now:
+•	Tree-sitter semantic surface changes require a bump.
+•	But golden fixture output changes (JS/TS findings drift) do not automatically enforce a bump unless manually caught.
+We fix that.
+________________________________________
+Diff: Enforce signal_logic_version bump on golden fixture change
+Update golden manifest enforcement test
+*** Begin Patch
+*** Update File: tests/test_golden_manifest_requires_signal_logic_bump.py
+@@
+def test_golden_manifest_requires_signal_logic_bump_on_change() -> None:
+manifest = _load_manifest()
+recorded_signal = manifest.get("signal_logic_version")
+assert isinstance(recorded_signal, str) and recorded_signal.startswith("signals_v")
+ current_signal = _extract_signal_logic_version_from_versions_json()  
+
+ current_hashes = _current_expected_fixture_hashes()  
+ recorded_hashes = manifest.get("files") or {}  
+•	Hard guard: no empty placeholder hashes allowed.
+•	for path, h in recorded_hashes.items():
+•	   if not isinstance(h, str) or not h.strip():
+•	       raise AssertionError(
+•	           f"Golden manifest contains empty hash for {path}.\n"
+•	           "Run: python scripts/refresh_golden_manifest.py\n"
+•	           "and commit the updated manifest."
+•	       )
+•	if current_hashes != recorded_hashes:
+assert (
+current_signal != recorded_signal
+), "Golden fixtures changed but signal_logic_version was not bumped."
+*** End Patch
+________________________________________
+What This Enforces
+Now:
+•	Any change to tests/fixtures/expected/*.json
+•	Requires:
+o	python scripts/refresh_golden_manifest.py
+o	Bump signal_logic_version in contracts/versions.json
+o	Commit updated manifest
+You now have:
+Surface	Requires Version Bump
+Parser wrappers	✅
+Vendored grammars	✅
+Query files	✅
+Golden outputs	✅
+________________________________________
+Result
+Your semantic contract surface is now:
+Fully drift-locked across implementation, query layer, and observable output.
+Next possible tightening step (if you want maximum rigor):
+•	Make contracts/versions.json itself hashed inside both golden + treesitter manifests so even version anchor edits are governed.
+Say “tighten version anchor governance” if you want that.
+“tighten version anchor governance”
+*** Begin Patch
+*** Update File: scripts/refresh_treesitter_manifest.py
+@@
+VERSIONS_PATH = ROOT / "src" / "code_audit" / "contracts" / "versions.json"
+@@
+def build_manifest() -> dict:
+files: Dict[str, str] = {}
+•	Version anchor is part of semantic governance. If it changes, the gate
+•	must force a manifest refresh + signal_logic_version bump decisions.
+•	if not VERSIONS_PATH.exists():
+•	   raise SystemExit(f"Missing version anchor: {VERSIONS_PATH.relative_to(ROOT)}")
+•	files[VERSIONS_PATH.relative_to(ROOT).as_posix()] = _sha256_file(VERSIONS_PATH)
+•	Vendored grammars (if present)
+for p in _iter_vendor_files(VENDORED_DIR):
+rel = p.relative_to(ROOT).as_posix()
+files[rel] = _sha256_file(p)
+*** End Patch
+*** Begin Patch
+*** Update File: tests/test_treesitter_manifest_requires_signal_logic_bump.py
+@@
+def _current_semantic_file_hashes() -> dict[str, str]:
+Must match scripts/refresh_treesitter_manifest.py inputs
+vendor_dir = ROOT / "src" / "code_audit" / "data" / "treesitter" / "vendor"
+queries_dir = ROOT / "src" / "code_audit" / "data" / "treesitter" / "queries"
+•	versions_path = ROOT / "src" / "code_audit" / "contracts" / "versions.json"
+wrapper_files = [
+ROOT / "src" / "code_audit" / "parsers" / "tree_sitter_loader.py",
+ROOT / "src" / "code_audit" / "parsers" / "tree_sitter_js.py",
+ROOT / "src" / "code_audit" / "analyzers" / "js_ts_security.py",
+]
+files: dict[str, str] = {}
+•	if not versions_path.exists():
+•	   raise AssertionError("Missing src/code_audit/contracts/versions.json (version anchor)")
+•	files[versions_path.relative_to(ROOT).as_posix()] = _sha256_file(versions_path)
+•	if vendor_dir.exists():
+for p in sorted([x for x in vendor_dir.rglob("*") if x.is_file()], key=lambda x: str(x)):
+files[p.relative_to(ROOT).as_posix()] = _sha256_file(p)
+*** End Patch
+*** Begin Patch
+*** Update File: scripts/refresh_golden_manifest.py
+@@
+ROOT = Path(file).resolve().parents[1]
+EXPECTED_DIR = ROOT / "tests" / "fixtures" / "expected"
+MANIFEST_PATH = ROOT / "tests" / "contracts" / "golden_fixtures_manifest.json"
++VERSIONS_PATH = ROOT / "src" / "code_audit" / "contracts" / "versions.json"
+@@
+def build_manifest() -> dict:
+files: dict[str, str] = {}
+•	Version anchor is part of contract governance for goldens.
+•	if not VERSIONS_PATH.exists():
+•	   raise SystemExit(f"Missing version anchor: {VERSIONS_PATH.relative_to(ROOT)}")
+•	files[VERSIONS_PATH.relative_to(ROOT).as_posix()] = _sha256_file(VERSIONS_PATH)
+•	for p in iter_expected_json_files():
+rel = p.relative_to(ROOT).as_posix()
+files[rel] = _sha256_file(p)
+*** End Patch
+*** Begin Patch
+*** Update File: tests/test_golden_manifest_requires_signal_logic_bump.py
+@@
+def _current_expected_fixture_hashes() -> dict[str, str]:
+expected_dir = ROOT / "tests" / "fixtures" / "expected"
+•	versions_path = ROOT / "src" / "code_audit" / "contracts" / "versions.json"
+files: dict[str, str] = {}
+•	if not versions_path.exists():
+•	   raise AssertionError("Missing src/code_audit/contracts/versions.json (version anchor)")
+•	files[versions_path.relative_to(ROOT).as_posix()] = _sha256_file(versions_path)
+•	for p in sorted(expected_dir.rglob("*.json"), key=lambda x: str(x)):
+files[p.relative_to(ROOT).as_posix()] = _sha256_file(p)
+return files
+*** End Patch
+continue generating diffs in this progression
+*** Begin Patch
+*** Update File: scripts/generate_release_bom.py
+@@
+ROOT = Path(file).resolve().parents[1]
+DIST = ROOT / "dist"
+Producer-side semantic manifests that must be shipped into dist/ and attested in the BOM.
+TREESITTER_MANIFEST_SRC = ROOT / "tests" / "contracts" / "treesitter_manifest.json"
+TREESITTER_MANIFEST_DIST = DIST / "contracts" / "treesitter_manifest.json"
++# Contract version anchor (single source of truth for signal logic version)
++CONTRACT_VERSIONS_SRC = ROOT / "src" / "code_audit" / "contracts" / "versions.json"
++CONTRACT_VERSIONS_DIST = DIST / "contracts" / "versions.json"
++
+Release-mode strictness toggle:
+- If RELEASE_ENABLE_JS_TS=true, treesitter_manifest becomes REQUIRED.
+RELEASE_ENABLE_JS_TS = (os.environ.get("RELEASE_ENABLE_JS_TS", "") or "").strip().lower() in ("1", "true", "yes", "y", "on")
+@@
+def generate_release_bom(*, write: bool = True) -> dict[str, Any]:
+@@
+artifacts: dict[str, Any] = {}
+ # --- existing artifact population continues ---
+•	---------------------------------------------------------------------
+•	Contract versions attestation (version anchor)
+•	---------------------------------------------------------------------
+•	if not CONTRACT_VERSIONS_SRC.exists():
+•	   raise SystemExit(
+•	       f"[release-bom] missing contract version anchor: {CONTRACT_VERSIONS_SRC.relative_to(ROOT)}"
+•	   )
+•	_copy_into_dist_path(CONTRACT_VERSIONS_SRC, CONTRACT_VERSIONS_DIST)
+•	versions_sha = _sha256_file(CONTRACT_VERSIONS_DIST)
+•	versions_obj = _load_json(CONTRACT_VERSIONS_DIST)
+•	artifacts["contract_versions"] = {
+•	   "path": str(CONTRACT_VERSIONS_DIST.relative_to(ROOT)),
+•	   "sha256": versions_sha,
+•	   "schema_version": int(versions_obj.get("schema_version", 0) or 0),
+•	   "signal_logic_version": str(versions_obj.get("signal_logic_version", "") or ""),
+•	}
+•	---------------------------------------------------------------------
+Absolute strictest mode: explicit JS/TS surface declaration
+@@
+js_ts_surface = bool(RELEASE_ENABLE_JS_TS)
+artifacts["js_ts_surface"] = js_ts_surface
+*** End Patch
+*** Begin Patch
+*** Update File: schemas/release_bom.schema.json
+@@
+"type": "object",
+"additionalProperties": false,
+"required": ["js_ts_surface"],
+"properties": {
+"js_ts_surface": { "type": "boolean" },
+•	   "contract_versions": { "$ref": "#/$defs/contract_versions_artifact" },
+   "treesitter_manifest": { "$ref": "#/$defs/treesitter_manifest_artifact" }
+ }
+}
+},
+"$defs": {
+@@
+"signals_version": {
+"type": "string",
+"pattern": "^signals_v\d+$"
+},
+•	"contract_versions_artifact": {
+•	 "type": "object",
+•	 "additionalProperties": false,
+•	 "required": ["path", "sha256", "schema_version", "signal_logic_version"],
+•	 "properties": {
+•	   "path": {
+•	     "type": "string",
+•	     "pattern": "^dist/contracts/versions\\.json$"
+•	   },
+•	   "sha256": { "$ref": "#/$defs/sha256" },
+•	   "schema_version": { "type": "integer", "minimum": 1 },
+•	   "signal_logic_version": { "$ref": "#/$defs/signals_version" }
+•	 }
+•	},
+"treesitter_manifest_artifact": {
+"type": "object",
+"additionalProperties": false,
+"required": ["path", "sha256", "manifest_version", "signal_logic_version"],
+"properties": {
+*** End Patch
+*** Begin Patch
+*** Update File: scripts/check_release_bom_consistency.py
+@@
+def check_release_bom_consistency(bom: dict[str, Any]) -> None:
+@@
+artifacts = bom.get("artifacts") or {}
+@@
+js_ts_surface = artifacts.get("js_ts_surface")
+@@
+if js_ts_surface is True and ("treesitter_manifest" not in artifacts):
+raise AssertionError("artifacts.js_ts_surface=true requires artifacts.treesitter_manifest.")
+•	Contract versions attestation must always exist and be self-consistent.
+•	if "contract_versions" not in artifacts:
+•	   raise AssertionError("artifacts.contract_versions is required in the BOM.")
+•	cv = artifacts["contract_versions"]
+•	assert isinstance(cv, dict), "artifacts.contract_versions must be an object"
+•	ctx = "artifacts.contract_versions"
+•	rel_path = _req(cv, "path", ctx)
+•	expected_sha = _req(cv, "sha256", ctx)
+•	expected_schema_v = _req(cv, "schema_version", ctx)
+•	expected_slv = _req(cv, "signal_logic_version", ctx)
+•	
+•	p = (ROOT / rel_path).resolve()
+•	assert p.exists(), f"{ctx}.path does not exist: {rel_path}"
+•	got_sha = _sha256_file(p)
+•	assert got_sha == expected_sha, f"{ctx}.sha256 mismatch: expected={expected_sha} got={got_sha}"
+•	obj = json.loads(p.read_text(encoding="utf-8"))
+•	assert obj.get("schema_version") == expected_schema_v, f"{ctx}.schema_version mismatch vs file"
+•	assert obj.get("signal_logic_version") == expected_slv, f"{ctx}.signal_logic_version mismatch vs file"
+•	------------------------------------------------------------------
+Tree-sitter manifest attestation (if present in BOM, must exist in dist
+and sha256 must match).
+------------------------------------------------------------------
+*** End Patch
+*** Begin Patch
+*** Update File: scripts/check_release_bom_generator_gate.py
+@@
+if not issues:
+# If the treesitter manifest is referenced, require the shipped dist copy exists.
+arts = tmp_obj.get("artifacts") or {}
+if isinstance(arts, dict) and "treesitter_manifest" in arts:
+@@
+))
++
+•	   if not issues:
+•	       # contract_versions is required; ensure the dist artifact exists early.
+•	       arts = tmp_obj.get("artifacts") or {}
+•	       if isinstance(arts, dict) and "contract_versions" in arts:
+•	           a = arts["contract_versions"]
+•	           rel = a.get("path") if isinstance(a, dict) else None
+•	           p = (ROOT / rel).resolve() if isinstance(rel, str) else None
+•	           if p is None or not p.exists():
+•	               issues.append(_issue(
+•	                   "missing_dist_artifact",
+•	                   "release_bom.json:artifacts.contract_versions.path",
+•	                   "existing dist/contracts/versions.json",
+•	                   str(p) if p is not None else "<missing>",
+•	               ))
+*** End Patch
+*** Begin Patch
+*** Update File: tests/fixtures/expected/sample_repo_js_ts_eval.json
+@@
+"findings": [
+{
+"rule_id": "SEC_EVAL_JS_001",
+"path": "web/main.js",
+"message": "Use of eval(...) detected (JS/TS).",
+"location": { "line": 2, "col": 1 },
+•	 "evidence": { "callee": "eval" },
+•	 "language": "js"
+•	 "evidence": { "callee": "eval" }
+}
+]
+}
+*** End Patch
+*** Begin Patch
+*** Update File: tests/fixtures/expected/sample_repo_js_ts_all.json
+@@
+{
+"rule_id": "SEC_EVAL_JS_001",
+"path": "web/all_rules.js",
+"message": "Use of eval(...) detected (JS/TS).",
+"location": { "line": 5, "col": 1 },
+•	 "evidence": { "callee": "eval" },
+•	 "language": "js"
+•	 "evidence": { "callee": "eval" }
+},
+{
+"rule_id": "SEC_NEW_FUNCTION_JS_001",
+"path": "web/all_rules.js",
+"message": "Use of new Function(...) detected (JS/TS).",
+"location": { "line": 8, "col": 5 },
+•	 "evidence": { "constructor": "Function" },
+•	 "language": "js"
+•	 "evidence": { "constructor": "Function" }
+},
+{
+"rule_id": "EXC_EMPTY_CATCH_JS_001",
+"path": "web/all_rules.js",
+"message": "Empty catch block detected (JS/TS).",
+"location": { "line": 11, "col": 22 },
+•	 "evidence": { "type": "empty_catch" },
+•	 "language": "js"
+•	 "evidence": { "type": "empty_catch" }
+},
+{
+"rule_id": "GST_GLOBAL_THIS_MUTATION_001",
+"path": "web/all_rules.js",
+"message": "Assignment to globalThis.<property> detected (JS/TS).",
+"location": { "line": 14, "col": 1 },
+•	 "evidence": { "object": "globalThis" },
+•	 "language": "js"
+•	 "evidence": { "object": "globalThis" }
+},
+{
+"rule_id": "GST_GLOBAL_THIS_MUTATION_001",
+"path": "web/all_rules.js",
+"message": "Assignment to window.<property> detected (JS/TS).",
+"location": { "line": 15, "col": 1 },
+•	 "evidence": { "object": "window" },
+•	 "language": "js"
+•	 "evidence": { "object": "window" }
+}
+]
+}
+*** End Patch
+
+5.	CLI parity test adjustments
+•	The parity test assumes python -m code_audit scan --root ... prints JSON to stdout.
+•	If your CLI writes to a file, prints human text, or needs --json, you’ll adjust invocation/parse.
+•	Also expect path normalization (absolute vs relative) differences.
+6.	TS/TSX grammar naming mismatch
+•	You’re mapping ts → "typescript". Depending on your grammar build, TSX might be "tsx" language name.
+•	If you include .tsx, you may need a mapping:
+o	.ts → typescript
+o	.tsx → tsx
+•	Otherwise parse/query may fail or behave oddly.
+7.	Empty catch semantics
+•	Your “empty catch” rule currently flags only truly empty blocks (no named children). Comments may or may not appear as named children depending on grammar.
+•	You’ll likely need to decide: does { /* comment */ } count as empty? and implement accordingly.
+Common failure modes (so you’re not surprised)
+•	Golden fixture line/col drift between platforms if newline handling or encoding differs.
+•	Tree-sitter Query API mismatch across tree-sitter versions (Query import/captures shape).
+•	Vendored grammars not present in CI → tests will skip or fail depending on your gating policy.
+•	signal_logic_version bump gate triggers more often now (as intended), so you’ll be bumping it during this rule rollout.
+What “done” looks like from here
+•	Goldens pass reliably across machines/CI.
+•	Treesitter manifest + golden manifest both refreshed and gated.
+•	CLI/API parity passes in flagged mode.
+•	Findings conform to the public JSON schema (no hidden drift).
+•	You can tag a release and the BOM attests the JS/TS semantic surface.
+If you want the most likely next diff: sorting/stabilizing findings + adjusting expected goldens (that’s usually the first thing that breaks once multiple rules land).
+ship Golden manifest refresh + enforcement
+Thought for 17s
+*** Begin Patch
+*** Update File: src/code_audit/contracts/versions.json
+@@
+{
+"schema_version": 1,
+•	"signal_logic_version": "signals_v2"
+•	"signal_logic_version": "signals_v3"
+}
+*** End Patch
+*** Begin Patch
+*** Update File: scripts/refresh_golden_manifest.py
+@@
+def iter_expected_json_files() -> list[Path]:
+•	return sorted(EXPECTED_DIR.glob("*.json"))
+•	Include nested expected fixtures deterministically (some suites may nest)
+•	return sorted(EXPECTED_DIR.rglob("*.json"))
+*** End Patch
+*** Begin Patch
+*** Update File: tests/contracts/golden_fixtures_manifest.json
+@@
+{
+"manifest_version": 1,
+•	"signal_logic_version": "signals_v2",
+•	"signal_logic_version": "signals_v2",
+"generated_by": "scripts/refresh_golden_manifest.py",
+"files": {
+•	"tests/fixtures/expected/sample_repo_js_ts_eval.json": "",
+•	"tests/fixtures/expected/sample_repo_js_ts_all.json": "",
+"tests/fixtures/expected/": ""
+}
+}
+*** End Patch
+2. **Stabilize finding ordering** * With multiple rules firing, you’ll likely see nondeterministic order (tree-sitter capture order, filesystem iteration, analyzer loop order). * Expect to add a normalization step: sort findings by `(rule_id, path, location.line, location.col)` before output.
+ship this next Stabilize finding ordering With multiple rules firing, you’ll likely see nondeterministic order (tree-sitter capture order, filesystem iteration, analyzer loop order). Expect to add a normalization step: sort findings by (rule_id, path, location.line, location.col) before output.
+*** Begin Patch
+*** Update File: src/code_audit/core/runner.py
+@@
+def run_scan(
+@@
+for analyzer in analyzers:
+@@
+else:
+analyzer.analyze(files, sink)
+•	Deterministic output: findings order must be stable across platforms and
+•	independent of tree-sitter capture ordering or filesystem traversal.
+•	
+•	Sort key: (rule_id, path, location.line, location.col)
+•	def _sort_key(f: dict) -> tuple:
+•	   rid = f.get("rule_id") or ""
+•	   path = f.get("path") or ""
+•	   loc = f.get("location") or {}
+•	   line = 0
+•	   col = 0
+•	   if isinstance(loc, dict):
+•	       line = int(loc.get("line") or 0)
+•	       col = int(loc.get("col") or 0)
+•	   return (str(rid), str(path), line, col)
+•	
+•	try:
+•	   findings.sort(key=_sort_key)  # type: ignore[name-defined]
+•	except Exception:
+•	   # Never fail the scan due to ordering; leave as-is if unexpected types appear.
+•	   pass
+•	return RunResult(
+project_id=project_id,
+findings=findings,
+signals=signals,
+summary=summary,
+metadata=metadata,
+)
+*** End Patch
+Ship Make findings schema-compliant • Right now the JS findings include fields like language and evidence and location. • If your public schema doesn’t allow them (or requires other keys), tests/contract gates will fail. • Typical follow-up: either o move extra fields into an allowed subobject, or o strip to the existing finding schema. 
+Thought for 21s
+*** Begin Patch
+*** Update File: src/code_audit/core/runner.py
+@@
+def run_scan(
+@@
+for analyzer in analyzers:
+@@
+else:
+analyzer.analyze(files, sink)
+•	------------------------------------------------------------------
+•	Contract hygiene: ensure findings remain schema-compliant.
+•	
+•	JS/TS analyzers introduced new optional metadata. To avoid accidental
+•	contract expansion, we strip non-contract keys here (most notably
+•	"language") and normalize types for common fields.
+•	------------------------------------------------------------------
+•	def _normalize_finding_for_contract(f: dict) -> dict:
+•	   # Keep a conservative allowlist that matches typical finding contract keys.
+•	   # (If a field is not in the contract, it must not leak to output.)
+•	   allowed = {
+•	       "rule_id",
+•	       "path",
+•	       "message",
+•	       "location",
+•	       "evidence",
+•	       "severity",
+•	       "confidence",
+•	       "category",
+•	   }
+•	
+•	   out: dict = {}
+•	   for k in allowed:
+•	       if k in f:
+•	           out[k] = f[k]
+•	
+•	   # Hard drop known non-contract metadata keys
+•	   # (These are safe internally, but not part of the public JSON contract.)
+•	   # NOTE: do not preserve "language" in output.
+•	   out.pop("language", None)
+•	
+•	   # Normalize types for stable schema validation
+•	   if "rule_id" in out and out["rule_id"] is not None:
+•	       out["rule_id"] = str(out["rule_id"])
+•	   if "path" in out and out["path"] is not None:
+•	       out["path"] = str(out["path"])
+•	   if "message" in out and out["message"] is not None:
+•	       out["message"] = str(out["message"])
+•	
+•	   loc = out.get("location")
+•	   if loc is None:
+•	       pass
+•	   elif isinstance(loc, dict):
+•	       # Coerce line/col if present
+•	       if "line" in loc:
+•	           try:
+•	               loc["line"] = int(loc["line"])
+•	           except Exception:
+•	               loc["line"] = 0
+•	       if "col" in loc:
+•	           try:
+•	               loc["col"] = int(loc["col"])
+•	           except Exception:
+•	               loc["col"] = 0
+•	       out["location"] = loc
+•	   else:
+•	       # Invalid location type; remove to avoid schema breakage.
+•	       out.pop("location", None)
+•	
+•	   ev = out.get("evidence")
+•	   if ev is None:
+•	       pass
+•	   elif isinstance(ev, (dict, list, str, int, float, bool)):
+•	       # leave as-is (schema usually allows object; we keep conservative types)
+•	       out["evidence"] = ev
+•	   else:
+•	       out.pop("evidence", None)
+•	
+•	   return out
+•	
+•	try:
+•	   findings[:] = [_normalize_finding_for_contract(f) if isinstance(f, dict) else f for f in findings]
+•	except Exception:
+•	   pass
+•	Deterministic output: findings order must be stable across platforms and
+independent of tree-sitter capture ordering or filesystem traversal.
+Sort key: (rule_id, path, location.line, location.col)
+def _sort_key(f: dict) -> tuple:
+rid = f.get("rule_id") or ""
+path = f.get("path") or ""
+loc = f.get("location") or {}
+line = 0
+col = 0
+if isinstance(loc, dict):
+line = int(loc.get("line") or 0)
+col = int(loc.get("col") or 0)
+return (str(rid), str(path), line, col)
+try:
+findings.sort(key=_sort_key) # type: ignore[name-defined]
+except Exception:
+# Never fail the scan due to ordering; leave as-is if unexpected types appear.
+pass
+*** End Patch
+Ship Treesitter manifest “real hash” refresh • You added query file hashing. The manifest JSON in repo still has placeholder empty hashes in earlier diffs; you’ll need to run python scripts/refresh_treesitter_manifest.py and commit the real hashes. 
+I can’t legitimately “ship” the updated tests/contracts/treesitter_manifest.json contents here because the real sha256 values depend on your current repo files (vendored grammars, wrappers, query file). I’d be guessing.
+What you should commit is exactly what your refresh script writes:
+python scripts/refresh_treesitter_manifest.py
+git add tests/contracts/treesitter_manifest.json
+git commit -m "Refresh treesitter manifest hashes"
+If you want this enforced so placeholders can’t slip in again, I can ship a diff next that makes the manifest gate fail if any hash value is empty/blank.
+Ok ship the correct diff
+*** Begin Patch
+*** Update File: tests/test_treesitter_manifest_requires_signal_logic_bump.py
+@@
+def test_treesitter_manifest_matches_current_semantic_surface() -> None:
+manifest = _load_manifest()
+assert manifest.get("manifest_version") == 1
+assert manifest.get("generated_by") == "scripts/refresh_treesitter_manifest.py"
+ current = _current_semantic_file_hashes()
+ recorded = manifest.get("files") or {}
+•	Hard guard: no placeholder / empty hashes allowed.
+•	for path, h in recorded.items():
+•	   if not isinstance(h, str) or not h.strip():
+•	       raise AssertionError(
+•	           f"Tree-sitter manifest contains empty hash for {path}.\n"
+•	           "Run: python scripts/refresh_treesitter_manifest.py\n"
+•	           "and commit the updated manifest."
+•	       )
+•	if current != recorded:
+raise AssertionError(
+"Tree-sitter semantic surface changed.\n"
+"If intentional: bump signal_logic_version and refresh manifest:\n"
+" python scripts/refresh_treesitter_manifest.py\n"
+"If unintentional: revert the Tree-sitter semantic change.\n"
+)
+*** End Patch
+Ship the next tightening step
+Here’s the next tightening step:
+🔒 Make signal_logic_version bump mandatory when golden fixtures change
+Right now:
+•	Tree-sitter semantic surface changes require a bump.
+•	But golden fixture output changes (JS/TS findings drift) do not automatically enforce a bump unless manually caught.
+We fix that.
+________________________________________
+Diff: Enforce signal_logic_version bump on golden fixture change
+Update golden manifest enforcement test
+*** Begin Patch
+*** Update File: tests/test_golden_manifest_requires_signal_logic_bump.py
+@@
+def test_golden_manifest_requires_signal_logic_bump_on_change() -> None:
+manifest = _load_manifest()
+recorded_signal = manifest.get("signal_logic_version")
+assert isinstance(recorded_signal, str) and recorded_signal.startswith("signals_v")
+ current_signal = _extract_signal_logic_version_from_versions_json()  
+
+ current_hashes = _current_expected_fixture_hashes()  
+ recorded_hashes = manifest.get("files") or {}  
+•	Hard guard: no empty placeholder hashes allowed.
+•	for path, h in recorded_hashes.items():
+•	   if not isinstance(h, str) or not h.strip():
+•	       raise AssertionError(
+•	           f"Golden manifest contains empty hash for {path}.\n"
+•	           "Run: python scripts/refresh_golden_manifest.py\n"
+•	           "and commit the updated manifest."
+•	       )
+•	if current_hashes != recorded_hashes:
+assert (
+current_signal != recorded_signal
+), "Golden fixtures changed but signal_logic_version was not bumped."
+*** End Patch
+________________________________________
+What This Enforces
+Now:
+•	Any change to tests/fixtures/expected/*.json
+•	Requires:
+o	python scripts/refresh_golden_manifest.py
+o	Bump signal_logic_version in contracts/versions.json
+o	Commit updated manifest
+You now have:
+Surface	Requires Version Bump
+Parser wrappers	✅
+Vendored grammars	✅
+Query files	✅
+Golden outputs	✅
+________________________________________
+Result
+Your semantic contract surface is now:
+Fully drift-locked across implementation, query layer, and observable output.
+Next possible tightening step (if you want maximum rigor):
+•	Make contracts/versions.json itself hashed inside both golden + treesitter manifests so even version anchor edits are governed.
+Say “tighten version anchor governance” if you want that.
+“tighten version anchor governance”
+*** Begin Patch
+*** Update File: scripts/refresh_treesitter_manifest.py
+@@
+VERSIONS_PATH = ROOT / "src" / "code_audit" / "contracts" / "versions.json"
+@@
+def build_manifest() -> dict:
+files: Dict[str, str] = {}
+•	Version anchor is part of semantic governance. If it changes, the gate
+•	must force a manifest refresh + signal_logic_version bump decisions.
+•	if not VERSIONS_PATH.exists():
+•	   raise SystemExit(f"Missing version anchor: {VERSIONS_PATH.relative_to(ROOT)}")
+•	files[VERSIONS_PATH.relative_to(ROOT).as_posix()] = _sha256_file(VERSIONS_PATH)
+•	Vendored grammars (if present)
+for p in _iter_vendor_files(VENDORED_DIR):
+rel = p.relative_to(ROOT).as_posix()
+files[rel] = _sha256_file(p)
+*** End Patch
+*** Begin Patch
+*** Update File: tests/test_treesitter_manifest_requires_signal_logic_bump.py
+@@
+def _current_semantic_file_hashes() -> dict[str, str]:
+Must match scripts/refresh_treesitter_manifest.py inputs
+vendor_dir = ROOT / "src" / "code_audit" / "data" / "treesitter" / "vendor"
+queries_dir = ROOT / "src" / "code_audit" / "data" / "treesitter" / "queries"
+•	versions_path = ROOT / "src" / "code_audit" / "contracts" / "versions.json"
+wrapper_files = [
+ROOT / "src" / "code_audit" / "parsers" / "tree_sitter_loader.py",
+ROOT / "src" / "code_audit" / "parsers" / "tree_sitter_js.py",
+ROOT / "src" / "code_audit" / "analyzers" / "js_ts_security.py",
+]
+files: dict[str, str] = {}
+•	if not versions_path.exists():
+•	   raise AssertionError("Missing src/code_audit/contracts/versions.json (version anchor)")
+•	files[versions_path.relative_to(ROOT).as_posix()] = _sha256_file(versions_path)
+•	if vendor_dir.exists():
+for p in sorted([x for x in vendor_dir.rglob("*") if x.is_file()], key=lambda x: str(x)):
+files[p.relative_to(ROOT).as_posix()] = _sha256_file(p)
+*** End Patch
+*** Begin Patch
+*** Update File: scripts/refresh_golden_manifest.py
+@@
+ROOT = Path(file).resolve().parents[1]
+EXPECTED_DIR = ROOT / "tests" / "fixtures" / "expected"
+MANIFEST_PATH = ROOT / "tests" / "contracts" / "golden_fixtures_manifest.json"
++VERSIONS_PATH = ROOT / "src" / "code_audit" / "contracts" / "versions.json"
+@@
+def build_manifest() -> dict:
+files: dict[str, str] = {}
+•	Version anchor is part of contract governance for goldens.
+•	if not VERSIONS_PATH.exists():
+•	   raise SystemExit(f"Missing version anchor: {VERSIONS_PATH.relative_to(ROOT)}")
+•	files[VERSIONS_PATH.relative_to(ROOT).as_posix()] = _sha256_file(VERSIONS_PATH)
+•	for p in iter_expected_json_files():
+rel = p.relative_to(ROOT).as_posix()
+files[rel] = _sha256_file(p)
+*** End Patch
+*** Begin Patch
+*** Update File: tests/test_golden_manifest_requires_signal_logic_bump.py
+@@
+def _current_expected_fixture_hashes() -> dict[str, str]:
+expected_dir = ROOT / "tests" / "fixtures" / "expected"
+•	versions_path = ROOT / "src" / "code_audit" / "contracts" / "versions.json"
+files: dict[str, str] = {}
+•	if not versions_path.exists():
+•	   raise AssertionError("Missing src/code_audit/contracts/versions.json (version anchor)")
+•	files[versions_path.relative_to(ROOT).as_posix()] = _sha256_file(versions_path)
+•	for p in sorted(expected_dir.rglob("*.json"), key=lambda x: str(x)):
+files[p.relative_to(ROOT).as_posix()] = _sha256_file(p)
+return files
+*** End Patch
+continue generating diffs in this progression
+*** Begin Patch
+*** Update File: scripts/generate_release_bom.py
+@@
+ROOT = Path(file).resolve().parents[1]
+DIST = ROOT / "dist"
+Producer-side semantic manifests that must be shipped into dist/ and attested in the BOM.
+TREESITTER_MANIFEST_SRC = ROOT / "tests" / "contracts" / "treesitter_manifest.json"
+TREESITTER_MANIFEST_DIST = DIST / "contracts" / "treesitter_manifest.json"
++# Contract version anchor (single source of truth for signal logic version)
++CONTRACT_VERSIONS_SRC = ROOT / "src" / "code_audit" / "contracts" / "versions.json"
++CONTRACT_VERSIONS_DIST = DIST / "contracts" / "versions.json"
++
+Release-mode strictness toggle:
+- If RELEASE_ENABLE_JS_TS=true, treesitter_manifest becomes REQUIRED.
+RELEASE_ENABLE_JS_TS = (os.environ.get("RELEASE_ENABLE_JS_TS", "") or "").strip().lower() in ("1", "true", "yes", "y", "on")
+@@
+def generate_release_bom(*, write: bool = True) -> dict[str, Any]:
+@@
+artifacts: dict[str, Any] = {}
+ # --- existing artifact population continues ---
+•	---------------------------------------------------------------------
+•	Contract versions attestation (version anchor)
+•	---------------------------------------------------------------------
+•	if not CONTRACT_VERSIONS_SRC.exists():
+•	   raise SystemExit(
+•	       f"[release-bom] missing contract version anchor: {CONTRACT_VERSIONS_SRC.relative_to(ROOT)}"
+•	   )
+•	_copy_into_dist_path(CONTRACT_VERSIONS_SRC, CONTRACT_VERSIONS_DIST)
+•	versions_sha = _sha256_file(CONTRACT_VERSIONS_DIST)
+•	versions_obj = _load_json(CONTRACT_VERSIONS_DIST)
+•	artifacts["contract_versions"] = {
+•	   "path": str(CONTRACT_VERSIONS_DIST.relative_to(ROOT)),
+•	   "sha256": versions_sha,
+•	   "schema_version": int(versions_obj.get("schema_version", 0) or 0),
+•	   "signal_logic_version": str(versions_obj.get("signal_logic_version", "") or ""),
+•	}
+•	---------------------------------------------------------------------
+Absolute strictest mode: explicit JS/TS surface declaration
+@@
+js_ts_surface = bool(RELEASE_ENABLE_JS_TS)
+artifacts["js_ts_surface"] = js_ts_surface
+*** End Patch
+*** Begin Patch
+*** Update File: schemas/release_bom.schema.json
+@@
+"type": "object",
+"additionalProperties": false,
+"required": ["js_ts_surface"],
+"properties": {
+"js_ts_surface": { "type": "boolean" },
+•	   "contract_versions": { "$ref": "#/$defs/contract_versions_artifact" },
+   "treesitter_manifest": { "$ref": "#/$defs/treesitter_manifest_artifact" }
+ }
+}
+},
+"$defs": {
+@@
+"signals_version": {
+"type": "string",
+"pattern": "^signals_v\d+$"
+},
+•	"contract_versions_artifact": {
+•	 "type": "object",
+•	 "additionalProperties": false,
+•	 "required": ["path", "sha256", "schema_version", "signal_logic_version"],
+•	 "properties": {
+•	   "path": {
+•	     "type": "string",
+•	     "pattern": "^dist/contracts/versions\\.json$"
+•	   },
+•	   "sha256": { "$ref": "#/$defs/sha256" },
+•	   "schema_version": { "type": "integer", "minimum": 1 },
+•	   "signal_logic_version": { "$ref": "#/$defs/signals_version" }
+•	 }
+•	},
+"treesitter_manifest_artifact": {
+"type": "object",
+"additionalProperties": false,
+"required": ["path", "sha256", "manifest_version", "signal_logic_version"],
+"properties": {
+*** End Patch
+*** Begin Patch
+*** Update File: scripts/check_release_bom_consistency.py
+@@
+def check_release_bom_consistency(bom: dict[str, Any]) -> None:
+@@
+artifacts = bom.get("artifacts") or {}
+@@
+js_ts_surface = artifacts.get("js_ts_surface")
+@@
+if js_ts_surface is True and ("treesitter_manifest" not in artifacts):
+raise AssertionError("artifacts.js_ts_surface=true requires artifacts.treesitter_manifest.")
+•	Contract versions attestation must always exist and be self-consistent.
+•	if "contract_versions" not in artifacts:
+•	   raise AssertionError("artifacts.contract_versions is required in the BOM.")
+•	cv = artifacts["contract_versions"]
+•	assert isinstance(cv, dict), "artifacts.contract_versions must be an object"
+•	ctx = "artifacts.contract_versions"
+•	rel_path = _req(cv, "path", ctx)
+•	expected_sha = _req(cv, "sha256", ctx)
+•	expected_schema_v = _req(cv, "schema_version", ctx)
+•	expected_slv = _req(cv, "signal_logic_version", ctx)
+•	
+•	p = (ROOT / rel_path).resolve()
+•	assert p.exists(), f"{ctx}.path does not exist: {rel_path}"
+•	got_sha = _sha256_file(p)
+•	assert got_sha == expected_sha, f"{ctx}.sha256 mismatch: expected={expected_sha} got={got_sha}"
+•	obj = json.loads(p.read_text(encoding="utf-8"))
+•	assert obj.get("schema_version") == expected_schema_v, f"{ctx}.schema_version mismatch vs file"
+•	assert obj.get("signal_logic_version") == expected_slv, f"{ctx}.signal_logic_version mismatch vs file"
+•	------------------------------------------------------------------
+Tree-sitter manifest attestation (if present in BOM, must exist in dist
+and sha256 must match).
+------------------------------------------------------------------
+*** End Patch
+*** Begin Patch
+*** Update File: scripts/check_release_bom_generator_gate.py
+@@
+if not issues:
+# If the treesitter manifest is referenced, require the shipped dist copy exists.
+arts = tmp_obj.get("artifacts") or {}
+if isinstance(arts, dict) and "treesitter_manifest" in arts:
+@@
+))
++
+•	   if not issues:
+•	       # contract_versions is required; ensure the dist artifact exists early.
+•	       arts = tmp_obj.get("artifacts") or {}
+•	       if isinstance(arts, dict) and "contract_versions" in arts:
+•	           a = arts["contract_versions"]
+•	           rel = a.get("path") if isinstance(a, dict) else None
+•	           p = (ROOT / rel).resolve() if isinstance(rel, str) else None
+•	           if p is None or not p.exists():
+•	               issues.append(_issue(
+•	                   "missing_dist_artifact",
+•	                   "release_bom.json:artifacts.contract_versions.path",
+•	                   "existing dist/contracts/versions.json",
+•	                   str(p) if p is not None else "<missing>",
+•	               ))
+*** End Patch
+*** Begin Patch
+*** Update File: tests/fixtures/expected/sample_repo_js_ts_eval.json
+@@
+"findings": [
+{
+"rule_id": "SEC_EVAL_JS_001",
+"path": "web/main.js",
+"message": "Use of eval(...) detected (JS/TS).",
+"location": { "line": 2, "col": 1 },
+•	 "evidence": { "callee": "eval" },
+•	 "language": "js"
+•	 "evidence": { "callee": "eval" }
+}
+]
+}
+*** End Patch
+*** Begin Patch
+*** Update File: tests/fixtures/expected/sample_repo_js_ts_all.json
+@@
+{
+"rule_id": "SEC_EVAL_JS_001",
+"path": "web/all_rules.js",
+"message": "Use of eval(...) detected (JS/TS).",
+"location": { "line": 5, "col": 1 },
+•	 "evidence": { "callee": "eval" },
+•	 "language": "js"
+•	 "evidence": { "callee": "eval" }
+},
+{
+"rule_id": "SEC_NEW_FUNCTION_JS_001",
+"path": "web/all_rules.js",
+"message": "Use of new Function(...) detected (JS/TS).",
+"location": { "line": 8, "col": 5 },
+•	 "evidence": { "constructor": "Function" },
+•	 "language": "js"
+•	 "evidence": { "constructor": "Function" }
+},
+{
+"rule_id": "EXC_EMPTY_CATCH_JS_001",
+"path": "web/all_rules.js",
+"message": "Empty catch block detected (JS/TS).",
+"location": { "line": 11, "col": 22 },
+•	 "evidence": { "type": "empty_catch" },
+•	 "language": "js"
+•	 "evidence": { "type": "empty_catch" }
+},
+{
+"rule_id": "GST_GLOBAL_THIS_MUTATION_001",
+"path": "web/all_rules.js",
+"message": "Assignment to globalThis.<property> detected (JS/TS).",
+"location": { "line": 14, "col": 1 },
+•	 "evidence": { "object": "globalThis" },
+•	 "language": "js"
+•	 "evidence": { "object": "globalThis" }
+},
+{
+"rule_id": "GST_GLOBAL_THIS_MUTATION_001",
+"path": "web/all_rules.js",
+"message": "Assignment to window.<property> detected (JS/TS).",
+"location": { "line": 15, "col": 1 },
+•	 "evidence": { "object": "window" },
+•	 "language": "js"
+•	 "evidence": { "object": "window" }
+}
+]
+}
+*** End Patch
+

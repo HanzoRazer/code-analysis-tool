@@ -37,3 +37,10 @@ RESCUE_PLAN.md
 
 # Generated CI artifacts (produced by observer workflow, uploaded via actions/upload-artifact)
 artifacts/
+
+# Vendored / third-party source trees
+skylos-main/
+bandit-1.9.4/
+radon-6.0.1/
+vulture-2.14/
+codeanalyzer-python-main/

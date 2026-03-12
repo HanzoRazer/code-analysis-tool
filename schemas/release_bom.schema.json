@@ -257,6 +257,38 @@
               }
             }
           }
+        },
+        "treesitter_manifest": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "sha256", "sha256_short", "file_count"],
+          "properties": {
+            "path": { "type": "string", "pattern": "^(dist/)?treesitter_manifest\\.json$" },
+            "sha256": { "$ref": "#/$defs/sha256" },
+            "sha256_short": { "$ref": "#/$defs/sha12" },
+            "file_count": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "contract_versions": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "sha256", "sha256_short", "signal_logic_version"],
+          "properties": {
+            "path": { "type": "string", "pattern": "^(dist/)?versions\\.json$" },
+            "sha256": { "$ref": "#/$defs/sha256" },
+            "sha256_short": { "$ref": "#/$defs/sha12" },
+            "signal_logic_version": { "type": "string", "minLength": 1 }
+          }
+        },
+        "js_ts_surface": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled", "rule_count", "analyzer_type"],
+          "properties": {
+            "enabled": { "type": "boolean", "const": true },
+            "rule_count": { "type": "integer", "minimum": 1 },
+            "analyzer_type": { "type": "string", "const": "js_ts_security" }
+          }
         }
       }
     },
