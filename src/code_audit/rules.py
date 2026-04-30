@@ -31,6 +31,9 @@ SEC_SQL_INJECTION_001 = "SEC_SQL_INJECTION_001"
 SEC_PICKLE_LOAD_001 = "SEC_PICKLE_LOAD_001"
 SEC_YAML_UNSAFE_001 = "SEC_YAML_UNSAFE_001"
 
+# ── Silent Fallback (public) ────────────────────────────────────────
+SF_INCOMPLETE_DISPATCH_001 = "SF_INCOMPLETE_DISPATCH_001"
+
 # ── Buckets ─────────────────────────────────────────────────────────
 
 PUBLIC_RULE_IDS: list[str] = sorted([
@@ -49,6 +52,8 @@ PUBLIC_RULE_IDS: list[str] = sorted([
     SEC_SQL_INJECTION_001,
     SEC_PICKLE_LOAD_001,
     SEC_YAML_UNSAFE_001,
+    # Silent Fallback
+    SF_INCOMPLETE_DISPATCH_001,
 ])
 
 EXPERIMENTAL_RULE_IDS: list[str] = sorted([

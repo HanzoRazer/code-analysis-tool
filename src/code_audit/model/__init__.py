@@ -43,3 +43,4 @@ class AnalyzerType(str, Enum):
     ROUTERS = "routers"
     SQL = "sql"
     JS_TS_SECURITY = "js_ts_security"
+    SILENT_FALLBACK = "silent_fallback"
