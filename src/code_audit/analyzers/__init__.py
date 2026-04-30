@@ -111,6 +111,10 @@ def __getattr__(name: str):
     if name == "analyze_coupling":
         from .vue_coupling import analyze_coupling
         return analyze_coupling
+    # Silent fallback analyzer
+    if name == "SilentFallbackAnalyzer":
+        from .silent_fallback import SilentFallbackAnalyzer
+        return SilentFallbackAnalyzer
     # JS/TS tree-sitter analyzers
     if name == "JsTsSecurityPreviewAnalyzer":
         from .js_ts_security import JsTsSecurityPreviewAnalyzer
