@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schema_graph_bundle_schema_v1",
+  "schema_version": "schema_graph_bundle_schema_v1",
+  "title": "Schema Graph Bundle",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "ref_closure",
+    "ref_closure_sha256",
+    "ref_edges",
+    "ref_edges_sha256"
+  ],
+  "properties": {
+    "ref_closure": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/closure_record" },
+      "uniqueItems": true
+    },
+    "ref_closure_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "ref_edges": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/edge_record" },
+      "uniqueItems": true
+    },
+    "ref_edges_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["closure_files", "edges"],
+      "properties": {
+        "closure_files": { "type": "integer", "minimum": 0 },
+        "edges": { "type": "integer", "minimum": 0 }
+      }
+    }
+  },
+  "$defs": {
+    "dist_schema_path": {
+      "type": "string",
+      "pattern": "^dist/.+\\.schema\\.json$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "sha12": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{12}$"
+    },
+    "edge_kind": {
+      "type": "string",
+      "enum": [
+        "direct",
+        "allOf",
+        "anyOf",
+        "oneOf",
+        "not",
+        "if",
+        "then",
+        "else",
+        "items",
+        "additionalProperties",
+        "properties",
+        "patternProperties",
+        "dependentSchemas",
+        "definitions",
+        "$defs",
+        "unknown"
+      ]
+    },
+    "trace_kind": {
+      "type": "string",
+      "enum": [
+        "allOf",
+        "anyOf",
+        "oneOf",
+        "not",
+        "if",
+        "then",
+        "else",
+        "items",
+        "additionalProperties",
+        "properties",
+        "patternProperties",
+        "dependentSchemas",
+        "definitions",
+        "$defs",
+        "unknown"
+      ]
+    },
+    "closure_record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "canonical_sha256", "canonical_sha256_short"],
+      "properties": {
+        "path": { "$ref": "#/$defs/dist_schema_path" },
+        "canonical_sha256": { "$ref": "#/$defs/sha256" },
+        "canonical_sha256_short": { "$ref": "#/$defs/sha12" }
+      }
+    },
+    "edge_record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "from",
+        "to",
+        "kind_structural",
+        "kind_semantic",
+        "kind_trace_compact",
+        "kind_trace_sha256_short"
+      ],
+      "properties": {
+        "from": { "$ref": "#/$defs/dist_schema_path" },
+        "to": { "$ref": "#/$defs/dist_schema_path" },
+        "kind_structural": { "$ref": "#/$defs/edge_kind" },
+        "kind_semantic": { "$ref": "#/$defs/edge_kind" },
+        "kind_trace_compact": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/trace_kind" },
+          "uniqueItems": true
+        },
+        "kind_trace_sha256_short": { "$ref": "#/$defs/sha12" }
+      }
+    }
+  }
+}
