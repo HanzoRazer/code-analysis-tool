@@ -9,10 +9,17 @@ An object's validity depends on a relationship *between* two or more of its fiel
 `EMPTY`," "a total of 0 must mean the cart is marked empty." The constructor or validator
 enforces the relationship as a **single implication** (`A ⇒ B`) and stops there.
 
-The problem is that a coupling rule almost never means just one implication. If the two
-fields are genuinely coupled, the *inverse* is also part of the invariant. Checking only
-`A ⇒ B` leaves the state `¬A ∧ B` unguarded — a value that satisfies every explicit check
-yet contradicts the concept the type is supposed to model.
+The problem is that a coupling rule frequently intends *equivalence* rather than a single
+implication. When the two fields are meant to encode the **same domain fact** — or
+otherwise stand in a true equivalence — the *inverse* is also part of the invariant, and
+checking only `A ⇒ B` leaves the state `¬A ∧ B` unguarded: a value that satisfies every
+explicit check yet contradicts the concept the type is supposed to model.
+
+This applies **only when the domain meaning implies equivalence.** Not every implication
+implies its converse — some one-way constraints legitimately intend `¬A ∧ B` to be legal
+(see [How a Checker Could Detect It](#how-a-checker-could-detect-it) for those cases). The
+gap is under-specifying a coupling as a single implication when the domain actually means
+"exactly when."
 
 **The state space, for two coupled boolean-ish fields:**
 
@@ -59,8 +66,9 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class Position:
-    is_open: bool
-    offset: float  # measured relative to the effective origin
+    is_open: bool   # True exactly when the position sits at the effective origin
+    offset: float   # distance from the effective origin; 0.0 means "at the origin"
+    # Domain invariant: `is_open` and `offset == 0.0` encode the SAME fact — they must agree.
 
     def __post_init__(self) -> None:
         # Forward: A ⇒ B  (the direction people usually remember)
@@ -82,7 +90,8 @@ legal object in an illegal state.
 2. **Each direction gets its own diagnostic** — the error names the specific rule broken,
    so the fix is obvious.
 3. **Downstream code can trust the type** — "can't happen" branches genuinely can't,
-   because the type system + constructor jointly forbid the state.
+   because the constructor forbids the illegal state at the boundary (the static type
+   contract documents it; the runtime guard enforces it).
 4. **It documents the real invariant** — the pair of guards *is* the specification, in
    executable form, where it can't drift from the prose.
 
@@ -110,6 +119,20 @@ High-signal shape: a boolean field and a companion field compared against a sent
 (`== 0`, `is None`, `== ""`, `len(...) == 0`) appear together in exactly one guard. Report
 it as *possible incomplete invariant* (warning, not error) — the inverse is sometimes
 deliberately legal, so this is a review prompt, not a certainty.
+
+**Intentional asymmetries that should NOT be "fixed" by adding a mirror guard** — and are
+exactly why this stays warning-level:
+
+- **Derived / cache flags** — a memoized `is_ready` that a value can transiently satisfy
+  before the flag is recomputed.
+- **Backward-compat fields** — a field kept deliberately permissive so old data still loads.
+- **Lossy summary booleans** — a coarse `has_any` over data that can legitimately be zero
+  for reasons the boolean doesn't capture.
+- **Transitional / permissive schemas** — a migration window that intends `¬A ∧ B` to be
+  tolerated until the backfill completes.
+
+In each of these the fields do *not* encode the same fact, so equivalence is the wrong
+model and the finding is a false positive.
 
 ## Alternatives Considered
 
