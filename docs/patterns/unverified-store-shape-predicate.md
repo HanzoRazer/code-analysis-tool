@@ -82,7 +82,7 @@ def index_category(row):
 # 3. CANONICAL COMPARATOR: the one place that knows the value rules.
 def category_matches(stored, requested):
     if not requested:            return True          # no filter → everything
-    if not stored:               return True          # absent → lenient, don't silently drop
+    if not stored:               return True          # absent-handling POLICY — see caveat below
     return _normalize(stored) == _normalize(requested)
 
 # Every filter/count/tree call site now reads via index_category() and compares via
@@ -90,6 +90,22 @@ def category_matches(stored, requested):
 ```
 
 Reading `row["category"]` directly is the defect; it was never a key of the stored shape.
+
+**Absent-value handling is a policy decision, not a default.** The `if not stored: return True`
+line above makes *missing* match — the right call when older records legitimately predate the
+field and dropping them would be a data-loss bug. It is **not** universal. Decide per field, and
+make the choice explicit in the one comparator:
+
+- **absent → lenient (match)** — when missing means "written before this field existed" and
+  excluding it would silently under-return. (The case shown.)
+- **absent → no match** — when the field is a required discriminator and a missing value should
+  *fail closed* rather than broaden results (e.g. tenant/owner scoping, security filters).
+- **absent → explicit error or telemetry** — when a missing value signals corruption or an
+  incomplete migration you want surfaced, not absorbed.
+
+The point of the pattern is not "be lenient"; it is that whichever policy you choose lives in
+**one** comparator, is chosen deliberately, and is pinned by the seed-and-read gate — so it
+can't vary silently across call sites.
 
 ## Why This Works
 
@@ -113,6 +129,12 @@ Reading `row["category"]` directly is the defect; it was never a key of the stor
   they read the *same* verified location and share value semantics.
 - A store call raises `unexpected keyword argument` for a field the writer clearly accepts —
   the read and write paths grew apart.
+
+**When it's overkill:** if you own the projection and it trivially round-trips the field
+top-level, a type or a single unit test already covers you. The seed-and-read gate earns its
+cost where the persisted form is *non-obvious or hard to inspect* — a separate index/DTO, a
+third-party or managed datastore, a migration in flight. This is a targeted debugging/design
+technique for shape ambiguity, not mandatory architecture for every store read.
 
 ## How a Checker Could Detect It
 
