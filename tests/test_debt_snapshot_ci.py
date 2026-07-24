@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -63,7 +64,11 @@ def test_debt_snapshot_out_rejects_non_temp_absolute_path_in_ci() -> None:
         )
 
         assert result.returncode == 2, result.stdout + "\n" + result.stderr
-        assert result.stderr.strip() == "error: --out absolute paths must stay within /tmp in CI"
+        temp_root = Path(tempfile.gettempdir()).resolve()
+        assert (
+            result.stderr.strip()
+            == f"error: --out absolute paths must stay within {temp_root} in CI"
+        )
         assert not out.exists()
     finally:
         out.unlink(missing_ok=True)

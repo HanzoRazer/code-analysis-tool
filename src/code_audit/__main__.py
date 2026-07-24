@@ -139,14 +139,14 @@ def _reject_unsafe_out_path(
     return resolved
 
 
-def _allow_ci_temp_absolute_out_path(candidate: Path, *, flag: str) -> Path | None:
-    """Allow CI absolute outputs only inside the system temp directory."""
+def _validate_ci_temp_absolute_out_path(candidate: Path, *, flag: str) -> Path | None:
+    """Validate CI absolute outputs stay inside the system temp directory."""
     resolved = candidate.resolve()
     temp_root = Path(tempfile.gettempdir()).resolve()
     if resolved == temp_root or temp_root in resolved.parents:
         return resolved
     print(
-        f"error: {flag} absolute paths must stay within {temp_root.as_posix()} in CI",
+        f"error: {flag} absolute paths must stay within {temp_root} in CI",
         file=sys.stderr,
     )
     return None
@@ -1420,7 +1420,7 @@ def _handle_debt(args: argparse.Namespace) -> int:
             if _is_running_in_ci() and ci_mode:
                 requested_out: Path = Path(args.snapshot_out)
                 if requested_out.is_absolute():
-                    out_path = _allow_ci_temp_absolute_out_path(
+                    out_path = _validate_ci_temp_absolute_out_path(
                         requested_out,
                         flag="--out",
                     )
