@@ -43,21 +43,21 @@ class TestDebtSnapshotParity:
         work = tmp_path / "repo"
         shutil.copytree(FIXTURE_DEBT, work)
 
-        # CI mode requires relative paths inside artifacts/
-        (tmp_path / "artifacts").mkdir(exist_ok=True)
+        # CI mode resolves --out against the scan root and requires artifacts/
+        (work / "artifacts").mkdir(exist_ok=True)
         cmd = [
             sys.executable, "-m", "code_audit",
             "debt", "snapshot", str(work),
             "--ci",
             "--out", "artifacts/snapshot.json",
         ]
-        r = subprocess.run(cmd, env=_cli_env(), cwd=tmp_path, text=True, capture_output=True)
+        r = subprocess.run(cmd, env=_cli_env(), cwd=work, text=True, capture_output=True)
         assert r.returncode == 0, (
             f"CLI debt snapshot failed with exit {r.returncode}\n"
             f"stdout: {r.stdout}\nstderr: {r.stderr}"
         )
 
-        cli_bytes = (tmp_path / "artifacts" / "snapshot.json").read_text(encoding="utf-8")
+        cli_bytes = (work / "artifacts" / "snapshot.json").read_text(encoding="utf-8")
 
         # API snapshot
         api_dict = snapshot_debt(work, ci_mode=True)
@@ -72,8 +72,8 @@ class TestDebtSnapshotParity:
         work = tmp_path / "repo"
         shutil.copytree(FIXTURE_DEBT, work)
 
-        # CI mode requires relative paths inside artifacts/
-        (tmp_path / "artifacts").mkdir(exist_ok=True)
+        # CI mode resolves --out against the scan root and requires artifacts/
+        (work / "artifacts").mkdir(exist_ok=True)
         for name in ("snap_a.json", "snap_b.json"):
             r = subprocess.run(
                 [
@@ -81,11 +81,13 @@ class TestDebtSnapshotParity:
                     "debt", "snapshot", str(work),
                     "--ci", "--out", f"artifacts/{name}",
                 ],
-                env=_cli_env(), cwd=tmp_path, text=True, capture_output=True,
+                env=_cli_env(), cwd=work, text=True, capture_output=True,
             )
             assert r.returncode == 0
 
-        assert (tmp_path / "artifacts" / "snap_a.json").read_bytes() == (tmp_path / "artifacts" / "snap_b.json").read_bytes()
+        assert (work / "artifacts" / "snap_a.json").read_bytes() == (
+            work / "artifacts" / "snap_b.json"
+        ).read_bytes()
 
 
 # ── debt compare parity ─────────────────────────────────────────────

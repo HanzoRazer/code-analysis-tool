@@ -17,6 +17,7 @@ import subprocess
 from pathlib import Path
 
 import jsonschema
+import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -102,7 +103,9 @@ def test_release_bom_tag_matches_pyproject_version_on_tagged_ci() -> None:
     """On tagged CI, tag vX.Y.Z must match pyproject.toml version X.Y.Z."""
     is_tagged, tag = _is_tagged_ci()
     if not is_tagged:
-        return
+        pytest.skip(
+            "Tagged-CI release gate; requires CI=true and GITHUB_REF_NAME=vX.Y.Z"
+        )
 
     _build_bom()
     bom = json.loads(OUT.read_text(encoding="utf-8"))
@@ -186,7 +189,9 @@ def test_release_requires_openapi_snapshot_and_manifest_on_tagged_ci() -> None:
     """
     is_tagged, tag = _is_tagged_ci()
     if not is_tagged:
-        return
+        pytest.skip(
+            "Tagged-CI release gate; requires CI=true and GITHUB_REF_NAME=vX.Y.Z"
+        )
 
     _build_bom()
     bom = json.loads(OUT.read_text(encoding="utf-8"))
@@ -231,7 +236,9 @@ def test_release_bom_validates_endpoint_registry_against_schema_on_tagged_ci() -
     """
     is_tagged, tag = _is_tagged_ci()
     if not is_tagged:
-        return
+        pytest.skip(
+            "Tagged-CI release gate; requires CI=true and GITHUB_REF_NAME=vX.Y.Z"
+        )
 
     _build_bom()
     assert OUT.exists(), "release_bom.json not generated"
@@ -294,7 +301,9 @@ def test_release_bom_enforces_endpoint_registry_sorted_unique_on_tagged_ci() -> 
     """
     is_tagged, tag = _is_tagged_ci()
     if not is_tagged:
-        return
+        pytest.skip(
+            "Tagged-CI release gate; requires CI=true and GITHUB_REF_NAME=vX.Y.Z"
+        )
 
     _build_bom()
     assert OUT.exists(), "release_bom.json not generated"

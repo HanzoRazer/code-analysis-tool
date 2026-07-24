@@ -2,21 +2,24 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
 
-import pytest
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
-def _run(*args: str) -> subprocess.CompletedProcess[str]:
+def _run(*args: str, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
     env = dict(**os.environ)
-    env["PYTHONPATH"] = str(REPO_ROOT / "src") + (":" + env.get("PYTHONPATH","") if env.get("PYTHONPATH") else "")
+    env["PYTHONPATH"] = str(REPO_ROOT / "src") + (
+        os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else ""
+    )
+    # --ci requires CI=true; path guards then require relative --out under scan-root/artifacts/
     env["CI"] = "true"
     return subprocess.run(
         [sys.executable, "-m", "code_audit", *args],
+        cwd=str(cwd) if cwd else None,
         capture_output=True,
         text=True,
         env=env,
@@ -24,18 +27,22 @@ def _run(*args: str) -> subprocess.CompletedProcess[str]:
 
 
 def test_debt_snapshot_out_ci_is_deterministic(tmp_path: Path) -> None:
-    root = REPO_ROOT / "tests" / "fixtures" / "sample_repo_debt"
-    out1 = tmp_path / "snap1.json"
-    out2 = tmp_path / "snap2.json"
+    work = tmp_path / "repo"
+    shutil.copytree(REPO_ROOT / "tests" / "fixtures" / "sample_repo_debt", work)
+    (work / "artifacts").mkdir()
 
-    r1 = _run("debt", "snapshot", str(root), "--out", str(out1), "--ci")
+    r1 = _run(
+        "debt", "snapshot", str(work), "--out", "artifacts/snap1.json", "--ci", cwd=work
+    )
     assert r1.returncode == 0, r1.stdout + "\n" + r1.stderr
 
-    r2 = _run("debt", "snapshot", str(root), "--out", str(out2), "--ci")
+    r2 = _run(
+        "debt", "snapshot", str(work), "--out", "artifacts/snap2.json", "--ci", cwd=work
+    )
     assert r2.returncode == 0, r2.stdout + "\n" + r2.stderr
 
-    t1 = out1.read_text(encoding="utf-8")
-    t2 = out2.read_text(encoding="utf-8")
+    t1 = (work / "artifacts" / "snap1.json").read_text(encoding="utf-8")
+    t2 = (work / "artifacts" / "snap2.json").read_text(encoding="utf-8")
     assert t1 == t2, "CI snapshots should be byte-identical"
 
     data = json.loads(t1)
@@ -46,19 +53,28 @@ def test_debt_snapshot_out_ci_is_deterministic(tmp_path: Path) -> None:
 
 
 def test_debt_compare_file_vs_file(tmp_path: Path) -> None:
-    clean = REPO_ROOT / "tests" / "fixtures" / "repos" / "clean_project"
-    debt = REPO_ROOT / "tests" / "fixtures" / "sample_repo_debt"
+    clean = tmp_path / "clean"
+    debt = tmp_path / "debt"
+    shutil.copytree(REPO_ROOT / "tests" / "fixtures" / "repos" / "clean_project", clean)
+    shutil.copytree(REPO_ROOT / "tests" / "fixtures" / "sample_repo_debt", debt)
+    (clean / "artifacts").mkdir()
+    (debt / "artifacts").mkdir()
 
-    baseline = tmp_path / "baseline.json"
-    current = tmp_path / "current.json"
-
-    rb = _run("debt", "snapshot", str(clean), "--out", str(baseline), "--ci")
+    rb = _run(
+        "debt", "snapshot", str(clean), "--out", "artifacts/baseline.json", "--ci",
+        cwd=clean,
+    )
     assert rb.returncode == 0, rb.stdout + "\n" + rb.stderr
 
-    rc = _run("debt", "snapshot", str(debt), "--out", str(current), "--ci")
+    rc = _run(
+        "debt", "snapshot", str(debt), "--out", "artifacts/current.json", "--ci",
+        cwd=debt,
+    )
     assert rc.returncode == 0, rc.stdout + "\n" + rc.stderr
 
-    # clean baseline vs debt current should be a ratchet violation (new debt introduced)
+    baseline = clean / "artifacts" / "baseline.json"
+    current = debt / "artifacts" / "current.json"
+
     rcmp = _run(
         "debt",
         "compare",
@@ -69,6 +85,7 @@ def test_debt_compare_file_vs_file(tmp_path: Path) -> None:
         str(current),
         "--ci",
         "--json",
+        cwd=debt,
     )
     assert rcmp.returncode == 1, rcmp.stdout + "\n" + rcmp.stderr
 

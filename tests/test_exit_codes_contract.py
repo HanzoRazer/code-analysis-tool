@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -20,14 +21,16 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
-def _run(*args: str) -> subprocess.CompletedProcess[str]:
+def _run(*args: str, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
     env = {**os.environ}
     env["PYTHONPATH"] = str(REPO_ROOT / "src") + (
-        ":" + env.get("PYTHONPATH", "") if env.get("PYTHONPATH") else ""
+        os.pathsep + env.get("PYTHONPATH", "") if env.get("PYTHONPATH") else ""
     )
+    # --ci requires CI=true; path guards require relative --out under scan-root/artifacts/
     env["CI"] = "true"
     return subprocess.run(
         [sys.executable, "-m", "code_audit", *args],
+        cwd=str(cwd) if cwd else None,
         capture_output=True,
         text=True,
         env=env,
@@ -41,56 +44,75 @@ class TestDebtExitCodes:
 
     def test_debt_compare_clean_vs_baseline_returns_0(self, tmp_path: Path) -> None:
         """Same snapshot as both baseline and current → exit 0."""
-        root = REPO_ROOT / "tests" / "fixtures" / "sample_repo_debt"
-        snap = tmp_path / "snap.json"
+        work = tmp_path / "repo"
+        shutil.copytree(REPO_ROOT / "tests" / "fixtures" / "sample_repo_debt", work)
+        (work / "artifacts").mkdir()
 
-        r = _run("debt", "snapshot", str(root), "--out", str(snap), "--ci")
+        r = _run(
+            "debt", "snapshot", str(work), "--out", "artifacts/snap.json", "--ci",
+            cwd=work,
+        )
         assert r.returncode == 0, r.stderr
+        snap = work / "artifacts" / "snap.json"
 
-        # Compare snapshot against itself → no new debt
         rc = _run(
-            "debt", "compare", str(root),
+            "debt", "compare", str(work),
             "--baseline", str(snap),
             "--current", str(snap),
             "--ci",
+            cwd=work,
         )
         assert rc.returncode == 0, rc.stderr
 
     def test_debt_compare_with_new_debt_returns_1(self, tmp_path: Path) -> None:
         """Clean baseline vs debt-laden current → exit 1."""
-        clean = REPO_ROOT / "tests" / "fixtures" / "repos" / "clean_project"
-        debt = REPO_ROOT / "tests" / "fixtures" / "sample_repo_debt"
+        clean = tmp_path / "clean"
+        debt = tmp_path / "debt"
+        shutil.copytree(REPO_ROOT / "tests" / "fixtures" / "repos" / "clean_project", clean)
+        shutil.copytree(REPO_ROOT / "tests" / "fixtures" / "sample_repo_debt", debt)
+        (clean / "artifacts").mkdir()
+        (debt / "artifacts").mkdir()
 
-        baseline = tmp_path / "baseline.json"
-        current = tmp_path / "current.json"
-
-        rb = _run("debt", "snapshot", str(clean), "--out", str(baseline), "--ci")
+        rb = _run(
+            "debt", "snapshot", str(clean), "--out", "artifacts/baseline.json", "--ci",
+            cwd=clean,
+        )
         assert rb.returncode == 0, rb.stderr
 
-        rc = _run("debt", "snapshot", str(debt), "--out", str(current), "--ci")
+        rc = _run(
+            "debt", "snapshot", str(debt), "--out", "artifacts/current.json", "--ci",
+            cwd=debt,
+        )
         assert rc.returncode == 0, rc.stderr
 
         rcmp = _run(
             "debt", "compare", str(debt),
-            "--baseline", str(baseline),
-            "--current", str(current),
+            "--baseline", str(clean / "artifacts" / "baseline.json"),
+            "--current", str(debt / "artifacts" / "current.json"),
             "--ci", "--json",
+            cwd=debt,
         )
         assert rcmp.returncode == 1, rcmp.stderr
 
     def test_debt_compare_missing_baseline_returns_2(self, tmp_path: Path) -> None:
         """Nonexistent baseline file → exit 2."""
-        debt = REPO_ROOT / "tests" / "fixtures" / "sample_repo_debt"
-        current = tmp_path / "current.json"
+        debt = tmp_path / "debt"
+        shutil.copytree(REPO_ROOT / "tests" / "fixtures" / "sample_repo_debt", debt)
+        (debt / "artifacts").mkdir()
 
-        rc = _run("debt", "snapshot", str(debt), "--out", str(current), "--ci")
+        rc = _run(
+            "debt", "snapshot", str(debt), "--out", "artifacts/current.json", "--ci",
+            cwd=debt,
+        )
         assert rc.returncode == 0, rc.stderr
+        current = debt / "artifacts" / "current.json"
 
         rcmp = _run(
             "debt", "compare", str(debt),
             "--baseline", str(tmp_path / "nonexistent.json"),
             "--current", str(current),
             "--ci",
+            cwd=debt,
         )
         assert rcmp.returncode == 2, rcmp.stdout + "\n" + rcmp.stderr
 
@@ -131,12 +153,12 @@ class TestDebtScanExitCodes:
 
     def test_scan_no_debt_returns_0(self) -> None:
         clean = REPO_ROOT / "tests" / "fixtures" / "repos" / "clean_project"
-        r = _run("debt", "scan", str(clean))
+        r = _run("debt", "scan", str(clean), "--ci")
         assert r.returncode == 0, r.stderr
 
     def test_scan_debt_present_returns_1(self) -> None:
         debt = REPO_ROOT / "tests" / "fixtures" / "sample_repo_debt"
-        r = _run("debt", "scan", str(debt))
+        r = _run("debt", "scan", str(debt), "--ci")
         assert r.returncode == 1, r.stderr
 
 
