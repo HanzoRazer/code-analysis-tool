@@ -14,7 +14,9 @@
     "files_expected_to_change": [
       ".github/workflows/pytest.yml",
       "pyproject.toml",
-      "patch_input.json"
+      "patch_input.json",
+      "tests/contracts/bom_manifest.json",
+      "docs/patterns/unverified-store-shape-predicate.md"
     ],
     "out_of_scope_notes": "No application logic or test assertions changed."
   },
@@ -22,11 +24,13 @@
     "base": "main",
     "head": "working-tree"
   },
-  "changed_files_count": 3,
+  "changed_files_count": 5,
   "changed_files_exact": [
     ".github/workflows/pytest.yml",
     "pyproject.toml",
-    "patch_input.json"
+    "patch_input.json",
+    "tests/contracts/bom_manifest.json",
+    "docs/patterns/unverified-store-shape-predicate.md"
   ],
   "diff_articulation": {
     "what_changed": [
