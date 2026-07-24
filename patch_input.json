@@ -1,0 +1,67 @@
+{
+  "schema_version": "cbsp21_patch_manifest_v1",
+  "patch_id": "CAT-0023",
+  "title": "Fix pytest CI API dependency setup",
+  "intent": "Unblock the pull request pytest workflow by installing the API extra where OpenAPI checks and API-backed tests run, and pin the FastAPI range plus TestClient dependency so the checked-in OpenAPI contract stays stable.",
+  "change_type": "ci",
+  "behavior_change": "compatible",
+  "risk_level": "low",
+  "scope": {
+    "paths_in_scope": [
+      ".github/workflows/",
+      "pyproject.toml",
+      "tests/contracts/openapi_manifest.json",
+      "patch_input.json"
+    ],
+    "files_expected_to_change": [
+      ".github/workflows/pytest.yml",
+      ".github/workflows/release.yml",
+      "pyproject.toml",
+      "tests/contracts/openapi_manifest.json",
+      "patch_input.json"
+    ],
+    "out_of_scope_notes": "No analyzer, insight, or application code changes. This patch only fixes CI/runtime dependency setup for API-backed validation and refreshes the stale OpenAPI manifest hash that would fail once pytest can run."
+  },
+  "diff_range": {
+    "base": "main",
+    "head": "working-tree"
+  },
+  "changed_files_count": 5,
+  "changed_files_exact": [
+    ".github/workflows/pytest.yml",
+    ".github/workflows/release.yml",
+    "pyproject.toml",
+    "tests/contracts/openapi_manifest.json",
+    "patch_input.json"
+  ],
+  "diff_articulation": {
+    "what_changed": [
+      "Updated the pytest workflow to install the API extra before running OpenAPI freshness checks and pytest",
+      "Updated the release workflow to install the API extra before running the full test suite",
+      "Pinned FastAPI below 0.128 and added httpx so the API extra includes a compatible TestClient stack that keeps the existing OpenAPI snapshot stable",
+      "Refreshed tests/contracts/openapi_manifest.json so its recorded snapshot hash matches the committed docs/openapi.json"
+    ],
+    "why_not_redundant": "The failing job stopped before pytest because refresh_openapi_snapshot.py could not import the FastAPI app without API dependencies. After reproducing locally, the current latest FastAPI line also changed the generated validation schema, so the API extra now pins to the latest compatible pre-0.128 release and includes httpx for TestClient. The OpenAPI manifest hash also had to be refreshed because it was already stale and would fail as soon as tests started running."
+  },
+  "verification": {
+    "commands_run": [
+      "python scripts/refresh_openapi_manifest.py",
+      "python scripts/refresh_openapi_snapshot.py",
+      "python scripts/validate_openapi_snapshot.py docs/openapi.json",
+      "python -m pytest tests/test_openapi_golden_endpoints.py tests/web_api/test_endpoints.py tests/test_openapi_manifest_requires_signal_logic_bump.py tests/test_openapi_snapshot_is_valid.py tests/test_release_openapi_registry_matches_snapshot.py -q"
+    ],
+    "test_results": [
+      "OpenAPI manifest refresh completed",
+      "OpenAPI snapshot freshness check passed",
+      "OpenAPI snapshot spec validation passed",
+      "28 targeted API/OpenAPI pytest tests passed in a clean dev+api virtualenv"
+    ],
+    "notes": "Validation was run in a fresh virtual environment using python -m pip install -e '.[dev,api]' so it matches the updated CI install path. The targeted pytest selection covers the API-backed paths and OpenAPI contract checks that were blocked by the missing dependency setup."
+  },
+  "file_context_coverage_percent": 100.0,
+  "metadata": {
+    "author": "GitHub Copilot",
+    "created_at": "2026-07-24T06:19:41Z",
+    "reviewers": []
+  }
+}

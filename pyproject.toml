@@ -24,7 +24,8 @@ dev = [
   "ruff>=0.4.0",
 ]
 api = [
-  "fastapi>=0.109.0",
+  "fastapi>=0.109.0,<0.128.0",
+  "httpx>=0.28.1",
   "uvicorn[standard]>=0.27.0",
   "pydantic>=2.0.0",
 ]
