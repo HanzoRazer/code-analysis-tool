@@ -1,0 +1,63 @@
+{
+  "schema_version": "cbsp21_patch_manifest_v1",
+  "patch_id": "CI-2026-07-24-rule-registry-sync",
+  "title": "Fix rule-registry-sync pytest setup",
+  "intent": "Make the rule-registry-sync pull_request job run its intended registry contract test without failing on missing or unrelated test dependencies.",
+  "change_type": "ci",
+  "behavior_change": "compatible",
+  "risk_level": "low",
+  "scope": {
+    "paths_in_scope": [
+      ".github/workflows/",
+      "."
+    ],
+    "files_expected_to_change": [
+      ".github/workflows/rule-registry-sync.yml",
+      "patch_input.json"
+    ],
+    "out_of_scope_notes": "No production Python code, schemas, registry data, or test logic changed. The fix is limited to CI workflow setup and the required governance manifest."
+  },
+  "diff_range": {
+    "base": "main",
+    "head": "working-tree"
+  },
+  "changed_files_count": 2,
+  "changed_files_exact": [
+    ".github/workflows/rule-registry-sync.yml",
+    "patch_input.json"
+  ],
+  "diff_articulation": {
+    "what_changed": [
+      "Updated rule-registry-sync workflow to install the existing dev extra before invoking pytest",
+      "Changed the workflow's registry contract gate from a broad -k expression to the specific test file tests/test_public_rules_registry_parity_contract.py",
+      "Added a populated patch_input.json manifest for CBSP21 governance"
+    ],
+    "why_not_redundant": "The failing job was not caused by registry drift. It failed because pytest was unavailable, and a broad -k selection still collected unrelated tests that need optional API dependencies. Installing the repo's existing dev extra and targeting the single intended contract test fixes the job with the smallest practical CI-only change."
+  },
+  "verification": {
+    "commands_run": [
+      "python scripts/needs_rule_registry_migration.py",
+      "python scripts/sync_rule_registry.py",
+      "python scripts/validate_rule_registry.py",
+      "python -m pip install -e '.[dev]'",
+      "python -m pytest tests/test_public_rules_registry_parity_contract.py -q",
+      "python -m pytest tests/test_cbsp21_schema.py -q",
+      "python - <<'PY' ... jsonschema.validate(instance=patch_input, schema=cbsp21 schema) ... PY"
+    ],
+    "test_results": [
+      "Rule registry migration check passed",
+      "Rule registry sync check passed",
+      "Rule registry schema validation passed",
+      "Targeted registry contract test passed in a clean temporary virtualenv",
+      "CBSP21 schema tests passed",
+      "patch_input.json validated against cbsp21/patch_input.schema.json"
+    ],
+    "notes": "The original CI log failed before running the contract gate because pytest was not installed. A local clean-venv reproduction also showed that the previous -k invocation could still fail during unrelated test collection due to optional FastAPI imports. Targeting the single contract test file avoids that unrelated dependency path while preserving the job's intent."
+  },
+  "file_context_coverage_percent": 100.0,
+  "metadata": {
+    "author": "GitHub Copilot",
+    "created_at": "2026-07-24T05:50:35Z",
+    "reviewers": []
+  }
+}
