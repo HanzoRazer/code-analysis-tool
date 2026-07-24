@@ -1,0 +1,144 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "drift_budget_signal_v1",
+  "title": "Drift Budget Signal",
+  "description": "Governed CI artifact emitted by the contract-parity-main-observer workflow. Schema changes require a signal_logic_version bump.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "producer", "episode", "provenance"],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "drift_budget_signal_v1"
+    },
+    "producer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repo", "workflow", "run_id", "run_attempt", "run_url", "sha"],
+      "properties": {
+        "repo": {
+          "type": "string",
+          "minLength": 1,
+          "description": "GitHub repository (owner/repo)."
+        },
+        "workflow": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Workflow file name (without path)."
+        },
+        "run_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "GitHub Actions run ID."
+        },
+        "run_attempt": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Run attempt number (1-based)."
+        },
+        "run_url": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Full URL to the workflow run."
+        },
+        "sha": {
+          "type": "string",
+          "minLength": 7,
+          "description": "Git commit SHA that triggered the run."
+        }
+      }
+    },
+    "episode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "group_key",
+        "first_detected_iso",
+        "status",
+        "unresolved_seconds",
+        "unresolved_human",
+        "budget_hours",
+        "breached",
+        "breach_seconds"
+      ],
+      "properties": {
+        "group_key": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Rolling issue identity key (e.g. 'contracts')."
+        },
+        "first_detected_iso": {
+          "type": "string",
+          "minLength": 1,
+          "description": "ISO 8601 timestamp of first-detected for the current drift episode."
+        },
+        "last_resolved_iso": {
+          "type": ["string", "null"],
+          "description": "ISO 8601 timestamp of last resolution, or null if never resolved."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["unresolved", "resolved"],
+          "description": "Current drift status."
+        },
+        "unresolved_seconds": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total unresolved time in seconds."
+        },
+        "unresolved_human": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Human-readable unresolved duration (e.g. '1d 10h 17m')."
+        },
+        "budget_hours": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Drift budget in hours."
+        },
+        "breached": {
+          "type": "boolean",
+          "description": "True if unresolved_seconds exceeds budget."
+        },
+        "breach_seconds": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Seconds over budget (0 if not breached)."
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ci_mode", "rotation"],
+      "properties": {
+        "ci_mode": {
+          "type": "boolean",
+          "description": "True when produced in CI (defense-in-depth marker)."
+        },
+        "rotation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["config_sha12", "schema_sha12", "schema_version"],
+          "properties": {
+            "config_sha12": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{12}$",
+              "description": "First 12 hex chars of oncall_rotation.json SHA-256."
+            },
+            "schema_sha12": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{12}$",
+              "description": "First 12 hex chars of oncall rotation JSON Schema SHA-256."
+            },
+            "schema_version": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Oncall rotation schema version string."
+            }
+          }
+        }
+      }
+    }
+  }
+}
