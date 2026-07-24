@@ -1399,23 +1399,28 @@ def _handle_debt(args: argparse.Namespace) -> int:
 
         # --out mode: write directly to file (CI-friendly)
         if getattr(args, "snapshot_out", None):
-            # In CI, prevent writes escaping ./artifacts.
+            # In CI, relative outputs must stay under the caller's ./artifacts/.
+            # Absolute paths remain supported here because debt snapshot tests
+            # and existing workflows use temp-file outputs outside artifacts/.
             if _is_running_in_ci() and ci_mode:
                 requested_out: Path = Path(args.snapshot_out)
-                out_path = _reject_unsafe_out_path(
-                    requested_out,
-                    flag="--out",
-                    base_dir=target,
-                )
-                if out_path is None:
-                    return ExitCode.ERROR
-                allowed = (target / "artifacts").resolve()
-                if not out_path.is_relative_to(allowed):
-                    print(
-                        "error: --out must be within artifacts/ when running in CI",
-                        file=sys.stderr,
+                if requested_out.is_absolute():
+                    out_path = requested_out
+                else:
+                    out_path = _reject_unsafe_out_path(
+                        requested_out,
+                        flag="--out",
+                        base_dir=Path.cwd(),
                     )
-                    return ExitCode.ERROR
+                    if out_path is None:
+                        return ExitCode.ERROR
+                    allowed = (Path.cwd() / "artifacts").resolve()
+                    if not out_path.is_relative_to(allowed):
+                        print(
+                            "error: --out must be within artifacts/ when running in CI",
+                            file=sys.stderr,
+                        )
+                        return ExitCode.ERROR
             else:
                 out_path = Path(args.snapshot_out)
             out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1726,17 +1731,17 @@ def main(argv: list[str] | None = None) -> int:
             if rc is not None:
                 return rc
 
-        # In CI, prevent writes escaping ./artifacts.
+        # In CI, relative outputs are anchored to the caller's ./artifacts/.
         if _is_running_in_ci() and ci_mode:
             requested_out = Path(args.out)
             out_path = _reject_unsafe_out_path(
                 requested_out,
                 flag="--out",
-                base_dir=scan_root,
+                base_dir=Path.cwd(),
             )
             if out_path is None:
                 return ExitCode.ERROR
-            allowed = (scan_root / "artifacts").resolve()
+            allowed = (Path.cwd() / "artifacts").resolve()
             if not out_path.is_relative_to(allowed):
                 print(
                     "error: --out must be within artifacts/ when running in CI",

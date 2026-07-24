@@ -1,56 +1,50 @@
 {
   "schema_version": "cbsp21_patch_manifest_v1",
-  "patch_id": "CAT-0024",
-  "title": "Fix pytest CI API dependency installation",
-  "intent": "Restore the Pytest workflow's ability to import the FastAPI app and keep the committed OpenAPI snapshot stable during CI.",
-  "change_type": "ci",
+  "patch_id": "CAT-0025",
+  "title": "Fix CI artifact path handling",
+  "intent": "Restore the Pytest workflow by making CI-mode CLI artifact outputs resolve to the caller's artifacts directory while preserving supported absolute debt snapshot outputs.",
+  "change_type": "code",
   "behavior_change": "compatible",
   "risk_level": "low",
   "scope": {
     "paths_in_scope": [
       ".github/workflows/",
-      "pyproject.toml"
+      "src/code_audit/"
     ],
     "files_expected_to_change": [
-      ".github/workflows/pytest.yml",
-      "pyproject.toml",
-      "patch_input.json",
-      "tests/contracts/bom_manifest.json",
-      "docs/patterns/unverified-store-shape-predicate.md"
+      "src/code_audit/__main__.py",
+      "patch_input.json"
     ],
-    "out_of_scope_notes": "No application logic or test assertions changed."
+    "out_of_scope_notes": "No analyzer logic, schemas, or test assertions changed."
   },
   "diff_range": {
     "base": "main",
     "head": "working-tree"
   },
-  "changed_files_count": 5,
+  "changed_files_count": 2,
   "changed_files_exact": [
-    ".github/workflows/pytest.yml",
-    "pyproject.toml",
-    "patch_input.json",
-    "tests/contracts/bom_manifest.json",
-    "docs/patterns/unverified-store-shape-predicate.md"
+    "src/code_audit/__main__.py",
+    "patch_input.json"
   ],
   "diff_articulation": {
     "what_changed": [
-      "Updated the Pytest workflow to install the api extra alongside dev dependencies before OpenAPI freshness checks and pytest.",
-      "Pinned the FastAPI dependency below 0.128.0 and added httpx to the api extra so the committed OpenAPI snapshot stays fresh and FastAPI TestClient imports cleanly in CI."
+      "Adjusted CI-mode debt snapshot output handling so relative --out paths resolve from the caller's working directory artifacts/ folder, while absolute output paths remain supported for existing debt snapshot workflows.",
+      "Adjusted CI-mode scan output handling so relative --out paths also resolve from the caller's working directory artifacts/ folder instead of the scan target root."
     ],
-    "why_not_redundant": "Without these dependency updates the workflow fails before tests with a missing FastAPI import, and newer FastAPI/Starlette combinations also drift the generated OpenAPI snapshot and require httpx for TestClient-based tests."
+    "why_not_redundant": "Without this change, CI subprocess tests write snapshot and scan artifacts into the scanned repo's artifacts/ directory instead of the caller's artifacts/ directory, causing missing-file failures in pytest. A separate deterministic debt snapshot contract also requires absolute output paths to keep working."
   },
   "verification": {
     "commands_run": [
       "python -m venv /tmp/code-audit-ci-fix",
       "source /tmp/code-audit-ci-fix/bin/activate && python -m pip install --upgrade pip && python -m pip install -e '.[dev,api]'",
-      "source /tmp/code-audit-ci-fix/bin/activate && python scripts/refresh_openapi_snapshot.py",
-      "source /tmp/code-audit-ci-fix/bin/activate && python -m pytest -q tests/web_api/test_endpoints.py::TestHealthEndpoint::test_health_returns_200 tests/test_openapi_snapshot_is_valid.py"
+      "source /tmp/code-audit-ci-fix/bin/activate && python -m pytest -q -o addopts='' tests/test_cli_api_parity_debt_ci.py tests/test_contract_parity_cli_api_scan_ci.py tests/test_debt_snapshot_ci.py tests/test_ci_never_calls_tier_label.py tests/test_cli_requires_ci_flag_under_ci_env.py",
+      "source /tmp/code-audit-ci-fix/bin/activate && python - <<'PY'\\nimport os, json, tempfile, shutil, subprocess, sys\\nfrom pathlib import Path\\nrepo = Path('.').resolve()\\nroot = repo / 'tests' / 'fixtures' / 'sample_repo_debt'\\ntmp = Path(tempfile.mkdtemp())\\nout = tmp / 'snap1.json'\\nenv = os.environ.copy()\\nenv['PYTHONPATH'] = str(repo / 'src')\\nenv['CI'] = 'true'\\nproc = subprocess.run([sys.executable, '-m', 'code_audit', 'debt', 'snapshot', str(root), '--out', str(out), '--ci'], env=env, capture_output=True, text=True)\\nassert proc.returncode == 0, proc.stderr\\nassert out.exists()\\ndata = json.loads(out.read_text())\\nassert data['schema_version'] == 'debt_snapshot_v1'\\nshutil.rmtree(tmp)\\nPY"
     ],
     "test_results": [
-      "OpenAPI snapshot freshness check passed in a fresh environment with dev+api extras installed.",
-      "Targeted FastAPI endpoint and OpenAPI snapshot validation tests passed."
+      "Targeted CI artifact-path pytest coverage passed: 13 tests across debt snapshot parity, scan parity, CI flag enforcement, and CI tier-label guard coverage.",
+      "A direct subprocess verification confirmed debt snapshot still succeeds with an absolute --out path in CI mode and writes a valid debt_snapshot_v1 artifact."
     ],
-    "notes": "Also reproduced the original failure in a separate fresh environment with only the dev extra installed: refresh_openapi_snapshot.py exited with \"No module named 'fastapi'\"."
+    "notes": "The failing GitHub Actions job reproduced as a missing artifacts/snapshot.json file because CLI CI-mode output paths were being anchored to the scan target root instead of the caller's working directory."
   },
   "file_context_coverage_percent": 100.0,
   "metadata": {
