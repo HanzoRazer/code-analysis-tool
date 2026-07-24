@@ -45,6 +45,30 @@ def test_debt_snapshot_out_ci_is_deterministic(tmp_path: Path) -> None:
     assert data["debt_count"] >= 1
 
 
+def test_debt_snapshot_out_rejects_non_temp_absolute_path_in_ci() -> None:
+    root = REPO_ROOT / "tests" / "fixtures" / "sample_repo_debt"
+    out = REPO_ROOT / "_forbidden_snapshot_out.json"
+    out.unlink(missing_ok=True)
+
+    env = dict(**os.environ)
+    env["PYTHONPATH"] = str(REPO_ROOT / "src") + (":" + env.get("PYTHONPATH","") if env.get("PYTHONPATH") else "")
+    env["CI"] = "true"
+
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "code_audit", "debt", "snapshot", str(root), "--out", str(out), "--ci"],
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+
+        assert result.returncode == 2, result.stdout + "\n" + result.stderr
+        assert result.stderr.strip() == "error: --out absolute paths must stay within /tmp in CI"
+        assert not out.exists()
+    finally:
+        out.unlink(missing_ok=True)
+
+
 def test_debt_compare_file_vs_file(tmp_path: Path) -> None:
     clean = REPO_ROOT / "tests" / "fixtures" / "repos" / "clean_project"
     debt = REPO_ROOT / "tests" / "fixtures" / "sample_repo_debt"

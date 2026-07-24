@@ -31,6 +31,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+import tempfile
 from pathlib import Path
 
 from code_audit import __version__
@@ -136,6 +137,19 @@ def _reject_unsafe_out_path(
             return None
 
     return resolved
+
+
+def _allow_ci_temp_absolute_out_path(candidate: Path, *, flag: str) -> Path | None:
+    """Allow CI absolute outputs only inside the system temp directory."""
+    resolved = candidate.resolve()
+    temp_root = Path(tempfile.gettempdir()).resolve()
+    if resolved == temp_root or temp_root in resolved.parents:
+        return resolved
+    print(
+        f"error: {flag} absolute paths must stay within {temp_root.as_posix()} in CI",
+        file=sys.stderr,
+    )
+    return None
 
 
 # ── Vibe tier thresholds ─────────────────────────────────────────────
@@ -1399,13 +1413,19 @@ def _handle_debt(args: argparse.Namespace) -> int:
 
         # --out mode: write directly to file (CI-friendly)
         if getattr(args, "snapshot_out", None):
-            # In CI, relative outputs must stay under the caller's ./artifacts/.
-            # Absolute paths remain supported here because debt snapshot tests
-            # and existing workflows use temp-file outputs outside artifacts/.
+            # In CI, relative outputs must stay under the caller's
+            # ./artifacts/. Absolute outputs stay supported only for temp-file
+            # workflows, which keeps deterministic snapshot tests working
+            # without allowing arbitrary filesystem writes.
             if _is_running_in_ci() and ci_mode:
                 requested_out: Path = Path(args.snapshot_out)
                 if requested_out.is_absolute():
-                    out_path = requested_out
+                    out_path = _allow_ci_temp_absolute_out_path(
+                        requested_out,
+                        flag="--out",
+                    )
+                    if out_path is None:
+                        return ExitCode.ERROR
                 else:
                     out_path = _reject_unsafe_out_path(
                         requested_out,
@@ -1731,7 +1751,9 @@ def main(argv: list[str] | None = None) -> int:
             if rc is not None:
                 return rc
 
-        # In CI, relative outputs are anchored to the caller's ./artifacts/.
+        # In CI, anchor relative outputs to the caller's ./artifacts/ instead
+        # of scan_root/artifacts/ so subprocess callers and GitHub Actions read
+        # back the file from the workspace they invoked the CLI from.
         if _is_running_in_ci() and ci_mode:
             requested_out = Path(args.out)
             out_path = _reject_unsafe_out_path(
