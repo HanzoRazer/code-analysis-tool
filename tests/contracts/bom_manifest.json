@@ -2,13 +2,13 @@
   "files": {
     "scripts/check_release_bom_consistency.py": {
       "mode": "ast",
-      "sha256": "f9d18cd6389bdfc5b11b0ebab3f92e5a1e9a699034e71401153cba3bcd0eb4d0",
-      "sha256_short": "f9d18cd6389b"
+      "sha256": "bc6f3457bd92cf3afd395f7193415311088934f7a420b63a82851e9dd0e339de",
+      "sha256_short": "bc6f3457bd92"
     },
     "scripts/generate_release_bom.py": {
       "mode": "ast",
-      "sha256": "297d266a3aa655234d01a70aa556232f771c58c72d5903dff5402dc488dd3510",
-      "sha256_short": "297d266a3aa6"
+      "sha256": "8ffe5c43ea2d8936289cb6b33e7dc68809a1d67b1cfdb76c8490b10bdeef5fab",
+      "sha256_short": "8ffe5c43ea2d"
     }
   },
   "json_files": {
