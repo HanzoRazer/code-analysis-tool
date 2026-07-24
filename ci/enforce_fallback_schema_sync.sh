@@ -19,18 +19,15 @@ fi
 
 echo "Checking fallback schemas/ against canonical $CANONICAL"
 
-canonical_list="$(mktemp)"
-fallback_list="$(mktemp)"
-trap 'rm -f "$canonical_list" "$fallback_list"' EXIT
+canonical_files="$(cd "$CANONICAL" && find . -type f -name '*.json' | sort)"
+fallback_files="$(cd "$FALLBACK" && find . -type f -name '*.json' | sort)"
 
-(cd "$CANONICAL" && find . -type f -name '*.json' | sort > "$canonical_list")
-(cd "$FALLBACK" && find . -type f -name '*.json' | sort > "$fallback_list")
-
-canonical_files="$(cat "$canonical_list")"
-missing_in_fallback="$(comm -23 "$canonical_list" "$fallback_list")"
-if [[ -n "$missing_in_fallback" ]]; then
-  echo "ERROR: Fallback schemas/ is missing canonical files:"
-  echo "$missing_in_fallback"
+if [[ "$canonical_files" != "$fallback_files" ]]; then
+  echo "ERROR: File sets differ between canonical and fallback schemas."
+  echo "Canonical:"
+  echo "$canonical_files"
+  echo "Fallback:"
+  echo "$fallback_files"
   exit 1
 fi
 
