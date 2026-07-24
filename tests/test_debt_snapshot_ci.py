@@ -12,10 +12,12 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
-def _run(*args: str) -> subprocess.CompletedProcess[str]:
+def _run(*args: str, extra_env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
     env = dict(**os.environ)
     env["PYTHONPATH"] = str(REPO_ROOT / "src") + (":" + env.get("PYTHONPATH","") if env.get("PYTHONPATH") else "")
     env["CI"] = "true"
+    if extra_env:
+        env.update(extra_env)
     return subprocess.run(
         [sys.executable, "-m", "code_audit", *args],
         capture_output=True,
@@ -51,16 +53,14 @@ def test_debt_snapshot_out_rejects_non_temp_absolute_path_in_ci() -> None:
     out = REPO_ROOT / "_forbidden_snapshot_out.json"
     out.unlink(missing_ok=True)
 
-    env = dict(**os.environ)
-    env["PYTHONPATH"] = str(REPO_ROOT / "src") + (":" + env.get("PYTHONPATH","") if env.get("PYTHONPATH") else "")
-    env["CI"] = "true"
-
     try:
-        result = subprocess.run(
-            [sys.executable, "-m", "code_audit", "debt", "snapshot", str(root), "--out", str(out), "--ci"],
-            capture_output=True,
-            text=True,
-            env=env,
+        result = _run(
+            "debt",
+            "snapshot",
+            str(root),
+            "--out",
+            str(out),
+            "--ci",
         )
 
         assert result.returncode == 2, result.stdout + "\n" + result.stderr

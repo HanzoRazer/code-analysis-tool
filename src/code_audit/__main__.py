@@ -1413,7 +1413,7 @@ def _handle_debt(args: argparse.Namespace) -> int:
 
         # --out mode: write directly to file (CI-friendly)
         if getattr(args, "snapshot_out", None):
-            # In CI, relative outputs must stay under the caller's
+            # In CI, relative outputs are expected to stay under the caller's
             # ./artifacts/. Absolute outputs stay supported only for temp-file
             # workflows, which keeps deterministic snapshot tests working
             # without allowing arbitrary filesystem writes.
