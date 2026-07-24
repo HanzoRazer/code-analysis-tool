@@ -1,22 +1,22 @@
 {
   "files": {
-    "scripts\\check_release_bom_consistency.py": {
+    "scripts/check_release_bom_consistency.py": {
       "mode": "ast",
-      "sha256": "bc6a784b7746cfa8b73d663fc87f0087d78b27d14396150cd545f639c7c934c6",
-      "sha256_short": "bc6a784b7746"
+      "sha256": "f9d18cd6389bdfc5b11b0ebab3f92e5a1e9a699034e71401153cba3bcd0eb4d0",
+      "sha256_short": "f9d18cd6389b"
     },
-    "scripts\\generate_release_bom.py": {
+    "scripts/generate_release_bom.py": {
       "mode": "ast",
-      "sha256": "6f0388b1bb5ac137ff34781190d43e9932505ff75403119a8c629cb2a9f8acab",
-      "sha256_short": "6f0388b1bb5a"
+      "sha256": "297d266a3aa655234d01a70aa556232f771c58c72d5903dff5402dc488dd3510",
+      "sha256_short": "297d266a3aa6"
     }
   },
   "json_files": {
-    "schemas\\release_audit_failure.schema.json": {
+    "schemas/release_audit_failure.schema.json": {
       "sha256": "2e5d6aefb7272ace1263e951a1c6875e7e39d14bbfefcc6b00a37b991477b327",
       "sha256_short": "2e5d6aefb727"
     },
-    "schemas\\release_bom.schema.json": {
+    "schemas/release_bom.schema.json": {
       "sha256": "f467ec627efd2732a10a23a3c334505c232fa2280809581544c9b40bcd6b48eb",
       "sha256_short": "f467ec627efd"
     }
