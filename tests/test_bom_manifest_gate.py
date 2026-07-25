@@ -5,12 +5,17 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 from ast_semantic_hash import semantic_hash_python_like_file  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST_PATH = ROOT / "tests" / "contracts" / "bom_manifest.json"
+
+# AST dumps vary by interpreter; hashes are recorded on CI's Python 3.11.
+_CI_PYTHON = (3, 11)
 
 
 def _load_manifest() -> dict:
@@ -28,8 +33,17 @@ def test_bom_manifest_script_ast_hashes_match() -> None:
     """
     Every script listed in the BOM manifest 'files' section must have
     an AST hash matching the recorded value.
-    If this fails, run: python scripts/refresh_bom_manifest.py
+
+    Enforced only on Python 3.11 (CI). Other interpreters skip — AST dumps
+    are not stable across versions. Refresh with:
+        py -3.11 scripts/refresh_bom_manifest.py
     """
+    if sys.version_info[:2] != _CI_PYTHON:
+        pytest.skip(
+            f"BOM script AST hashes are pinned to Python {_CI_PYTHON[0]}.{_CI_PYTHON[1]} "
+            f"(CI); this interpreter is {sys.version_info.major}.{sys.version_info.minor}"
+        )
+
     manifest = _load_manifest()
     files = manifest.get("files", {})
     if not files:
@@ -45,7 +59,7 @@ def test_bom_manifest_script_ast_hashes_match() -> None:
         assert result.sha256 == expected_sha, (
             f"AST hash mismatch for {rel_path}: "
             f"expected {expected_sha}, got {result.sha256}. "
-            "Run: python scripts/refresh_bom_manifest.py"
+            "Run: py -3.11 scripts/refresh_bom_manifest.py"
         )
 
 
@@ -70,5 +84,5 @@ def test_bom_manifest_json_schema_hashes_match() -> None:
         assert actual_hash == expected_sha, (
             f"Canonical JSON hash mismatch for {rel_path}: "
             f"expected {expected_sha}, got {actual_hash}. "
-            "Run: python scripts/refresh_bom_manifest.py"
+            "Run: py -3.11 scripts/refresh_bom_manifest.py"
         )

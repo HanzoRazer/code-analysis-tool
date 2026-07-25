@@ -124,16 +124,18 @@ class TestDefaultPositionalParity:
         r1 = subprocess.run(cmd_default, env=_cli_env(), text=True, capture_output=True)
         assert r1.returncode in (0, 1, 2)
 
-        # Scan subcommand
+        # Scan subcommand — relative --out under scan-root artifacts/ (CI path guard)
         out_file = work / "artifacts" / "scan.json"
         cmd_scan = [
             sys.executable, "-m", "code_audit",
             "scan",
             "--root", str(work),
-            "--out", str(out_file),
+            "--out", "artifacts/scan.json",
             "--ci",
         ]
-        r2 = subprocess.run(cmd_scan, env=_cli_env(), text=True, capture_output=True)
+        r2 = subprocess.run(
+            cmd_scan, env=_cli_env(), cwd=work, text=True, capture_output=True
+        )
         assert r2.returncode in (0, 1, 2)
 
         # Compare (ignoring config.root which may differ)

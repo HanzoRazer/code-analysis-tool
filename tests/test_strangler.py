@@ -452,6 +452,7 @@ class TestDebtRegistry:
 # ════════════════════════════════════════════════════════════════════
 
 
+@pytest.mark.usefixtures("clean_ci_env")
 class TestDebtCLI:
     def test_debt_scan_clean(self, tmp_path: Path):
         from code_audit.__main__ import main

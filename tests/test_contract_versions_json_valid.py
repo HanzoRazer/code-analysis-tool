@@ -37,6 +37,21 @@ def test_versions_json_valid_json():
     assert "signal_logic_version" in data
 
 
+def test_schema_is_valid_draft202012():
+    """The schema itself must be a valid Draft 2020-12 schema.
+
+    Guards against draft drift: the repo standardizes on draft/2020-12, and a
+    stale draft-07 declaration (or a draft-07-only construct) would silently
+    change which validator ``jsonschema.validate`` dispatches to.
+    """
+    schema = _load_json(_SCHEMA)
+    assert schema["$schema"] == "https://json-schema.org/draft/2020-12/schema", (
+        f"contracts_versions.schema.json declares {schema['$schema']!r}; "
+        "the repo standardizes on draft/2020-12."
+    )
+    jsonschema.Draft202012Validator.check_schema(schema)
+
+
 def test_versions_json_conforms_to_schema():
     data = _load_json(_VERSIONS_JSON)
     schema = _load_json(_SCHEMA)
