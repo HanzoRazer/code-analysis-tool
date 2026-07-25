@@ -228,11 +228,9 @@ def _ast_hash(src: str) -> str:
 
 
 def _sha256_bytes(p: Path) -> str:
-    h = hashlib.sha256()
-    with p.open("rb") as f:
-        for chunk in iter(lambda: f.read(1 << 20), b""):
-            h.update(chunk)
-    return h.hexdigest()
+    """Hash file bytes with newlines normalized to LF (matches refresh script)."""
+    data = p.read_bytes().replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+    return hashlib.sha256(data).hexdigest()
 
 
 # ── Version resolution (source parse, no imports) ────────────────────

@@ -2,11 +2,15 @@
 """Refresh tests/contracts/confidence_golden_manifest.json.
 
 Combines dependency-closure hashing (AST-normalized, semantic-only)
-with golden fixture hashing (bytes) under a confidence-specific
+with golden fixture hashing (LF-normalized bytes) under a confidence-specific
 version anchor.
 
+AST dumps are interpreter-sensitive. Refresh **only** on the CI Python
+(3.11). Running on 3.14 (or other versions) writes hashes that fail the
+gate on CI.
+
 Usage:
-    python scripts/refresh_confidence_golden_manifest.py
+    py -3.11 scripts/refresh_confidence_golden_manifest.py
 
 Override entrypoints via:
     CONFIDENCE_ENTRYPOINTS="src/code_audit/insights/confidence.py,..."
@@ -18,6 +22,7 @@ import hashlib
 import json
 import os
 import re
+import sys
 from pathlib import Path
 from typing import Iterable
 
@@ -25,6 +30,9 @@ ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / "tests" / "contracts" / "confidence_golden_manifest.json"
 SRC_ROOT = ROOT / "src" / "code_audit"
 CONFIDENCE_DIR = ROOT / "tests" / "fixtures" / "confidence"
+
+# Must match .github/workflows/pytest.yml matrix python-version.
+_REQUIRED_PYTHON = (3, 11)
 
 
 # ── CI enforcement ───────────────────────────────────────────────────
@@ -40,6 +48,17 @@ def _require_entrypoints_in_ci() -> None:
         raise SystemExit(
             "CI requires CONFIDENCE_ENTRYPOINTS to be set "
             "(no default entrypoint mode)."
+        )
+
+
+def _require_ci_python() -> None:
+    if sys.version_info[:2] != _REQUIRED_PYTHON:
+        ver = ".".join(str(x) for x in sys.version_info[:3])
+        req = ".".join(str(x) for x in _REQUIRED_PYTHON)
+        raise SystemExit(
+            f"[refresh-confidence-golden-manifest] Refusing to run on Python {ver}.\n"
+            f"AST hashes must be generated with Python {req} (CI gate version).\n"
+            f"Re-run: py -{req} scripts/refresh_confidence_golden_manifest.py"
         )
 
 
@@ -220,11 +239,13 @@ def _ast_hash(src: str) -> str:
 
 
 def _sha256_bytes(p: Path) -> str:
-    h = hashlib.sha256()
-    with p.open("rb") as f:
-        for chunk in iter(lambda: f.read(1 << 20), b""):
-            h.update(chunk)
-    return h.hexdigest()
+    """Hash file bytes with newlines normalized to LF.
+
+    Prevents Windows CRLF working trees from writing manifests that fail
+    Linux CI (git stores these fixtures as LF).
+    """
+    data = p.read_bytes().replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+    return hashlib.sha256(data).hexdigest()
 
 
 # ── Version resolution (source parse, no imports) ────────────────────
@@ -310,6 +331,8 @@ def _discover_fixture_files() -> list[str]:
 
 
 def main() -> int:
+    _require_ci_python()
+
     # Compute dependency closure
     closure_files = _closure(_entrypoints())
 
