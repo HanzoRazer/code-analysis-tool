@@ -1,11 +1,11 @@
 {
   "files": {
-    "src/code_audit/contracts/versions.json": "sha256:0c023501d699036a9908785e5d3a38fbc4b8acf46e4496e3f0f5b0b3c31ca54e",
+    "src/code_audit/contracts/versions.json": "sha256:3012652046775c18d8f3da809e1b7f69939f9eedc25419fba0337ebed1aa8a51",
     "src/code_audit/parsers/__init__.py": "sha256:467bc582929e74b9c7a0f514a2d1878f7271e56b482ec4c0a9b5c9fe178387da",
     "src/code_audit/parsers/tree_sitter_js.py": "sha256:e95a583dc6785f50aa605ec8636405284fa48177a8897e1720bd7e4dbc003b5c",
     "src/code_audit/parsers/tree_sitter_loader.py": "sha256:102d3f8e97e4ad723923421ed4f411322d062c3af9f2c41fc7e954c0fdd3014b"
   },
   "manifest_version": 1,
-  "signal_logic_version": "signals_v4",
-  "versions_json_hash": "sha256:0c023501d699036a9908785e5d3a38fbc4b8acf46e4496e3f0f5b0b3c31ca54e"
+  "signal_logic_version": "signals_v5",
+  "versions_json_hash": "sha256:3012652046775c18d8f3da809e1b7f69939f9eedc25419fba0337ebed1aa8a51"
 }

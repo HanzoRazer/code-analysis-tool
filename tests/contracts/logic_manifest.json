@@ -2,82 +2,82 @@
   "analyzers": [
     {
       "class_name": "ComplexityAnalyzer",
-      "logic_hash": "sha256:8a9628309549866a470f2878238276ecc01f1c252bd6131ae544c0b750f3e516",
+      "logic_hash": "sha256:022e6d6b159e3c16f5895dc40c5c876338eec13bea692b69cc7f9f32b929cfd4",
       "module": "code_audit.analyzers.complexity",
       "version": "1.0.0"
     },
     {
       "class_name": "DeadCodeAnalyzer",
-      "logic_hash": "sha256:8188ebbcfb5d4e0857ad1904f98aaf649ecd8154443d70554c5ccc3edc653766",
+      "logic_hash": "sha256:78bccd1e9e62faa87e1e6f43ff7d9bdbf5ef7ad90e9dfed64a99433effd9ef9e",
       "module": "code_audit.analyzers.dead_code",
       "version": "1.1.0"
     },
     {
       "class_name": "DeploymentAnalyzer",
-      "logic_hash": "sha256:fcf1ac7dcde2257396eec84611b1cb9d8a72c2b53584ab52d70cc0ed04bc7f9c",
+      "logic_hash": "sha256:c1feaa5a0d28acdd9d3d19b1e7d9a40c84a21597dba24ef22d2a2684fb342604",
       "module": "code_audit.analyzers.deployment",
       "version": "1.0.0"
     },
     {
       "class_name": "DuplicationAnalyzer",
-      "logic_hash": "sha256:154c3907d1304a1e693beec066ee5f187e9d26cc1c8ae9c497b9361fe0f04957",
+      "logic_hash": "sha256:bcdbdf0f17b5bc308b581edd8bc87a183e24c07a89fb600f077786b31f848cbf",
       "module": "code_audit.analyzers.duplication",
       "version": "1.0.0"
     },
     {
       "class_name": "ExceptionsAnalyzer",
-      "logic_hash": "sha256:13e60e6ad3df1a95e4f26b759a718311f6d56ccd6f5936a8f291e765ebbb2c2c",
+      "logic_hash": "sha256:8162c9668e1f5072c99122bd0b361cbf52cc5e17476821d785dff415e6cd59b0",
       "module": "code_audit.analyzers.exceptions",
       "version": "1.1.0"
     },
     {
       "class_name": "FileSizesAnalyzer",
-      "logic_hash": "sha256:49c38f0621131e9409935dabd9e4ee4506cdfc5b465e8cdfd7ee4e7c9d9e08e6",
+      "logic_hash": "sha256:15eeba15580a1cc3a320f458c5da0d09784ba502640bb2fdd18758b95c5e9799",
       "module": "code_audit.analyzers.file_sizes",
       "version": "1.1.0"
     },
     {
       "class_name": "GlobalStateAnalyzer",
-      "logic_hash": "sha256:7e3f085ee8f649b72e91a896c404dffe15b9315c28b6532b5fe7d8918e80b059",
+      "logic_hash": "sha256:c8d773d30fa71181635b125c348aba14497944cb690c84d68b6d5afa7f3178cc",
       "module": "code_audit.analyzers.global_state",
       "version": "1.0.0"
     },
     {
       "class_name": "JsTsSecurityPreviewAnalyzer",
-      "logic_hash": "sha256:8848c802d9a0c1f68ecb58776ae7d31858597f445cd87596ee2a53e09650e247",
+      "logic_hash": "sha256:cc12ee8b555e1fc796d8a85fbfad46a68ec9140c39c872e1f281a73bf597b96a",
       "module": "code_audit.analyzers.js_ts_security",
       "version": "0.1.0"
     },
     {
       "class_name": "RoutersAnalyzer",
-      "logic_hash": "sha256:aacf8a413e59e5aa46dda41ecd54ebeb77f28e8ae76517eac81cff6c7dc992f1",
+      "logic_hash": "sha256:a0aa43b6bbaa4539490cc675502cb717d33074c9857bf1c1d4c1abcf766eba57",
       "module": "code_audit.analyzers.routers",
       "version": "1.0.0"
     },
     {
       "class_name": "SecurityAnalyzer",
-      "logic_hash": "sha256:f85254fd609df2dcb908b656e977529978256c45b014b5745543d84cf7aaac32",
+      "logic_hash": "sha256:b81dcb79f718c2b72ed58e2553433083b25d16467987711d26b81951145b5bc1",
       "module": "code_audit.analyzers.security",
       "version": "1.1.0"
     },
     {
       "class_name": "SQLEcosystemAnalyzer",
-      "logic_hash": "sha256:5f5714b01c724a11bfea8e09ae1387c7b6ea5e1c1f308d458f2a680b2c2bdeb2",
+      "logic_hash": "sha256:fef64069627925d0f594575f8e0a186e15c28dcd608b5a4ddc9047af230eea03",
       "module": "code_audit.analyzers.sql_ecosystem",
       "version": "1.1.0"
     },
     {
       "class_name": "VueComponentAnalyzer",
-      "logic_hash": "sha256:692b5b27e89ae1bfc04cff78917653a0e29a398d89955ce57ca0e1546a858dc9",
+      "logic_hash": "sha256:06db30142a42d7ac3ab2d567c8657bf4fcf8cdba13ec36ecb738d1761bccd6a1",
       "module": "code_audit.analyzers.vue_component",
       "version": "1.0.0"
     },
     {
       "class_name": "VueCouplingAnalyzer",
-      "logic_hash": "sha256:c279ec5514ba0a42c43d6511c8fd2c0ca7ab70eac94a1b8299b5f92513f9535d",
+      "logic_hash": "sha256:5a53f1a3402ff011031198b427ffd1596323e3b8247bff6cf6fae375df75ec28",
       "module": "code_audit.analyzers.vue_coupling",
       "version": "1.0.0"
     }
   ],
-  "signal_logic_version": "signals_v4"
+  "signal_logic_version": "signals_v5"
 }

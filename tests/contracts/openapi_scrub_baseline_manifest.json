@@ -1,6 +1,6 @@
 {
   "baseline_path": "tests/contracts/openapi_scrub_audit_baseline.json",
-  "baseline_sha256": "242b65c2f6ecc28741b6067beaaf29fcd1ccdc889c012191c1044fe3d8035763",
+  "baseline_sha256": "008c465d991fb0f8f2c8956760afac4edda1d405040294fa9b7baa681803f895",
   "manifest_version": 1,
-  "signal_logic_version": "signals_v4"
+  "signal_logic_version": "signals_v5"
 }
