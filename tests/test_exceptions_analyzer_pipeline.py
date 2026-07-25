@@ -12,6 +12,13 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 def _run_scan(fixture_root: Path, out: Path) -> subprocess.CompletedProcess:
     """Helper: invoke ``python -m code_audit scan`` via subprocess."""
+    import os
+
+    env = {**os.environ, "PYTHONPATH": str(REPO_ROOT / "src")}
+    # Strip ambient CI so absolute --out is not rejected / --ci not required.
+    env.pop("CI", None)
+    env.pop("CODE_AUDIT_DETERMINISTIC", None)
+    env.pop("GITHUB_ACTIONS", None)
     return subprocess.run(
         [
             sys.executable,
@@ -25,7 +32,7 @@ def _run_scan(fixture_root: Path, out: Path) -> subprocess.CompletedProcess:
         ],
         capture_output=True,
         text=True,
-        env={**__import__("os").environ, "PYTHONPATH": str(REPO_ROOT / "src")},
+        env=env,
     )
 
 

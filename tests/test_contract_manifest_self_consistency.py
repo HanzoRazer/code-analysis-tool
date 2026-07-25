@@ -18,6 +18,8 @@ import os
 import subprocess
 from pathlib import Path
 
+import pytest
+
 
 ROOT = Path(__file__).resolve().parents[1]
 GOLDEN_MANIFEST = ROOT / "tests" / "contracts" / "golden_fixtures_manifest.json"
@@ -368,10 +370,13 @@ def test_dedicated_gate_files_are_collected_by_pytest_in_ci() -> None:
     adding overhead to local dev runs.
     """
     if os.environ.get("CI", "").lower() not in ("true", "1"):
-        return
+        pytest.skip("CI-gated governance check; set CI=true to run")
 
+    # Do not pass -q: pytest 9+ quiet collect-only emits "tests/file.py: N"
+    # instead of nodeids with "::", which made this gate report every file as
+    # uncollected (false "no consumer" / miscalibrated-scanner failure).
     out = subprocess.check_output(
-        ["python", "-m", "pytest", "--collect-only", "-q"],
+        ["python", "-m", "pytest", "--collect-only"],
         cwd=str(ROOT),
         text=True,
         stderr=subprocess.STDOUT,

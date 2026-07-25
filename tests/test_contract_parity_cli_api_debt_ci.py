@@ -44,15 +44,17 @@ def test_contract_parity_debt_snapshot_ci(tmp_path: Path) -> None:
     api_snap = snapshot_debt(workdir, ci_mode=True)
     api_bytes = stable_json_dumps(api_snap, indent=2, ci_mode=True).encode("utf-8")
 
-    # CLI snapshot
-    snap_file = tmp_path / "baseline.json"
+    # CLI snapshot — under CI, --out is relative to scan root and must be in artifacts/
+    (workdir / "artifacts").mkdir(exist_ok=True)
+    snap_file = workdir / "artifacts" / "baseline.json"
     p = subprocess.run(
         [
             sys.executable, "-m", "code_audit",
             "debt", "snapshot", str(workdir),
-            "--ci", "--out", str(snap_file),
+            "--ci", "--out", "artifacts/baseline.json",
         ],
         env=_cli_env(),
+        cwd=workdir,
         capture_output=True,
     )
     assert p.returncode == 0, (p.stdout, p.stderr)

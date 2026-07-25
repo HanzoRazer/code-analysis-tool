@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -21,6 +22,7 @@ def _run(args: list[str], *, cwd: Path | None = None) -> subprocess.CompletedPro
     env["PYTHONPATH"] = str(REPO_ROOT / "src") + (
         os.pathsep + env.get("PYTHONPATH", "") if env.get("PYTHONPATH") else ""
     )
+    # --ci requires CI=true; path guards require relative --out under scan-root/artifacts/
     env["CI"] = "true"
     return subprocess.run(
         [sys.executable, "-m", "code_audit", *args],
@@ -33,14 +35,17 @@ def _run(args: list[str], *, cwd: Path | None = None) -> subprocess.CompletedPro
 
 def test_debt_compare_rejects_wrong_schema_version_in_baseline(tmp_path: Path) -> None:
     """Baseline with schema_version != 'debt_snapshot_v1' must exit 2."""
-    repo = REPO_ROOT / "tests" / "fixtures" / "sample_repo_debt"
-    current = tmp_path / "current.json"
+    work = tmp_path / "repo"
+    shutil.copytree(REPO_ROOT / "tests" / "fixtures" / "sample_repo_debt", work)
+    (work / "artifacts").mkdir()
 
-    # Produce a valid current snapshot
-    r1 = _run(["debt", "snapshot", str(repo), "--ci", "--out", str(current)])
+    r1 = _run(
+        ["debt", "snapshot", str(work), "--ci", "--out", "artifacts/current.json"],
+        cwd=work,
+    )
     assert r1.returncode == 0, r1.stderr
+    current = work / "artifacts" / "current.json"
 
-    # Write a baseline with wrong schema_version
     bad = {
         "schema_version": "debt_snapshot_v0",
         "created_at": "2000-01-01T00:00:00+00:00",
@@ -52,11 +57,12 @@ def test_debt_compare_rejects_wrong_schema_version_in_baseline(tmp_path: Path) -
 
     r2 = _run(
         [
-            "debt", "compare", str(repo),
+            "debt", "compare", str(work),
             "--baseline", str(baseline),
             "--current", str(current),
             "--ci",
-        ]
+        ],
+        cwd=work,
     )
     assert r2.returncode == 2, (r2.stdout, r2.stderr)
     assert "schema_version" in r2.stderr
@@ -64,13 +70,17 @@ def test_debt_compare_rejects_wrong_schema_version_in_baseline(tmp_path: Path) -
 
 def test_debt_compare_rejects_missing_schema_version_in_baseline(tmp_path: Path) -> None:
     """Baseline without schema_version key must exit 2."""
-    repo = REPO_ROOT / "tests" / "fixtures" / "sample_repo_debt"
-    current = tmp_path / "current.json"
+    work = tmp_path / "repo"
+    shutil.copytree(REPO_ROOT / "tests" / "fixtures" / "sample_repo_debt", work)
+    (work / "artifacts").mkdir()
 
-    r1 = _run(["debt", "snapshot", str(repo), "--ci", "--out", str(current)])
+    r1 = _run(
+        ["debt", "snapshot", str(work), "--ci", "--out", "artifacts/current.json"],
+        cwd=work,
+    )
     assert r1.returncode == 0, r1.stderr
+    current = work / "artifacts" / "current.json"
 
-    # Baseline missing schema_version entirely
     bad = {
         "created_at": "2000-01-01T00:00:00+00:00",
         "debt_count": 0,
@@ -81,11 +91,12 @@ def test_debt_compare_rejects_missing_schema_version_in_baseline(tmp_path: Path)
 
     r2 = _run(
         [
-            "debt", "compare", str(repo),
+            "debt", "compare", str(work),
             "--baseline", str(baseline),
             "--current", str(current),
             "--ci",
-        ]
+        ],
+        cwd=work,
     )
     assert r2.returncode == 2, (r2.stdout, r2.stderr)
     assert "schema_version" in r2.stderr
@@ -93,16 +104,19 @@ def test_debt_compare_rejects_missing_schema_version_in_baseline(tmp_path: Path)
 
 def test_debt_compare_rejects_wrong_schema_version_in_current(tmp_path: Path) -> None:
     """Current file with wrong schema_version must exit 2."""
-    repo = REPO_ROOT / "tests" / "fixtures" / "sample_repo_debt"
-    baseline = tmp_path / "baseline.json"
+    work = tmp_path / "repo"
+    shutil.copytree(REPO_ROOT / "tests" / "fixtures" / "sample_repo_debt", work)
+    (work / "artifacts").mkdir()
 
-    # Produce a valid baseline snapshot
-    r1 = _run(["debt", "snapshot", str(repo), "--ci", "--out", str(baseline)])
+    r1 = _run(
+        ["debt", "snapshot", str(work), "--ci", "--out", "artifacts/baseline.json"],
+        cwd=work,
+    )
     assert r1.returncode == 0, r1.stderr
+    baseline = work / "artifacts" / "baseline.json"
 
-    # Write a current with wrong schema_version
     bad = {
-        "schema_version": "debt_snapshot_v99",
+        "schema_version": "debt_snapshot_v0",
         "created_at": "2000-01-01T00:00:00+00:00",
         "debt_count": 0,
         "items": [],
@@ -112,11 +126,12 @@ def test_debt_compare_rejects_wrong_schema_version_in_current(tmp_path: Path) ->
 
     r2 = _run(
         [
-            "debt", "compare", str(repo),
+            "debt", "compare", str(work),
             "--baseline", str(baseline),
             "--current", str(current),
             "--ci",
-        ]
+        ],
+        cwd=work,
     )
     assert r2.returncode == 2, (r2.stdout, r2.stderr)
     assert "schema_version" in r2.stderr

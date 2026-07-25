@@ -15,6 +15,8 @@ import os
 import subprocess
 from pathlib import Path
 
+import pytest
+
 from code_audit.web_api.openapi_path_match import normalize_openapi_path_template
 
 
@@ -154,11 +156,13 @@ def test_release_openapi_registry_exists_in_snapshot() -> None:
     openapi_path, registry_path = _resolve_paths_from_bom()
 
     if not openapi_path.exists() or not registry_path.exists():
-        # Only hard-fail on tagged CI; local dev may not have these files
+        # Only hard-fail on tagged CI; otherwise skip so absence is visible as `s`
         if _is_tagged_ci_release():
             assert openapi_path.exists(), f"Missing OpenAPI snapshot: {openapi_path.relative_to(ROOT)}"
             assert registry_path.exists(), f"Missing endpoint registry: {registry_path.relative_to(ROOT)}"
-        return
+        pytest.skip(
+            "OpenAPI snapshot/registry absent; hard-required on tagged CI releases"
+        )
 
     openapi = _load_json(openapi_path)
     registry = _load_json(registry_path)
