@@ -4,15 +4,31 @@ import ast
 import hashlib
 import json
 import re
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+import pytest
 
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _SRC = _REPO_ROOT / "src"
 _ANALYZERS_DIR = _SRC / "code_audit" / "analyzers"
 _MANIFEST_PATH = _REPO_ROOT / "tests" / "contracts" / "logic_manifest.json"
+
+# analyzer logic_hash uses ast.dump (see _LogicNormalizer), which varies by
+# interpreter; hashes are recorded on CI's Python 3.11. Off 3.11 the gate would
+# false-fail, so skip — generation is pinned to 3.11 in scripts/_ci_guard.py.
+_CI_PYTHON = (3, 11)
+pytestmark = pytest.mark.skipif(
+    sys.version_info[:2] != _CI_PYTHON,
+    reason=(
+        "AST-hash manifest gate enforced only on CI Python "
+        f"{_CI_PYTHON[0]}.{_CI_PYTHON[1]}; refresh with "
+        "py -3.11 scripts/refresh_logic_manifest.py"
+    ),
+)
 
 # Analyzer modules that are not "rule logic" (optional allowlist). Keep empty by default.
 _SKIP_MODULES: set[str] = set()

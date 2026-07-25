@@ -19,6 +19,11 @@ OUT = REPO_ROOT / "tests" / "contracts" / "logic_manifest.json"
 
 
 def main() -> int:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from _ci_guard import require_ci_python
+
+    require_ci_python("refresh_logic_manifest")
+
     OUT.parent.mkdir(parents=True, exist_ok=True)
 
     analyzers = _discover_analyzers()
