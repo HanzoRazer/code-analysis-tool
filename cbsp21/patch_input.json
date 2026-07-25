@@ -1,58 +1,56 @@
 {
   "schema_version": "cbsp21_patch_manifest_v1",
-  "patch_id": "CAT-0022",
-  "title": "Resolved comment dedupe with optimized backward-scanning pagination",
-  "intent": "Prevent duplicate resolved comments on the rolling drift issue when multiple green transitions occur for the same drift episode. Uses a drift-resolved-for-period marker keyed by firstDetectedIso, with optimized backward pagination that stops scanning once comments are older than the episode cutoff.",
-  "change_type": "ci",
+  "patch_id": "CAT-0023",
+  "title": "Fix pytest BOM manifest gate on Python 3.11",
+  "intent": "Restore the failing pytest BOM manifest gate by making BOM manifest paths platform-stable and regenerating the recorded AST hashes with the same Python 3.11 runtime used in GitHub Actions.",
+  "change_type": "code",
   "behavior_change": "compatible",
   "risk_level": "low",
   "scope": {
     "paths_in_scope": [
-      ".github/workflows/"
+      "scripts/",
+      "tests/contracts/"
     ],
     "files_expected_to_change": [
-      ".github/workflows/contract-parity-main-observer.yml"
+      "scripts/refresh_bom_manifest.py",
+      "tests/contracts/bom_manifest.json"
     ],
-    "out_of_scope_notes": "No changes to package code, tests, or schemas. Only the green-path GitHub Script in the nightly observer workflow is modified."
+    "out_of_scope_notes": "No analyzer, schema, or workflow logic changes. The fix is limited to the BOM refresh utility and the generated BOM manifest artifact it owns."
   },
   "diff_range": {
-    "base": "214511a",
-    "head": "28beef4"
+    "base": "79f9947",
+    "head": "working-tree"
   },
-  "changed_files_count": 1,
+  "changed_files_count": 2,
   "changed_files_exact": [
-    ".github/workflows/contract-parity-main-observer.yml"
+    "scripts/refresh_bom_manifest.py",
+    "tests/contracts/bom_manifest.json"
   ],
   "diff_articulation": {
     "what_changed": [
-      "Added RESOLVED_PERIOD_MARKER constant: <!-- drift-resolved-for-period: <firstDetectedIso> --> keyed to the drift episode start timestamp",
-      "Added alreadyResolvedForThisPeriod() async function: scans issue comments for an existing resolved marker matching this episode",
-      "Pagination scans newest-to-oldest pages (backward from last page) using existing.comments count to compute startPage — no extra issues.get API call",
-      "Early-stop optimization: if the newest comment on a page is older than firstDetectedIso cutoff, all earlier pages are skipped (returns false)",
-      "Per-comment cutoff filter: skips individual comments older than firstDetectedIso within mixed-age pages",
-      "Fail-safe cap: MAX_PAGES=50 (up to 5000 comments); returns true if cap is hit to prevent spam",
-      "Wrapped createComment in if (!already) guard to skip posting when a resolved comment already exists for this period",
-      "RESOLVED_PERIOD_MARKER included in comment body for future dedupe scans"
+      "Normalized refresh_bom_manifest.py relative-path serialization to POSIX form with as_posix(), preventing Windows-only backslashes from being written into the shared manifest",
+      "Kept the refresh utility lint-clean while preserving behavior by modernizing a few local type hints and using importlib for the existing dynamic helper import",
+      "Regenerated tests/contracts/bom_manifest.json under Python 3.11 so the recorded script AST hashes match the GitHub Actions runtime and the manifest uses stable forward-slash paths"
     ],
-    "why_not_redundant": "Without this change, every nightly green run re-posts a resolved comment on the same rolling issue. On quiet repos with multi-day green streaks, this leads to comment spam. The backward-scan with cutoff stop avoids traversing old comment history, keeping API usage proportional to the episode lifetime rather than the full issue history."
+    "why_not_redundant": "Refreshing the manifest alone would fix this checkout today but would allow a future Windows refresh to break Linux CI again. Normalizing the stored paths removes that portability trap while the regenerated Python 3.11 hashes address the current pytest failure."
   },
   "verification": {
     "commands_run": [
-      "python scripts/validate_oncall_rotation_schema.py",
-      "python scripts/check_oncall_rotation_manifest.py",
-      "python scripts/check_oncall_rotation_schema_manifest.py"
+      "conda run -n py311 python scripts/refresh_bom_manifest.py",
+      "conda run -n py311 python -m ruff check scripts/refresh_bom_manifest.py",
+      "conda run -n py311 python -m pytest tests/test_bom_manifest_gate.py tests/test_bom_js_ts_surface.py tests/test_release_bom_contract.py::test_release_bom_is_buildable_and_self_consistent -q"
     ],
     "test_results": [
-      "oncall rotation schema OK",
-      "oncall rotation manifest OK",
-      "oncall rotation schema manifest OK"
+      "BOM manifest refreshed successfully under Python 3.11",
+      "Ruff passed for scripts/refresh_bom_manifest.py",
+      "10 targeted BOM and release-contract pytest checks passed"
     ],
-    "notes": "All 3 oncall contract validators pass. The observer workflow is a GitHub Actions YAML file; runtime correctness is verified at execution time by GitHub Actions. The change is defense-in-depth: if the dedupe check fails or returns false erroneously, worst case is a duplicate comment (no data loss or workflow failure). The fail-safe cap ensures the dedupe scan itself cannot cause runaway API usage."
+    "notes": "I also inspected the failing GitHub Actions job logs for job 89640614655 before changing code. The original CI failure was an AST hash mismatch in tests/test_bom_manifest_gate.py for scripts/check_release_bom_consistency.py; local reproduction under Python 3.11 additionally exposed the manifest path separator portability problem that this patch closes."
   },
   "file_context_coverage_percent": 100.0,
   "metadata": {
     "author": "GitHub Copilot",
-    "created_at": "2026-02-16T00:00:00Z",
+    "created_at": "2026-07-25T04:45:25Z",
     "reviewers": []
   }
 }

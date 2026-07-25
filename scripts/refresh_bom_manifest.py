@@ -8,10 +8,11 @@ from __future__ import annotations
 
 import ast
 import hashlib
+import importlib
 import json
-import sys
 from pathlib import Path
-from typing import Any, Dict
+import sys
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST_PATH = ROOT / "tests" / "contracts" / "bom_manifest.json"
@@ -30,7 +31,9 @@ JSON_TARGET_FILES = [
 
 # Import from the existing AST semantic hash helper
 sys.path.insert(0, str(ROOT / "scripts"))
-from ast_semantic_hash import semantic_hash_python_like_file  # type: ignore
+semantic_hash_python_like_file = importlib.import_module(
+    "ast_semantic_hash"
+).semantic_hash_python_like_file
 
 
 # --- Version anchor ----------------------------------------------------------
@@ -51,19 +54,21 @@ class _NeutralizeVersionLiterals(ast.NodeTransformer):
 
 def _canonical_json_sha256(path: Path) -> str:
     data = json.loads(path.read_text(encoding="utf-8"))
-    canonical = json.dumps(data, indent=2, sort_keys=True, ensure_ascii=True).encode("utf-8") + b"\n"
+    canonical = (
+        json.dumps(data, indent=2, sort_keys=True, ensure_ascii=True).encode("utf-8") + b"\n"
+    )
     return hashlib.sha256(canonical).hexdigest()
 
 
 def main() -> int:
     # Script AST hashes
-    file_entries: Dict[str, Dict[str, str]] = {}
+    file_entries: dict[str, dict[str, str]] = {}
     for f in TARGET_FILES:
         if not f.exists():
             print(f"[refresh-bom-manifest] WARNING: {f} not found, skipping.", file=sys.stderr)
             continue
         result = semantic_hash_python_like_file(f)
-        rel = str(f.resolve().relative_to(ROOT))
+        rel = f.resolve().relative_to(ROOT).as_posix()
         file_entries[rel] = {
             "sha256": result.sha256,
             "sha256_short": result.sha256[:12],
@@ -71,19 +76,19 @@ def main() -> int:
         }
 
     # JSON schema canonical hashes
-    json_entries: Dict[str, Dict[str, str]] = {}
+    json_entries: dict[str, dict[str, str]] = {}
     for f in JSON_TARGET_FILES:
         if not f.exists():
             print(f"[refresh-bom-manifest] WARNING: {f} not found, skipping.", file=sys.stderr)
             continue
         sha = _canonical_json_sha256(f)
-        rel = str(f.resolve().relative_to(ROOT))
+        rel = f.resolve().relative_to(ROOT).as_posix()
         json_entries[rel] = {
             "sha256": sha,
             "sha256_short": sha[:12],
         }
 
-    manifest: Dict[str, Any] = {
+    manifest: dict[str, Any] = {
         "version": 1,
         "files": file_entries,
         "json_files": json_entries,
