@@ -31,9 +31,8 @@ JSON_TARGET_FILES = [
 
 # Import from the existing AST semantic hash helper
 sys.path.insert(0, str(ROOT / "scripts"))
-semantic_hash_python_like_file = importlib.import_module(
-    "ast_semantic_hash"
-).semantic_hash_python_like_file
+ast_semantic_hash = importlib.import_module("ast_semantic_hash")
+semantic_hash_python_like_file = ast_semantic_hash.semantic_hash_python_like_file
 
 
 # --- Version anchor ----------------------------------------------------------
