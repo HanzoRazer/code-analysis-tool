@@ -32,10 +32,12 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: "pip"
 
-      - name: Install dev + API dependencies
+      - name: Install dev + API + treesitter dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e ".[dev,api]"
+          # treesitter is required for JS/TS parity/integration tests
+          # (js_ts_security silently returns [] when the extra is absent).
+          python -m pip install -e ".[dev,api,treesitter]"
 
       - name: Fail if stale schema duplicate exists
         shell: bash
