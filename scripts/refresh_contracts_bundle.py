@@ -33,7 +33,13 @@ def _sha256_bytes(b: bytes) -> str:
 
 
 def _sha256_file(path: Path) -> str:
-    return _sha256_bytes(path.read_bytes())
+    """Hash file bytes with newlines normalized to LF.
+
+    Prevents Windows CRLF working trees from writing bundle hashes that
+    fail Linux CI (git stores these text artifacts as LF).
+    """
+    data = path.read_bytes().replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+    return _sha256_bytes(data)
 
 
 def _hash_supported_rule_ids_only(path: Path) -> str:
@@ -82,7 +88,7 @@ def main() -> int:
     OUT.write_text(
         json.dumps(bundle, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
-    print(f"✓ Wrote {OUT.relative_to(ROOT)}")
+    print(f"[refresh-contracts-bundle] Wrote {OUT.relative_to(ROOT)}")
     for key, meta in hashes.items():
         print(f"  {key}: {meta['sha256'][:16]}… ({meta['hash_scope']})")
     return 0
