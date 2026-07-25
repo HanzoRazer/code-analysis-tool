@@ -7,10 +7,25 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
+import pytest
+
 from ast_semantic_hash import semantic_hash_python_like_file  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST_PATH = ROOT / "tests" / "contracts" / "openapi_classifier_manifest.json"
+
+# AST dumps vary by interpreter; this manifest's hashes are recorded on CI's
+# Python 3.11. Off 3.11 the gate would false-fail, so skip — generation is
+# pinned to 3.11 in scripts/_ci_guard.py. Keep in sync with the CI matrix.
+_CI_PYTHON = (3, 11)
+pytestmark = pytest.mark.skipif(
+    sys.version_info[:2] != _CI_PYTHON,
+    reason=(
+        "AST-hash manifest gate enforced only on CI Python "
+        f"{_CI_PYTHON[0]}.{_CI_PYTHON[1]}; refresh with "
+        "py -3.11 scripts/refresh_openapi_classifier_manifest.py"
+    ),
+)
 
 
 def _load_manifest() -> dict:

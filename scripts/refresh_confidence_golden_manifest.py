@@ -310,6 +310,12 @@ def _discover_fixture_files() -> list[str]:
 
 
 def main() -> int:
+    import sys as _sys
+    _sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from _ci_guard import require_ci_python
+
+    require_ci_python("refresh_confidence_golden_manifest")
+
     # Compute dependency closure
     closure_files = _closure(_entrypoints())
 

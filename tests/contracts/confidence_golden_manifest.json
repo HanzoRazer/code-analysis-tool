@@ -9,9 +9,9 @@
   ],
   "confidence_logic_version": "confidence_v2",
   "files": {
-    "src/code_audit/insights/confidence.py": "ca2ebb57bed92d06672f0ac64932c884b5b32d1ea5879a97b1ea4cbe569e351d",
-    "src/code_audit/model/__init__.py": "001856c4acb31e1706d3d590ea395852c8edf144ce64b19a4ca54fe177bf19c0",
-    "src/code_audit/model/finding.py": "b7e3f0f490a1805230596461c8c3fd9245bca106c80b9c34bf97471cfa27981c",
+    "src/code_audit/insights/confidence.py": "e5582478d5860574760200df4a843d52a34e187f5d98d457e0bc8b6288b1d5b3",
+    "src/code_audit/model/__init__.py": "388d127d6327088e74a6ae3928a003766d1fe48ef937104620eb4be2926843b4",
+    "src/code_audit/model/finding.py": "0eef0d618b48ce3157094a5da772d6d651b7eab90585a4f96e0f2b68a114ac80",
     "tests/fixtures/confidence/cases.json": "6146ea5a974d5145a11140ae47810acc354a674bc18edb67bea8a0be2483a283",
     "tests/fixtures/confidence/expected/many_low_dead_code.json": "2936224bcd27d744329af0d756d7cf7acad006fce1ffdebfacc877103936a9ef",
     "tests/fixtures/confidence/expected/mixed_severity_sanity.json": "3ff2bc8bde4969ad03987e5f74e8ec9f70121cd5ff47e9d49c6375ddccb65295",

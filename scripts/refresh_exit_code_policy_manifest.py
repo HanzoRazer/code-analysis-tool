@@ -112,6 +112,12 @@ def _semantic_hash_policy_surface(path: Path) -> str:
 
 
 def main() -> int:
+    import sys as _sys
+    _sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from _ci_guard import require_ci_python
+
+    require_ci_python("refresh_exit_code_policy_manifest")
+
     if not POLICY_FILE.exists():
         raise SystemExit(f"Missing policy file: {POLICY_FILE}")
 
