@@ -31,5 +31,5 @@
     "tests/fixtures/confidence/expected/overwhelm_threshold_crossing.json": "bytes"
   },
   "manifest_version": 1,
-  "signal_logic_version": "signals_v4"
+  "signal_logic_version": "signals_v5"
 }

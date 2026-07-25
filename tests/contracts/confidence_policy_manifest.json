@@ -11,5 +11,5 @@
     "src/code_audit/model/__init__.py",
     "src/code_audit/model/finding.py"
   ],
-  "signal_logic_version": "signals_v4"
+  "signal_logic_version": "signals_v5"
 }
