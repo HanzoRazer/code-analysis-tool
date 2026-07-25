@@ -2,7 +2,7 @@
   "manifest_version": 1,
   "signal_logic_version": "signals_v4",
   "files": {
-    "schemas/drift_budget_signal.schema.json": "sha256:e35d3c5a626f93d903d2eb5a4b462577abe82e07994792e1e39536a3d7ef6258",
-    "scripts/generate_drift_budget_signal.py": "sha256:c95d6bea4d593b7a5d653c9581bfcca84c3f55876a584b9faa85518d25fe7ae2"
+    "schemas/drift_budget_signal.schema.json": "sha256:2432f8f6c46e71cd24756ead3483be3491579f3f90fb377fb1916d0e899bdb97",
+    "scripts/generate_drift_budget_signal.py": "sha256:7634c1bfff944f86f8949ad911051473affdaacf594282267b80ae549e2b7f3f"
   }
 }
