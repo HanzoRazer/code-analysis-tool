@@ -67,6 +67,7 @@ def main() -> int:
             print(f"[refresh-bom-manifest] WARNING: {f} not found, skipping.", file=sys.stderr)
             continue
         result = semantic_hash_python_like_file(f)
+        # Keep manifest paths stable across OSes so Windows refreshes do not break Linux CI.
         rel = f.resolve().relative_to(ROOT).as_posix()
         file_entries[rel] = {
             "sha256": result.sha256,
@@ -81,6 +82,7 @@ def main() -> int:
             print(f"[refresh-bom-manifest] WARNING: {f} not found, skipping.", file=sys.stderr)
             continue
         sha = _canonical_json_sha256(f)
+        # Keep manifest paths stable across OSes so Windows refreshes do not break Linux CI.
         rel = f.resolve().relative_to(ROOT).as_posix()
         json_entries[rel] = {
             "sha256": sha,
