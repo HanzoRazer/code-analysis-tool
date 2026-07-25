@@ -3,6 +3,10 @@
 This script computes AST-semantic hashes for BOM-related scripts and
 canonical JSON hashes for BOM-related schemas, writing results to
 tests/contracts/bom_manifest.json.
+
+AST dumps are interpreter-sensitive. Refresh **only** on the CI Python
+(3.11). Running on 3.14 (or other versions) writes hashes that fail the
+gate on CI — same class of defect as unpinned OpenAPI / confidence hashes.
 """
 from __future__ import annotations
 
@@ -16,6 +20,9 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST_PATH = ROOT / "tests" / "contracts" / "bom_manifest.json"
+
+# Must match .github/workflows/pytest.yml matrix python-version.
+_REQUIRED_PYTHON = (3, 11)
 
 # Scripts whose AST hashes are tracked
 TARGET_FILES = [
@@ -59,7 +66,21 @@ def _canonical_json_sha256(path: Path) -> str:
     return hashlib.sha256(canonical).hexdigest()
 
 
+def _require_ci_python() -> None:
+    if sys.version_info[:2] != _REQUIRED_PYTHON:
+        ver = ".".join(str(x) for x in sys.version_info[:3])
+        req = ".".join(str(x) for x in _REQUIRED_PYTHON)
+        raise SystemExit(
+            f"[refresh-bom-manifest] Refusing to run on Python {ver}.\n"
+            f"AST hashes must be generated with Python {req} (CI gate version).\n"
+            f"Re-run: py -{req} scripts/refresh_bom_manifest.py\n"
+            f"(or: python{req} scripts/refresh_bom_manifest.py)"
+        )
+
+
 def main() -> int:
+    _require_ci_python()
+
     # Script AST hashes
     file_entries: dict[str, dict[str, str]] = {}
     for f in TARGET_FILES:
