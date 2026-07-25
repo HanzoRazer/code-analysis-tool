@@ -36,16 +36,16 @@
   },
   "verification": {
     "commands_run": [
-      "conda run -n py311 python scripts/refresh_bom_manifest.py",
-      "conda run -n py311 python -m ruff check scripts/refresh_bom_manifest.py",
-      "conda run -n py311 python -m pytest tests/test_bom_manifest_gate.py tests/test_bom_js_ts_surface.py tests/test_release_bom_contract.py::test_release_bom_is_buildable_and_self_consistent -q"
+      "python3.11 scripts/refresh_bom_manifest.py",
+      "python3.11 -m ruff check scripts/refresh_bom_manifest.py",
+      "python3.11 -m pytest tests/test_bom_manifest_gate.py tests/test_bom_js_ts_surface.py tests/test_release_bom_contract.py::test_release_bom_is_buildable_and_self_consistent -q"
     ],
     "test_results": [
       "BOM manifest refreshed successfully under Python 3.11",
       "Ruff passed for scripts/refresh_bom_manifest.py",
       "10 targeted BOM and release-contract pytest checks passed"
     ],
-    "notes": "I also inspected the failing GitHub Actions job logs for job 89640614655 before changing code. The original CI failure was an AST hash mismatch in tests/test_bom_manifest_gate.py for scripts/check_release_bom_consistency.py; local reproduction under Python 3.11 additionally exposed the manifest path separator portability problem that this patch closes."
+    "notes": "I also inspected the failing GitHub Actions job logs for job 89640614655 before changing code. The original CI failure was an AST hash mismatch in tests/test_bom_manifest_gate.py for scripts/check_release_bom_consistency.py; local reproduction under Python 3.11 additionally exposed the manifest path separator portability problem that this patch closes. In this sandbox, the Python 3.11 commands were executed via a temporary local py311 environment."
   },
   "file_context_coverage_percent": 100.0,
   "metadata": {
