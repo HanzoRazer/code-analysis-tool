@@ -241,8 +241,11 @@ def _hash_confidence_logic() -> str:
     normalized_parts: list[str] = []
     for p in files:
         src = p.read_text(encoding="utf-8")
+        # Repo-relative path only — absolute paths make the hash host-dependent
+        # and cause Linux CI to disagree with Windows refreshes.
+        rel = str(p.relative_to(ROOT)).replace("\\", "/")
         normalized_parts.append(
-            f"# {p.as_posix()}\n{_normalize_module_for_hash(src)}\n"
+            f"# {rel}\n{_normalize_module_for_hash(src)}\n"
         )
 
     canonical = "\n".join(normalized_parts).encode("utf-8")

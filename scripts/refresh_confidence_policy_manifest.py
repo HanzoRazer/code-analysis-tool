@@ -5,11 +5,15 @@ Uses dependency-closure hashing: starts from the confidence scoring
 entrypoint(s) and recursively resolves all internal ``code_audit.*``
 imports, producing a deterministic hash over the full closure.
 
+AST dumps are interpreter-sensitive. Refresh **only** on the CI Python
+(3.11). Hash labels use repo-relative paths so Windows refreshes match
+Linux CI.
+
 Override entrypoints via:
     CONFIDENCE_ENTRYPOINTS="src/code_audit/insights/confidence.py,..."
 
 Usage:
-    python scripts/refresh_confidence_policy_manifest.py
+    py -3.11 scripts/refresh_confidence_policy_manifest.py
 """
 from __future__ import annotations
 
@@ -17,12 +21,16 @@ import ast
 import hashlib
 import json
 import os
+import sys
 from pathlib import Path
 from typing import Iterable
 
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / "tests" / "contracts" / "confidence_policy_manifest.json"
 SRC_ROOT = ROOT / "src" / "code_audit"
+
+# Must match .github/workflows/pytest.yml matrix python-version.
+_REQUIRED_PYTHON = (3, 11)
 
 
 # ── CI enforcement ───────────────────────────────────────────────────
@@ -38,6 +46,17 @@ def _require_entrypoints_in_ci() -> None:
         raise SystemExit(
             "CI requires CONFIDENCE_ENTRYPOINTS to be set "
             "(no default entrypoint mode)."
+        )
+
+
+def _require_ci_python() -> None:
+    if sys.version_info[:2] != _REQUIRED_PYTHON:
+        ver = ".".join(str(x) for x in sys.version_info[:3])
+        req = ".".join(str(x) for x in _REQUIRED_PYTHON)
+        raise SystemExit(
+            f"[refresh-confidence-policy-manifest] Refusing to run on Python {ver}.\n"
+            f"AST hashes must be generated with Python {req} (CI gate version).\n"
+            f"Re-run: py -{req} scripts/refresh_confidence_policy_manifest.py"
         )
 
 
@@ -218,7 +237,8 @@ def _hash_confidence_logic() -> str:
     parts: list[str] = []
     for p in files:
         src = p.read_text(encoding="utf-8")
-        parts.append(f"# {p.as_posix()}\n{_normalize_module_for_hash(src)}\n")
+        rel = str(p.relative_to(ROOT)).replace("\\", "/")
+        parts.append(f"# {rel}\n{_normalize_module_for_hash(src)}\n")
 
     canonical = "\n".join(parts).encode("utf-8")
     return hashlib.sha256(canonical).hexdigest()
@@ -228,6 +248,8 @@ def _hash_confidence_logic() -> str:
 
 
 def main() -> int:
+    _require_ci_python()
+
     from code_audit.model.run_result import RunResult
 
     files = _closure(_entrypoints())
@@ -251,7 +273,7 @@ def main() -> int:
     MANIFEST.write_text(
         json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
-    print(f"✓ Wrote {MANIFEST.relative_to(ROOT)}")
+    print(f"[refresh-confidence-policy-manifest] Wrote {MANIFEST.relative_to(ROOT)}")
     print(f"  confidence_policy_hash : {payload['confidence_policy_hash']}")
     print(f"  signal_logic_version   : {current_version}")
     print(f"  closure ({len(files)} files):")
