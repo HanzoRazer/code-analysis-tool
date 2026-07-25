@@ -7,7 +7,6 @@
   "additionalProperties": false,
   "required": ["kind", "path", "expected", "got", "ci"],
   "properties": {
-    "schema_version": { "type": "string", "const": "release_audit_failure_schema_v1" },
     "kind": { "$ref": "#/$defs/kind" },
     "path": { "type": "string", "minLength": 1 },
     "expected": {},

@@ -7,10 +7,6 @@
   "additionalProperties": false,
   "required": ["version", "artifacts", "provenance"],
   "properties": {
-    "schema_version": {
-      "type": "string",
-      "const": "release_bom_schema_v1"
-    },
     "version": {
       "type": "integer",
       "const": 1

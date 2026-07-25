@@ -3,16 +3,11 @@
   "$id": "openapi_release_gate_result_schema_v1",
   "schema_version": "openapi_release_gate_result_schema_v1",
   "title": "OpenAPI Release Gate Result",
-  "type": "object",
-  "properties": {
-    "schema_version": { "type": "string", "const": "openapi_release_gate_result_schema_v1" }
-  },
   "allOf": [
     { "$ref": "release_gate_envelope.schema.json" },
     {
       "type": "object",
       "properties": {
-        "schema_version": { "type": "string", "const": "openapi_release_gate_result_schema_v1" },
         "kind": { "const": "openapi_release_gate_failed" },
         "path": { "const": "dist/*" },
         "details": {
