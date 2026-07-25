@@ -118,7 +118,7 @@ def build_registry() -> dict[str, Any]:
     rules_json = [r.to_json() for r in sorted(rules, key=lambda x: x.rule_id)]
 
     return {
-        "schema_version": 1,
+        "schema_version": "rules_registry_v1",
         "generated_by": "scripts/refresh_rules_registry.py",
         "signal_logic_version": _load_signal_logic_version(),
         "rules": rules_json,

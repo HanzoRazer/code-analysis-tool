@@ -5,7 +5,7 @@
   "additionalProperties": false,
   "required": ["schema_version", "generated_by", "signal_logic_version", "rules"],
   "properties": {
-    "schema_version": { "type": "integer", "minimum": 1 },
+    "schema_version": { "type": "string", "const": "rules_registry_v1" },
     "generated_by": { "type": "string", "minLength": 1 },
     "signal_logic_version": { "type": "string", "pattern": "^signals_v\\d+$" },
     "rules": {

@@ -5,6 +5,7 @@
   "additionalProperties": false,
   "required": ["finding_id", "type", "severity", "confidence", "message", "location", "fingerprint"],
   "properties": {
+    "schema_version": { "type": "string", "const": "finding_v1" },
     "finding_id": { "type": "string", "minLength": 1 },
     "type": { "type": "string", "minLength": 1 },
     "severity": { "type": "string", "minLength": 1 },

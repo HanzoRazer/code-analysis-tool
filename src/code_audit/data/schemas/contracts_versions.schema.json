@@ -11,6 +11,11 @@
   ],
   "additionalProperties": false,
   "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "contracts_versions_v1",
+      "description": "Schema contract version for this file."
+    },
     "signal_logic_version": {
       "type": "string",
       "pattern": "^signals_v[0-9]+$",

@@ -3,11 +3,16 @@
   "$id": "release_bom_consistency_result_schema_v1",
   "schema_version": "release_bom_consistency_result_schema_v1",
   "title": "Release BOM Consistency Result Schema",
+  "type": "object",
+  "properties": {
+    "schema_version": { "type": "string", "const": "release_bom_consistency_result_schema_v1" }
+  },
   "allOf": [
     { "$ref": "release_gate_envelope.schema.json" },
     {
       "type": "object",
       "properties": {
+        "schema_version": { "type": "string", "const": "release_bom_consistency_result_schema_v1" },
         "kind": { "const": "release_bom_consistency_failed" },
         "path": { "const": "dist/*" },
         "details": {

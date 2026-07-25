@@ -12,6 +12,7 @@
     "ref_edges_sha256"
   ],
   "properties": {
+    "schema_version": { "type": "string", "const": "schema_graph_bundle_schema_v1" },
     "ref_closure": {
       "type": "array",
       "items": { "$ref": "#/$defs/closure_record" },
