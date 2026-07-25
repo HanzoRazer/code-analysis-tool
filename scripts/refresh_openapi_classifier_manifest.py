@@ -113,11 +113,11 @@ def _compute_internal_closure(entrypoints: List[Path]) -> Tuple[List[Path], Dict
     while queue:
         current = queue.pop(0)
         current_resolved = current.resolve()
-        rel = str(current_resolved.relative_to(ROOT))
+        rel = current_resolved.relative_to(ROOT).as_posix()
         imports = _resolve_internal_imports(current_resolved)
         edge_list = []
-        for imp in sorted(imports, key=lambda p: str(p)):
-            imp_rel = str(imp.relative_to(ROOT))
+        for imp in sorted(imports, key=lambda p: p.as_posix()):
+            imp_rel = imp.relative_to(ROOT).as_posix()
             edge_list.append(imp_rel)
             if imp not in visited:
                 visited.add(imp)
@@ -125,7 +125,7 @@ def _compute_internal_closure(entrypoints: List[Path]) -> Tuple[List[Path], Dict
         if edge_list:
             edges[rel] = edge_list
 
-    return sorted(visited, key=lambda p: str(p.relative_to(ROOT))), edges
+    return sorted(visited, key=lambda p: p.relative_to(ROOT).as_posix()), edges
 
 
 def _compute_internal_edges(closure_files: List[Path]) -> List[Tuple[str, str]]:
@@ -133,10 +133,10 @@ def _compute_internal_edges(closure_files: List[Path]) -> List[Tuple[str, str]]:
     edge_set: Set[Tuple[str, str]] = set()
     for f in closure_files:
         f_resolved = f.resolve()
-        f_rel = str(f_resolved.relative_to(ROOT))
+        f_rel = f_resolved.relative_to(ROOT).as_posix()
         imports = _resolve_internal_imports(f_resolved)
         for imp in imports:
-            imp_rel = str(imp.relative_to(ROOT))
+            imp_rel = imp.relative_to(ROOT).as_posix()
             edge_set.add((f_rel, imp_rel))
     return sorted(edge_set)
 
@@ -154,7 +154,7 @@ def main() -> int:
     file_entries: Dict[str, Dict[str, str]] = {}
     for ep in ENTRYPOINT_FILES:
         result = semantic_hash_python_like_file(ep)
-        rel = str(ep.resolve().relative_to(ROOT))
+        rel = ep.resolve().relative_to(ROOT).as_posix()
         file_entries[rel] = {
             "sha256": result.sha256,
             "sha256_short": result.sha256[:12],
@@ -165,7 +165,7 @@ def main() -> int:
     closure_entries: Dict[str, Dict[str, str]] = {}
     for f in closure_files:
         result = semantic_hash_python_like_file(f)
-        rel = str(f.resolve().relative_to(ROOT))
+        rel = f.resolve().relative_to(ROOT).as_posix()
         closure_entries[rel] = {
             "sha256": result.sha256,
             "sha256_short": result.sha256[:12],
@@ -178,7 +178,9 @@ def main() -> int:
 
     manifest: Dict[str, Any] = {
         "version": 1,
-        "entrypoints": [str(ep.resolve().relative_to(ROOT)) for ep in ENTRYPOINT_FILES],
+        "entrypoints": [
+            ep.resolve().relative_to(ROOT).as_posix() for ep in ENTRYPOINT_FILES
+        ],
         "files": file_entries,
         "closure_graph": {
             "files": closure_entries,
