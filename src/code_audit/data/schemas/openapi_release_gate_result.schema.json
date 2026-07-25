@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "openapi_release_gate_result_schema_v1",
+  "schema_version": "openapi_release_gate_result_schema_v1",
+  "title": "OpenAPI Release Gate Result",
+  "allOf": [
+    { "$ref": "release_gate_envelope.schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "openapi_release_gate_failed" },
+        "path": { "const": "dist/*" },
+        "details": {
+          "items": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "missing_file",
+                  "invalid_json",
+                  "policy_missing",
+                  "policy_invalid",
+                  "snapshot_load_failed",
+                  "diff_failed",
+                  "unknowns_block_release",
+                  "breaking_change_detected",
+                  "major_bump_required",
+                  "report_emit_failed"
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

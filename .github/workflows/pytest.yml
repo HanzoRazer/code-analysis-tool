@@ -32,10 +32,10 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: "pip"
 
-      - name: Install dev dependencies
+      - name: Install dev + API dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e ".[dev]"
+          python -m pip install -e ".[dev,api]"
 
       - name: Fail if stale schema duplicate exists
         shell: bash
