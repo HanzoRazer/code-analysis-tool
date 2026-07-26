@@ -228,6 +228,12 @@ def _hash_confidence_logic() -> str:
 
 
 def main() -> int:
+    import sys as _sys
+    _sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from _ci_guard import require_ci_python
+
+    require_ci_python("refresh_confidence_policy_manifest")
+
     from code_audit.model.run_result import RunResult
 
     files = _closure(_entrypoints())

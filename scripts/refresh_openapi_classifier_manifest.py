@@ -147,6 +147,12 @@ def _hash_edges(edges: List[Tuple[str, str]]) -> str:
 
 
 def main() -> int:
+    import sys as _sys
+    _sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from _ci_guard import require_ci_python
+
+    require_ci_python("refresh_openapi_classifier_manifest")
+
     # Resolve closure
     closure_files, closure_graph = _compute_internal_closure(ENTRYPOINT_FILES)
 

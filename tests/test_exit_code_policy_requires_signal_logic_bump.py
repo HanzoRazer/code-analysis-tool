@@ -14,12 +14,28 @@ import ast
 import hashlib
 import json
 import re
+import sys
 from pathlib import Path
 from typing import Any
+
+import pytest
 
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _SRC = _REPO_ROOT / "src"
+
+# AST dumps vary by interpreter; this manifest's hashes are recorded on CI's
+# Python 3.11. Off 3.11 the gate would false-fail, so skip — generation is
+# pinned to 3.11 in scripts/_ci_guard.py. Keep in sync with the CI matrix.
+_CI_PYTHON = (3, 11)
+pytestmark = pytest.mark.skipif(
+    sys.version_info[:2] != _CI_PYTHON,
+    reason=(
+        "AST-hash manifest gate enforced only on CI Python "
+        f"{_CI_PYTHON[0]}.{_CI_PYTHON[1]}; refresh with "
+        "py -3.11 scripts/refresh_exit_code_policy_manifest.py"
+    ),
+)
 _POLICY_FILE = _SRC / "code_audit" / "policy" / "exit_codes.py"
 _MANIFEST = _REPO_ROOT / "tests" / "contracts" / "exit_code_policy_manifest.json"
 
