@@ -45,3 +45,4 @@ class AnalyzerType(str, Enum):
     JS_TS_SECURITY = "js_ts_security"
     CONTEXT_PINNED_HASH = "context_pinned_hash"
     MAXFAIL_MASKING = "maxfail_masking"
+    CROSS_COPY_DRIFT = "cross_copy_drift"
