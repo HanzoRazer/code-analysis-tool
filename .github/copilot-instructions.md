@@ -835,7 +835,8 @@ Each event carries `ts`, `type`, `signal_id`, and a `meta` bag (e.g., which butt
 
 ### Versioning & Storage Strategy
 
-- **Schema versions** use `const` in the schema (`"run_result_v1"`, `"signals_latest_v1"`, `"user_event_v1"`). Consumers match on this field for forward compatibility.
+- **Schema versions**: only the **versioned-envelope** schemas carry a `schema_version` `const` — the ones whose *instances* include a `schema_version` field: `run_result` (`"run_result_v1"`), `signals_latest` (`"signals_latest_v1"`), `user_event` (`"user_event_v1"`), `debt_snapshot`, `rule_registry`. Consumers match on this field for forward compatibility.
+  - **Non-envelope schemas do NOT have `schema_version`** and must not be given one: `release_bom`, `release_gate_envelope`, `finding`, `contracts_versions`, `schema_graph_bundle`, `rules_registry`, and the `openapi_*`/`release_*` gate-result schemas describe payloads that carry no `schema_version` field. **Never add a `schema_version` const to these to make `test_schema_version_freeze` pass** — that test enforces the envelope-only invariant of `src/code_audit/data/schemas/` (a runtime *subset*), not a requirement that every schema be versioned. If a non-envelope schema is failing that gate, it is in the wrong directory (see `src/code_audit/data/schemas/README.md`), not missing a field.
 - **Storage layout** (recommended): `{project}/.code-audit/snapshots/{run_id}/run_result.json`, with `signals_latest.json` and `events.json` alongside.
 - **Snippet policy**: The `snippet_policy` field in RunResult controls code exposure — `"full"`, `"truncated"`, or `"omitted"`. Default is `"truncated"`.
 
@@ -857,3 +858,5 @@ Each event carries `ts`, `type`, `signal_id`, and a `meta` bag (e.g., which butt
 - Don't let the engine shape the metric — CLR is a product-layer measurement
 - Don't use forbidden words or jargon in any user-facing surface
 - Don't make any button feel like a mistake — every click is a smart, safe choice
+- **Don't make a failing CI gate green by changing what it checks or fabricating the data it inspects** — fix the underlying cause, not the symptom. A gate exists to detect a real condition; satisfying it with fake data (e.g. adding a `schema_version` const to a schema that has none, editing a manifest hash by hand, weakening an assertion) makes the check *lie*. If a gate seems wrong, say so and stop — do not defeat it. A dishonest green is worse than an honest red.
+- **Don't bulk-sync, mirror, or "reconcile" directories to make their contents match** (e.g. copying `schemas/` into `src/code_audit/data/schemas/`) — those layouts are intentional subsets, not mirrors. See `src/code_audit/data/schemas/README.md`.

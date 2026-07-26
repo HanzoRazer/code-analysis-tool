@@ -17,7 +17,18 @@ from typing import Any
 
 import jsonschema
 
-# ── public-facing schemas (match schemas/ at repo root) ─────────────
+# ── bundled runtime schemas ─────────────────────────────────────────
+#
+# IMPORTANT: ``data/schemas/`` is a deliberate *subset* — only the schemas
+# the package validates against at runtime (the versioned-envelope schemas:
+# run_result, signals_latest, debt_snapshot, user_event, rule_registry).
+# It is NOT a mirror of the repo-root ``schemas/`` directory, and must not be
+# bulk-synced to "match" it. The full schema set lives at repo-root ``schemas/``
+# and any name not bundled here resolves there via priority #3 below.
+# ``tests/test_schema_version_freeze.py`` enforces that every file here carries
+# a ``schema_version.const`` — non-envelope schemas (release_bom, finding, …)
+# break that invariant and do not belong in this directory.
+# See ``src/code_audit/data/schemas/README.md``.
 
 SCHEMA_DIR = "data/schemas"
 
@@ -26,14 +37,14 @@ def _schema_path(name: str) -> Path:
     """Resolve a public schema.
 
     Priority:
-    1. Canonical ``src/code_audit/data/schemas/`` (relative to this file)
+    1. Bundled runtime subset ``src/code_audit/data/schemas/`` (envelope schemas)
     2. pip-installed package data via importlib.resources
-    3. Repo-root ``schemas/`` fallback for bare checkout
+    3. Repo-root ``schemas/`` — full schema set / bare-checkout fallback
     """
-    # 1. canonical: data/schemas relative to the code_audit package root
-    canonical = Path(__file__).resolve().parents[1] / SCHEMA_DIR / name
-    if canonical.exists():
-        return canonical
+    # 1. bundled runtime subset relative to the code_audit package root
+    bundled = Path(__file__).resolve().parents[1] / SCHEMA_DIR / name
+    if bundled.exists():
+        return bundled
 
     # 2. importlib.resources (works for wheel / zip installs)
     try:
