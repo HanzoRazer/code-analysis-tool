@@ -56,7 +56,7 @@
     },
     {
       "class_name": "MaxfailMaskingAnalyzer",
-      "logic_hash": "sha256:3f3778af4fb58c6ea5ca244bb07349ad8fd44a143d612be041bb9013b3b7ea8f",
+      "logic_hash": "sha256:aa274b2a65dddc1f4fcf4ae7859d1f568ae0b18f0a2e1a29062c3475fb14abbd",
       "module": "code_audit.analyzers.maxfail_masking",
       "version": "1.0.0"
     },
