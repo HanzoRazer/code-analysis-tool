@@ -44,6 +44,7 @@ from code_audit.analyzers.vue_component import VueComponentAnalyzer
 from code_audit.analyzers.vue_coupling import VueCouplingAnalyzer
 from code_audit.analyzers.js_ts_security import JsTsSecurityPreviewAnalyzer
 from code_audit.analyzers.context_pinned_hash import ContextPinnedHashAnalyzer
+from code_audit.analyzers.maxfail_masking import MaxfailMaskingAnalyzer
 from code_audit.core.discover import discover_py_files
 from code_audit.core.runner import run_scan
 from code_audit.model.run_result import RunResult
@@ -69,6 +70,7 @@ _DEFAULT_ANALYZERS = (
     VueCouplingAnalyzer,
     JsTsSecurityPreviewAnalyzer,
     ContextPinnedHashAnalyzer,
+    MaxfailMaskingAnalyzer,
 )
 
 
