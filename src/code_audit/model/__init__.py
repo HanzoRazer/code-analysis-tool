@@ -44,3 +44,4 @@ class AnalyzerType(str, Enum):
     SQL = "sql"
     JS_TS_SECURITY = "js_ts_security"
     CONTEXT_PINNED_HASH = "context_pinned_hash"
+    MAXFAIL_MASKING = "maxfail_masking"

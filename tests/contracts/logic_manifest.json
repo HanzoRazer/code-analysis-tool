@@ -55,6 +55,12 @@
       "version": "0.1.0"
     },
     {
+      "class_name": "MaxfailMaskingAnalyzer",
+      "logic_hash": "sha256:aa274b2a65dddc1f4fcf4ae7859d1f568ae0b18f0a2e1a29062c3475fb14abbd",
+      "module": "code_audit.analyzers.maxfail_masking",
+      "version": "1.0.0"
+    },
+    {
       "class_name": "RoutersAnalyzer",
       "logic_hash": "sha256:35f8a6e0a70c74f369d1a41cc5be69b905efa9f650fb54487a5d5844d4e6c227",
       "module": "code_audit.analyzers.routers",
