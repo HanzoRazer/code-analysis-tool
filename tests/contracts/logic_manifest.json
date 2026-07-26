@@ -13,6 +13,12 @@
       "version": "1.0.0"
     },
     {
+      "class_name": "CrossCopyDriftAnalyzer",
+      "logic_hash": "sha256:4de5999bcd6668716fc29e93167eba8bbc0687b79ccc1413979902dbb381bf5d",
+      "module": "code_audit.analyzers.cross_copy_drift",
+      "version": "1.0.0"
+    },
+    {
       "class_name": "DeadCodeAnalyzer",
       "logic_hash": "sha256:72a83b4b5f0e0f89c3308293e7f63c9140e4a84b193d381a3cfc75588a3ae2e9",
       "module": "code_audit.analyzers.dead_code",
