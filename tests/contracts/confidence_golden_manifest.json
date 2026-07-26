@@ -12,12 +12,12 @@
     "src/code_audit/insights/confidence.py": "e5582478d5860574760200df4a843d52a34e187f5d98d457e0bc8b6288b1d5b3",
     "src/code_audit/model/__init__.py": "388d127d6327088e74a6ae3928a003766d1fe48ef937104620eb4be2926843b4",
     "src/code_audit/model/finding.py": "0eef0d618b48ce3157094a5da772d6d651b7eab90585a4f96e0f2b68a114ac80",
-    "tests/fixtures/confidence/cases.json": "6146ea5a974d5145a11140ae47810acc354a674bc18edb67bea8a0be2483a283",
-    "tests/fixtures/confidence/expected/many_low_dead_code.json": "2936224bcd27d744329af0d756d7cf7acad006fce1ffdebfacc877103936a9ef",
-    "tests/fixtures/confidence/expected/mixed_severity_sanity.json": "3ff2bc8bde4969ad03987e5f74e8ec9f70121cd5ff47e9d49c6375ddccb65295",
-    "tests/fixtures/confidence/expected/no_findings.json": "7c7bba5db92d41e175e8a62cfa92bfc1d52cc125a035b76206fdf23407e18a9d",
-    "tests/fixtures/confidence/expected/one_critical_security.json": "5a337e84ef845c56562ba74230ab82c280e6b77ecbc343c9f8e0e877f2852a67",
-    "tests/fixtures/confidence/expected/overwhelm_threshold_crossing.json": "7a8b31b80939bc8594471d05d05c413ed3c7011ad5ce034cf7b282df0897c431"
+    "tests/fixtures/confidence/cases.json": "825b589dc9f07022b7a5fe8c6ba45f8fc24ddef57dc2b0731ed089f5583bcca0",
+    "tests/fixtures/confidence/expected/many_low_dead_code.json": "8a6355b1a681996cd748e3feb0c1b410412b5ad9fe13aaa64bcaf223b70e1a9c",
+    "tests/fixtures/confidence/expected/mixed_severity_sanity.json": "59153389254369cb1c908f8a9068b9288fdbcf5808356164b33e621b8f83b7d7",
+    "tests/fixtures/confidence/expected/no_findings.json": "aeaaebb0effae35cb4fe3705a90ca9252654e2ecdd4f0b77b30db531cce2079d",
+    "tests/fixtures/confidence/expected/one_critical_security.json": "3a434ed5e3a23171479657b45bd8c21348ba0b01fd49500f77091ea10ae82d6b",
+    "tests/fixtures/confidence/expected/overwhelm_threshold_crossing.json": "29273cbd61c72619b6dfd253b662d24dc45fbcab61638bd5f08c21354af43aaa"
   },
   "hash_modes": {
     "src/code_audit/insights/confidence.py": "ast",
@@ -31,5 +31,5 @@
     "tests/fixtures/confidence/expected/overwhelm_threshold_crossing.json": "bytes"
   },
   "manifest_version": 1,
-  "signal_logic_version": "signals_v4"
+  "signal_logic_version": "signals_v5"
 }

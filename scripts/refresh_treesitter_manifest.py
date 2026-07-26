@@ -22,9 +22,9 @@ OUT = REPO_ROOT / "tests" / "contracts" / "treesitter_manifest.json"
 
 
 def _sha256_file(p: Path) -> str:
-    h = hashlib.sha256()
-    h.update(p.read_bytes())
-    return f"sha256:{h.hexdigest()}"
+    # LF-normalize so Windows CRLF checkouts match Linux CI / git blobs.
+    data = p.read_bytes().replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+    return f"sha256:{hashlib.sha256(data).hexdigest()}"
 
 
 def _find_signal_logic_version() -> str:

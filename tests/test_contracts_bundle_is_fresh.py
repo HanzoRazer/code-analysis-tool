@@ -54,7 +54,9 @@ def test_contracts_bundle_hashes_are_current() -> None:
         expected = meta["sha256"]
 
         if scope == "file_bytes":
-            actual = hashlib.sha256(p.read_bytes()).hexdigest()
+            # LF-normalize so Windows CRLF checkouts match Linux CI / git blobs.
+            data = p.read_bytes().replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+            actual = hashlib.sha256(data).hexdigest()
         elif scope == "supported_rule_ids_only":
             reg = json.loads(p.read_text(encoding="utf-8"))
             ids = sorted(set(reg.get("supported_rule_ids", [])))

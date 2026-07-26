@@ -31,6 +31,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+import tempfile
 from pathlib import Path
 
 from code_audit import __version__
@@ -136,6 +137,45 @@ def _reject_unsafe_out_path(
             return None
 
     return resolved
+
+
+def _validate_ci_temp_absolute_out_path(candidate: Path, *, flag: str) -> Path | None:
+    """Validate CI absolute outputs stay inside the system temp directory."""
+    resolved = candidate.resolve()
+    temp_root = Path(tempfile.gettempdir()).resolve()
+    if resolved == temp_root or temp_root in resolved.parents:
+        return resolved
+    print(
+        f"error: {flag} absolute paths must stay within {temp_root} in CI",
+        file=sys.stderr,
+    )
+    return None
+
+
+def _resolve_ci_relative_artifacts_out_path(
+    candidate: Path, *, flag: str
+) -> Path | None:
+    """Resolve CI relative outputs under the caller's ``./artifacts/``.
+
+    Absolute paths are rejected here. Debt snapshot is the only CI path that
+    may accept absolute outs, and only via ``_validate_ci_temp_absolute_out_path``.
+    """
+    out_path = _reject_unsafe_out_path(
+        candidate,
+        flag=flag,
+        base_dir=Path.cwd(),
+    )
+    if out_path is None:
+        return None
+    allowed = (Path.cwd() / "artifacts").resolve()
+    if not out_path.is_relative_to(allowed):
+        print(
+            f"error: {flag} relative paths must stay within the caller's "
+            "artifacts/ directory in CI",
+            file=sys.stderr,
+        )
+        return None
+    return out_path
 
 
 # ── Vibe tier thresholds ─────────────────────────────────────────────
@@ -1399,22 +1439,22 @@ def _handle_debt(args: argparse.Namespace) -> int:
 
         # --out mode: write directly to file (CI-friendly)
         if getattr(args, "snapshot_out", None):
-            # In CI, prevent writes escaping ./artifacts.
+            # In CI, relative outs must stay under the caller's ./artifacts/.
+            # Unlike scan/--out, debt snapshot also allows absolute outs, but
+            # only under the system temp directory (pytest tmp_path workflows).
             if _is_running_in_ci() and ci_mode:
                 requested_out: Path = Path(args.snapshot_out)
-                out_path = _reject_unsafe_out_path(
-                    requested_out,
-                    flag="--out",
-                    base_dir=target,
-                )
-                if out_path is None:
-                    return ExitCode.ERROR
-                allowed = (target / "artifacts").resolve()
-                if not out_path.is_relative_to(allowed):
-                    print(
-                        "error: --out must be within artifacts/ when running in CI",
-                        file=sys.stderr,
+                if requested_out.is_absolute():
+                    out_path = _validate_ci_temp_absolute_out_path(
+                        requested_out,
+                        flag="--out",
                     )
+                else:
+                    out_path = _resolve_ci_relative_artifacts_out_path(
+                        requested_out,
+                        flag="--out",
+                    )
+                if out_path is None:
                     return ExitCode.ERROR
             else:
                 out_path = Path(args.snapshot_out)
@@ -1726,22 +1766,15 @@ def main(argv: list[str] | None = None) -> int:
             if rc is not None:
                 return rc
 
-        # In CI, prevent writes escaping ./artifacts.
+        # In CI, relative outs are anchored to the caller's ./artifacts/ (not
+        # scan_root/artifacts/). Absolute outs are rejected here; only debt
+        # snapshot permits absolute temp-directory outs.
         if _is_running_in_ci() and ci_mode:
-            requested_out = Path(args.out)
-            out_path = _reject_unsafe_out_path(
-                requested_out,
+            out_path = _resolve_ci_relative_artifacts_out_path(
+                Path(args.out),
                 flag="--out",
-                base_dir=scan_root,
             )
             if out_path is None:
-                return ExitCode.ERROR
-            allowed = (scan_root / "artifacts").resolve()
-            if not out_path.is_relative_to(allowed):
-                print(
-                    "error: --out must be within artifacts/ when running in CI",
-                    file=sys.stderr,
-                )
                 return ExitCode.ERROR
         else:
             out_path = Path(args.out)

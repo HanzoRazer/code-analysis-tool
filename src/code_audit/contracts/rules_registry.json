@@ -8,7 +8,7 @@
         "ts"
       ],
       "rule_id": "EXC_EMPTY_CATCH_JS_001",
-      "semantic_hash": "336aa26fac7683b2e38930c0e5976ffb3fe559b571118ac2fdfd81809ca61ce9",
+      "semantic_hash": "b1f046d5a5c5dc84cc656b528d6418c7b6f9320f31b47e693838fe1c9f29a8ea",
       "semantic_inputs": [
         "src/code_audit/analyzers/js_ts_security.py"
       ],
@@ -21,7 +21,7 @@
         "ts"
       ],
       "rule_id": "GST_GLOBAL_THIS_MUTATION_001",
-      "semantic_hash": "70ac8e5ccc98fe5d8a0ca949ba530fb744ea8c2edc9b5fd11278cf20ccb97dc0",
+      "semantic_hash": "c022fa5caa3521b5f234e77a7f43255de2e155526f15b44a667e1e25c2530ccf",
       "semantic_inputs": [
         "src/code_audit/analyzers/js_ts_security.py"
       ],
@@ -34,7 +34,7 @@
         "ts"
       ],
       "rule_id": "SEC_DYNAMIC_MODULE_LOAD_JS_001",
-      "semantic_hash": "df721572a7f6a393afa478d1088f6f8c96abbed2bb247dc37d2038914d9a2a0e",
+      "semantic_hash": "88dcff21b0cbb2a78b8c2bd80a69308520c9e5c5635c9a4eafceff0cbafce3c2",
       "semantic_inputs": [
         "src/code_audit/analyzers/js_ts_security.py"
       ],
@@ -47,7 +47,7 @@
         "ts"
       ],
       "rule_id": "SEC_EVAL_JS_001",
-      "semantic_hash": "7f2a0458460be4d95c13d49cbde8cad7eb2b6574e8193afd9d970de1c3c6f6d7",
+      "semantic_hash": "830227ce2bca84d2ac856c6309a54e5fa81d10253d928c1cb710dfa9eaff6863",
       "semantic_inputs": [
         "src/code_audit/analyzers/js_ts_security.py"
       ],
@@ -60,7 +60,7 @@
         "ts"
       ],
       "rule_id": "SEC_NEW_FUNCTION_JS_001",
-      "semantic_hash": "4f207233d909ad2e09e7a09377ff2a4233b9b4d151dd76b84a36ad6279440b98",
+      "semantic_hash": "4dc7798848ae2ddfda468bb1b945be4a492e1ff9c0a9bce9da2a2ccebd1242fb",
       "semantic_inputs": [
         "src/code_audit/analyzers/js_ts_security.py"
       ],
@@ -68,5 +68,5 @@
     }
   ],
   "schema_version": 1,
-  "signal_logic_version": "signals_v4"
+  "signal_logic_version": "signals_v5"
 }

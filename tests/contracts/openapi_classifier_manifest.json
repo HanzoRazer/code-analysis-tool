@@ -1,24 +1,24 @@
 {
   "closure_graph": {
-    "edge_graph_sha256": "f620d1ffe7c89e32969ceb12c822d0591cae4955dddee1772e5488a53edb223d",
-    "edge_graph_sha256_short": "f620d1ffe7c8",
+    "edge_graph_sha256": "28bb361b09dcabc484aaa2c3dc3be296f1c70dfcf26e04226ae130c01870c5c9",
+    "edge_graph_sha256_short": "28bb361b09dc",
     "files": {
-      "src\\code_audit\\web_api\\openapi_diff.py": {
+      "src/code_audit/web_api/openapi_diff.py": {
         "mode": "ast",
         "sha256": "3a02af72a27609e9e1d4bb769f2a2f1c7d9e1233f15553566451d076a589de3c",
         "sha256_short": "3a02af72a276"
       },
-      "src\\code_audit\\web_api\\openapi_normalize.py": {
+      "src/code_audit/web_api/openapi_normalize.py": {
         "mode": "ast",
         "sha256": "871bb913cad3a8f11c459c743d5b6768a30027977c31b98e76d0a1885105a6b8",
         "sha256_short": "871bb913cad3"
       },
-      "src\\code_audit\\web_api\\openapi_path_match.py": {
+      "src/code_audit/web_api/openapi_path_match.py": {
         "mode": "ast",
         "sha256": "591226e22a9c2e6c7d5053428f347f7c733f651bc9042006c9f7155a2e0933a4",
         "sha256_short": "591226e22a9c"
       },
-      "src\\code_audit\\web_api\\schema_semver.py": {
+      "src/code_audit/web_api/schema_semver.py": {
         "mode": "ast",
         "sha256": "0b8a96c00bab0b184a8ae124dfcb4292a8e8b34473328b2aecbe0efdae4a0aff",
         "sha256_short": "0b8a96c00bab"
@@ -26,31 +26,31 @@
     }
   },
   "edges": {
-    "src\\code_audit\\web_api\\openapi_diff.py": [
-      "src\\code_audit\\web_api\\openapi_normalize.py",
-      "src\\code_audit\\web_api\\schema_semver.py"
+    "src/code_audit/web_api/openapi_diff.py": [
+      "src/code_audit/web_api/openapi_normalize.py",
+      "src/code_audit/web_api/schema_semver.py"
     ],
-    "src\\code_audit\\web_api\\openapi_normalize.py": [
-      "src\\code_audit\\web_api\\openapi_path_match.py"
+    "src/code_audit/web_api/openapi_normalize.py": [
+      "src/code_audit/web_api/openapi_path_match.py"
     ]
   },
   "entrypoints": [
-    "src\\code_audit\\web_api\\openapi_normalize.py",
-    "src\\code_audit\\web_api\\openapi_diff.py",
-    "src\\code_audit\\web_api\\schema_semver.py"
+    "src/code_audit/web_api/openapi_normalize.py",
+    "src/code_audit/web_api/openapi_diff.py",
+    "src/code_audit/web_api/schema_semver.py"
   ],
   "files": {
-    "src\\code_audit\\web_api\\openapi_diff.py": {
+    "src/code_audit/web_api/openapi_diff.py": {
       "mode": "ast",
       "sha256": "3a02af72a27609e9e1d4bb769f2a2f1c7d9e1233f15553566451d076a589de3c",
       "sha256_short": "3a02af72a276"
     },
-    "src\\code_audit\\web_api\\openapi_normalize.py": {
+    "src/code_audit/web_api/openapi_normalize.py": {
       "mode": "ast",
       "sha256": "871bb913cad3a8f11c459c743d5b6768a30027977c31b98e76d0a1885105a6b8",
       "sha256_short": "871bb913cad3"
     },
-    "src\\code_audit\\web_api\\schema_semver.py": {
+    "src/code_audit/web_api/schema_semver.py": {
       "mode": "ast",
       "sha256": "0b8a96c00bab0b184a8ae124dfcb4292a8e8b34473328b2aecbe0efdae4a0aff",
       "sha256_short": "0b8a96c00bab"

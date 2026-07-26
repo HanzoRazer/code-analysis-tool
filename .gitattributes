@@ -1,0 +1,9 @@
+# Keep text contract artifacts LF-stable so Windows refreshes cannot bake
+# CRLF byte hashes that fail Linux CI.
+* text=auto eol=lf
+tests/fixtures/confidence/** text eol=lf
+tests/contracts/** text eol=lf
+schemas/** text eol=lf
+scripts/** text eol=lf
+src/code_audit/** text eol=lf
+docs/**/*.json text eol=lf

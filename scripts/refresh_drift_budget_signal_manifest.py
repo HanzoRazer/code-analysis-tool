@@ -48,7 +48,9 @@ def _find_signal_logic_version() -> str:
 
 
 def _file_hash(p: Path) -> str:
-    return hashlib.sha256(p.read_bytes()).hexdigest()
+    # LF-normalize so Windows CRLF checkouts match Linux CI / git blobs.
+    data = p.read_bytes().replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+    return hashlib.sha256(data).hexdigest()
 
 
 def _rel(p: Path) -> str:
