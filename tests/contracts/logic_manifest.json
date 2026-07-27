@@ -67,6 +67,12 @@
       "version": "1.0.0"
     },
     {
+      "class_name": "OrderDependenceAnalyzer",
+      "logic_hash": "sha256:e6bd3ae59e94ff609bfeee0fdccafb39368b2dc421a82f401540850ce660b97e",
+      "module": "code_audit.analyzers.order_dependence",
+      "version": "1.0.0"
+    },
+    {
       "class_name": "RoutersAnalyzer",
       "logic_hash": "sha256:35f8a6e0a70c74f369d1a41cc5be69b905efa9f650fb54487a5d5844d4e6c227",
       "module": "code_audit.analyzers.routers",

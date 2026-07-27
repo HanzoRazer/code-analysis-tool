@@ -46,3 +46,4 @@ class AnalyzerType(str, Enum):
     CONTEXT_PINNED_HASH = "context_pinned_hash"
     MAXFAIL_MASKING = "maxfail_masking"
     CROSS_COPY_DRIFT = "cross_copy_drift"
+    ORDER_DEPENDENCE = "order_dependence"
