@@ -74,6 +74,23 @@ def test_parametrize_is_not_a_registry_collision(tmp_path):
     assert _run(tmp_path, src) == []
 
 
+def test_other_config_decorators_not_collisions(tmp_path):
+    # click.option / mock.patch / fixture are configuration, not registration —
+    # the same string on two functions must not be a collision.
+    src = (
+        "import click\n"
+        '@click.option("--name")\n'
+        "def a(name): ...\n"
+        '@click.option("--name")\n'
+        "def b(name): ...\n"
+        '@mock.patch("target.mod")\n'
+        "def c(): ...\n"
+        '@mock.patch("target.mod")\n'
+        "def d(): ...\n"
+    )
+    assert _run(tmp_path, src) == []
+
+
 def test_explicit_registry_register_collision(tmp_path):
     src = (
         "registry = object()\n"
@@ -113,10 +130,22 @@ def test_dict_duplicate_key_flagged(tmp_path):
     assert f[0].severity is Severity.LOW
 
 
-def test_set_duplicate_key_flagged(tmp_path):
-    f = _run(tmp_path, "S = {1, 2, 1}\n")
+def test_set_duplicate_not_flagged(tmp_path):
+    # Set duplicates are order-INdependent (redundant, not shadowing) — this
+    # order-dependence detector deliberately does not report them.
+    assert _run(tmp_path, "S = {1, 2, 1}\n") == []
+
+
+def test_dict_dup_line_points_at_duplicate_and_records_all_sites(tmp_path):
+    # Multi-line literal: anchor at the first key occurrence (not the container
+    # brace), and record every site — not just the last.
+    src = 'D = {\n  "a": 1,\n  "b": 2,\n  "a": 3,\n  "a": 4,\n}\n'
+    f = _run(tmp_path, src)
     assert len(f) == 1
-    assert f[0].metadata["literal_kind"] == "set"
+    assert f[0].location.line_start == 2      # first "a", not the `D = {` on line 1
+    assert f[0].location.line_end == 5
+    assert f[0].metadata["sites"] == [2, 4, 5]
+    assert f[0].metadata["occurrence_count"] == 3
 
 
 def test_dict_no_duplicate_no_finding(tmp_path):

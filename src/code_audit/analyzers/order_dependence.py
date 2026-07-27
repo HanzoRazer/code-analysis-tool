@@ -20,8 +20,10 @@ extension):
 1. **Duplicate keyed registration** — the same ``@obj.method("key")`` decorator
    (route or registry) appears 2+ times. Method-aware: ``@app.get("/x")`` and
    ``@app.post("/x")`` are distinct and do NOT collide.
-2. **Duplicate key in a dict/set literal** — ``{"a": 1, "a": 2}``; the later
-   value silently wins and the earlier is dead.
+2. **Duplicate key in a dict literal** — ``{"a": 1, "a": 2}``; the later value
+   silently wins (last-wins) and the earlier is dead. (Set duplicates are *not*
+   order-dependent — set membership is order-independent — so they are
+   deliberately not reported by this detector.)
 
 ``Finding.metadata.explicit_precedence_confirmed`` is ``False`` in v1: the
 detector cannot yet tell an ordering that is *declared* (an explicit precedence /
@@ -99,9 +101,11 @@ class OrderDependenceAnalyzer:
             message = (
                 f"'{registrar}(\"{key}\")' is registered {len(locs)} times in this "
                 f"module (lines {lines_str}: {names}). With no explicit precedence, "
-                f"whichever is imported/defined first silently wins — load order is "
-                f"the de-facto authority. Fix: make the keys distinct, or declare "
-                f"one explicit precedence."
+                f"one silently shadows the other — which one depends on registration/"
+                f"import order (the framework's resolution rule), making load order "
+                f"the de-facto authority. Fix: make the keys distinct, or declare one "
+                f"explicit precedence. (Detection is module-scoped; cross-module "
+                f"composition via include_router/imports isn't covered yet.)"
             )
             fp = make_fingerprint(_RULE_REGISTRY, rel, f"{registrar}:{key}", lines_str)
             findings.append(
@@ -125,44 +129,44 @@ class OrderDependenceAnalyzer:
             )
         return findings
 
-    # ── signal 2: duplicate keys in a dict/set literal ──────────────
+    # ── signal 2: duplicate keys in a dict literal ──────────────────
+    # NB: only dicts — a duplicate is genuinely order-dependent (the later value
+    # silently overwrites, last wins). Set duplicates are NOT order-dependent
+    # (set membership is order-independent; a duplicate is merely redundant), so
+    # they don't belong in an order-dependence detector and are deliberately not
+    # reported here.
 
     def _dup_literal_keys(
         self, tree: ast.Module, rel: str, src_lines: list[str]
     ) -> list[Finding]:
         findings: list[Finding] = []
         for node in ast.walk(tree):
-            keys: list = []
-            if isinstance(node, ast.Dict):
-                keys = [k for k in node.keys if k is not None]  # skip **spread
-            elif isinstance(node, ast.Set):
-                keys = list(node.elts)
-            else:
+            if not isinstance(node, ast.Dict):
                 continue
-            seen: dict[object, int] = {}
-            dupes: dict[object, int] = {}
-            for k in keys:
+            by_key: dict[object, list[int]] = {}
+            for k in node.keys:
+                if k is None:  # ``**spread`` has no key
+                    continue
                 lit = _const_value(k)
                 if lit is _NO_CONST:
                     continue
-                if lit in seen:
-                    dupes[lit] = getattr(k, "lineno", 0)
-                else:
-                    seen[lit] = getattr(k, "lineno", 0)
-            for lit, dline in dupes.items():
-                line = getattr(node, "lineno", dline) or dline
-                snippet = src_lines[line - 1].strip() if 0 < line <= len(src_lines) else ""
-                kind = "dict" if isinstance(node, ast.Dict) else "set"
-                tail = (
-                    " — the later value silently wins; the earlier entry is dead."
-                    if kind == "dict"
-                    else " — the duplicate is silently discarded."
+                by_key.setdefault(lit, []).append(getattr(k, "lineno", 0))
+
+            for lit, lines in by_key.items():
+                if len(lines) < 2:
+                    continue
+                lines.sort()
+                line = lines[0]  # anchor at the first (shadowed) occurrence
+                lines_str = ", ".join(str(ln) for ln in lines)
+                snippet = (
+                    src_lines[line - 1].strip() if 0 < line <= len(src_lines) else ""
                 )
                 message = (
-                    f"Duplicate key {lit!r} in this {kind} literal{tail} "
-                    f"Order decides the survivor; make the keys distinct."
+                    f"Duplicate key {lit!r} in this dict literal (lines {lines_str}) "
+                    f"— each later occurrence silently overwrites the earlier, so only "
+                    f"the last survives and the rest are dead. Make the keys distinct."
                 )
-                fp = make_fingerprint(_RULE_DUP_KEY, rel, f"{kind}:{lit!r}", str(line))
+                fp = make_fingerprint(_RULE_DUP_KEY, rel, f"dict:{lit!r}", lines_str)
                 findings.append(
                     Finding(
                         finding_id=fp,
@@ -170,13 +174,16 @@ class OrderDependenceAnalyzer:
                         severity=Severity.LOW,
                         confidence=0.8,
                         message=message,
-                        location=Location(path=rel, line_start=line, line_end=dline),
+                        location=Location(
+                            path=rel, line_start=line, line_end=lines[-1]
+                        ),
                         fingerprint=fp,
                         snippet=snippet,
                         metadata={
                             "rule_id": _RULE_DUP_KEY,
-                            "literal_kind": kind,
                             "duplicate_key": repr(lit),
+                            "sites": lines,
+                            "occurrence_count": len(lines),
                             "explicit_precedence_confirmed": False,
                         },
                     )
@@ -203,6 +210,13 @@ _REGISTRY_VERBS = frozenset({
     "register", "command", "add_command", "add_url_rule",
 })
 
+# Registrar roots that are config/mocking libraries, not app/registry objects.
+# Guards the ambiguous verbs — most importantly ``@mock.patch("target")`` (attr
+# ``patch`` collides with the HTTP PATCH verb) and ``@unittest.mock.patch``.
+_NONROUTE_ROOTS = frozenset(
+    {"mock", "unittest", "pytest", "click", "functools", "contextlib"}
+)
+
 
 def _keyed_registration(dec: ast.expr) -> tuple[str, str] | None:
     """If *dec* is a keyed *registry* decorator ``@obj.verb("literal", ...)`` whose
@@ -218,6 +232,8 @@ def _keyed_registration(dec: ast.expr) -> tuple[str, str] | None:
         return None
     registrar = _attr_chain(func)
     if registrar is None:
+        return None
+    if registrar.split(".", 1)[0] in _NONROUTE_ROOTS:  # e.g. mock.patch
         return None
     return registrar, key
 
