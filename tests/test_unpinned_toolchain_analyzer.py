@@ -1,4 +1,4 @@
-"""Unit tests for the unpinned-toolchain detector (v2 — section-based).
+"""Unit tests for the unpinned-toolchain detector (v2.1 — section-based).
 
 Gate is structural position (dev/lint/test/ci section), not a tool-name
 whitelist. Known-tool list only boosts severity/confidence.
@@ -8,7 +8,10 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
-from code_audit.analyzers.unpinned_toolchain import UnpinnedToolchainAnalyzer
+from code_audit.analyzers.unpinned_toolchain import (
+    UnpinnedToolchainAnalyzer,
+    _section_is_toolchain,
+)
 from code_audit.model import AnalyzerType, Severity
 
 
@@ -124,6 +127,19 @@ def test_inline_array_parsed(tmp_path):
     assert tools == ["pytest", "ruff"]
 
 
+def test_multiline_inline_array_flags_opener_dep(tmp_path):
+    """Regression: first dep on a continued inline array opener must not be missed."""
+    (tmp_path / "pyproject.toml").write_text(
+        "[project.optional-dependencies]\n"
+        'dev = ["ruff>=0.4.0",\n'
+        '       "pytest>=7.0"]\n',
+        encoding="utf-8",
+    )
+    f = _run(tmp_path)
+    tools = sorted(x.metadata["tool"] for x in f)
+    assert tools == ["pytest", "ruff"]
+
+
 def test_lint_section_is_dev_surface(tmp_path):
     (tmp_path / "pyproject.toml").write_text(
         "[project.optional-dependencies]\n"
@@ -148,6 +164,73 @@ def test_requirements_dev_txt(tmp_path):
     tools = sorted(x.metadata["tool"] for x in f)
     assert tools == ["requests", "ruff"]
     assert all(x.metadata["section"] == "<dev-requirements-file>" for x in f)
+
+
+def test_requirements_dev_inline_comment_not_flagged(tmp_path):
+    (tmp_path / "requirements-dev.txt").write_text(
+        "ruff>=0.4.0  # keep floor for now\n"
+        "# mypy>=1.0\n"
+        "pytest==7.0.0\n",
+        encoding="utf-8",
+    )
+    f = _run(tmp_path, files=[tmp_path / "requirements-dev.txt"])
+    tools = {x.metadata["tool"] for x in f}
+    assert tools == {"ruff"}
+
+
+def test_env_marker_does_not_suppress_floor_only(tmp_path):
+    """Package bounds are evaluated without PEP 508 markers."""
+    (tmp_path / "pyproject.toml").write_text(
+        "[project.optional-dependencies]\n"
+        "dev = [\n"
+        '  \'ruff>=0.4 ; python_version < "3.13"\',\n'
+        '  \'mypy>=1.0 ; python_version <= "3.12"\',\n'
+        "]\n",
+        encoding="utf-8",
+    )
+    f = _run(tmp_path)
+    tools = sorted(x.metadata["tool"] for x in f)
+    assert tools == ["mypy", "ruff"]
+    assert all(";" not in x.metadata["spec"] for x in f)
+
+
+def test_setup_cfg_not_scanned_as_toml(tmp_path):
+    """setup.cfg is unsupported INI — must not pretend TOML parsing covers it."""
+    (tmp_path / "setup.cfg").write_text(
+        "[options.extras_require]\n"
+        "dev =\n"
+        "    ruff>=0.4.0\n",
+        encoding="utf-8",
+    )
+    # Even when explicitly passed, skip — do not emit false negatives disguised
+    # as coverage, and do not crash / invent findings from INI text.
+    assert _run(tmp_path, files=[tmp_path / "setup.cfg"]) == []
+    # Root discovery must not pick it up either.
+    assert UnpinnedToolchainAnalyzer().run(tmp_path, []) == []
+
+
+def test_section_token_match_not_substring():
+    assert _section_is_toolchain("dev")
+    assert _section_is_toolchain("dev-tools")
+    assert _section_is_toolchain("lint")
+    assert _section_is_toolchain("tests")
+    # Substring overmatch cases from the review — must NOT match.
+    assert not _section_is_toolchain("lifestyle")
+    assert not _section_is_toolchain("checksum-tools")
+    assert not _section_is_toolchain("pricing")
+    assert not _section_is_toolchain("api")
+    assert not _section_is_toolchain("treesitter")
+
+
+def test_non_toolchain_section_name_with_check_substring_not_flagged(tmp_path):
+    (tmp_path / "pyproject.toml").write_text(
+        "[project.optional-dependencies]\n"
+        "checksum = [\n"
+        '  "ruff>=0.4.0",\n'
+        "]\n",
+        encoding="utf-8",
+    )
+    assert _run(tmp_path) == []
 
 
 def test_dogfood_this_repo_pyproject():

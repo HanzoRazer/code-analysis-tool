@@ -92,9 +92,9 @@
     },
     {
       "class_name": "UnpinnedToolchainAnalyzer",
-      "logic_hash": "sha256:0985280135390f8e50b5298aaa331ad4d7bcb69b440ccf6702532f57634f5c46",
+      "logic_hash": "sha256:c453a35da7f65893d39210a5e692401e2af150bc13f7a0ade08d989506755fb9",
       "module": "code_audit.analyzers.unpinned_toolchain",
-      "version": "2.0.0"
+      "version": "2.1.0"
     },
     {
       "class_name": "VueComponentAnalyzer",
