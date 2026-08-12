@@ -91,6 +91,12 @@
       "version": "1.1.0"
     },
     {
+      "class_name": "UnpinnedToolchainAnalyzer",
+      "logic_hash": "sha256:e7a49c0545607f46b7c89a8b8f8bdb2638f900a1709ddb50c671e31b225c8327",
+      "module": "code_audit.analyzers.unpinned_toolchain",
+      "version": "2.0.0"
+    },
+    {
       "class_name": "VueComponentAnalyzer",
       "logic_hash": "sha256:6d432b4753c3ceac64ac396607e8f9717aadcb442db8561fb52778941427d74e",
       "module": "code_audit.analyzers.vue_component",
