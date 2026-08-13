@@ -48,3 +48,4 @@ class AnalyzerType(str, Enum):
     CROSS_COPY_DRIFT = "cross_copy_drift"
     ORDER_DEPENDENCE = "order_dependence"
     UNPINNED_TOOLCHAIN = "unpinned_toolchain"
+    PR_SCOPE = "pr_scope"

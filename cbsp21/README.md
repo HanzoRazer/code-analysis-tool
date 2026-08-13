@@ -7,6 +7,9 @@ This folder contains the governance "patch manifest" artifacts used to describe,
 - `patch_input.schema.json` — JSON Schema for the patch manifest (v1).
 - `patch_input.json.example` — Example manifest tailored to this repo's layout and typical changes.
 - `patch_input.template.json` — Minimal fill-in template for new patches.
+- `patch_input_v2.schema.json` — v2 schema (adds `scope.min_coverage_percent` + `diff_range.pinned_merge_base` for `pr_scope`).
+- `patch_input_v2.template.json` / `patch_input_v2.example.json` — v2 fill-in + example.
+- `pr_scope_acceptance.json` — Locked acceptance contract for the pr_scope detector.
 
 ## How to use
 

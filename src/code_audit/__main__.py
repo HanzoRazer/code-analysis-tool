@@ -298,6 +298,16 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--max-file-lines", type=int, default=400)
     p.add_argument("--max-func-lines", type=int, default=60)
+    p.add_argument(
+        "--pr-scope-manifest",
+        dest="pr_scope_manifest",
+        type=Path,
+        default=None,
+        help=(
+            "Path to a CBSP21 patch_input_v2 manifest. Activates pr_scope "
+            "review enforcement; omit for an ordinary silent scan."
+        ),
+    )
     _jsts_group = p.add_mutually_exclusive_group()
     _jsts_group.add_argument(
         "--enable-js-ts",
@@ -353,6 +363,16 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     scan_p.add_argument("--max-file-lines", type=int, default=400)
     scan_p.add_argument("--max-func-lines", type=int, default=60)
+    scan_p.add_argument(
+        "--pr-scope-manifest",
+        dest="pr_scope_manifest",
+        type=Path,
+        default=None,
+        help=(
+            "Path to a CBSP21 patch_input_v2 manifest. Activates pr_scope "
+            "review enforcement; omit for an ordinary silent scan."
+        ),
+    )
     _scan_jsts_group = scan_p.add_mutually_exclusive_group()
     _scan_jsts_group.add_argument(
         "--enable-js-ts",
@@ -1758,6 +1778,7 @@ def main(argv: list[str] | None = None) -> int:
             project_id=args.project_id or "",
             ci_mode=ci_mode,
             enable_js_ts=getattr(args, "enable_js_ts", True),
+            pr_scope_manifest=getattr(args, "pr_scope_manifest", None),
         )
 
         # In CI mode, enforce minimal structural integrity
@@ -1843,6 +1864,7 @@ def main(argv: list[str] | None = None) -> int:
         project_id=args.project_id or "",
         ci_mode=ci_mode,
         enable_js_ts=getattr(args, "enable_js_ts", True),
+        pr_scope_manifest=getattr(args, "pr_scope_manifest", None),
     )
 
     # In CI mode, enforce minimal structural integrity

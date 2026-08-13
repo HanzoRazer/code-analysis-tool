@@ -1,0 +1,37 @@
+{
+  "schema_version": "cbsp21_patch_manifest_v2",
+  "patch_id": "",
+  "title": "",
+  "intent": "",
+  "change_type": "code",
+  "behavior_change": "compatible",
+  "risk_level": "low",
+  "scope": {
+    "paths_in_scope": [],
+    "files_expected_to_change": [],
+    "out_of_scope_notes": "",
+    "min_coverage_percent": 95
+  },
+  "diff_range": {
+    "base": "main",
+    "head": "HEAD",
+    "pinned_merge_base": ""
+  },
+  "changed_files_count": 0,
+  "changed_files_exact": [],
+  "diff_articulation": {
+    "what_changed": [],
+    "why_not_redundant": ""
+  },
+  "verification": {
+    "commands_run": [],
+    "test_results": [],
+    "notes": ""
+  },
+  "file_context_coverage_percent": 100.0,
+  "metadata": {
+    "author": "",
+    "created_at": "",
+    "reviewers": []
+  }
+}

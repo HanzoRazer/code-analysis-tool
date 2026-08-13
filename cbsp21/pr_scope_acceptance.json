@@ -1,0 +1,54 @@
+{
+  "contract_id": "pr_scope_acceptance_v0",
+  "status": "locked_reconstructing",
+  "intent": "Compare merge-base..HEAD changed files against a declared CBSP21/RPMCC24 scope manifest. Fail loud when the check cannot be performed.",
+  "inputs_required": [
+    "scope_manifest_path",
+    "git_merge_base",
+    "changed_files_merge_base_to_head"
+  ],
+  "patch_input_v2_fields": [
+    "schema_version=cbsp21_patch_manifest_v2",
+    "scope.min_coverage_percent",
+    "diff_range.pinned_merge_base",
+    "scope.paths_in_scope",
+    "scope.files_expected_to_change",
+    "diff_range.base",
+    "file_context_coverage_percent"
+  ],
+  "acceptance": [
+    {
+      "id": "declared_changed_passes",
+      "behavior": "A changed file that is declared in scope produces no contamination finding."
+    },
+    {
+      "id": "undeclared_changed_contamination",
+      "behavior": "A changed file not declared in scope produces a contamination finding."
+    },
+    {
+      "id": "pinned_base_drift",
+      "behavior": "A pinned base that differs from the actual merge-base produces a base-drift finding."
+    },
+    {
+      "id": "coverage_below_95",
+      "behavior": "Declared-scope coverage below 95% produces the summary/high-severity result."
+    },
+    {
+      "id": "clean_scope_zero_findings",
+      "behavior": "A clean, fully covered scope produces zero findings."
+    },
+    {
+      "id": "ordinary_scan_silent",
+      "behavior": "Ordinary scans without review context remain silent (no findings)."
+    },
+    {
+      "id": "fail_loud_on_uncheckable",
+      "behavior": "Missing manifest, unresolved merge-base, shallow-clone failure, or failed git diff must fail loud — never return an empty pass."
+    }
+  ],
+  "land_order": [
+    "maxfail_v2_pr",
+    "pr_scope_plus_patch_input_v2_plus_wiring_pr"
+  ],
+  "separate_from": ["PR #18 unpinned-toolchain", "PR #19 maxfail-v2"]
+}

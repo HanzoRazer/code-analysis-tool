@@ -10,7 +10,7 @@
   "confidence_logic_version": "confidence_v2",
   "files": {
     "src/code_audit/insights/confidence.py": "e5582478d5860574760200df4a843d52a34e187f5d98d457e0bc8b6288b1d5b3",
-    "src/code_audit/model/__init__.py": "d824a92bf8f07c58ae36964b2353297e6262b86175b12e205d27b7850f158b2b",
+    "src/code_audit/model/__init__.py": "28ac70f40aca8c11d3a69956abf93b02cb71afddb91106f4c59ee527beecb6de",
     "src/code_audit/model/finding.py": "0eef0d618b48ce3157094a5da772d6d651b7eab90585a4f96e0f2b68a114ac80",
     "tests/fixtures/confidence/cases.json": "825b589dc9f07022b7a5fe8c6ba45f8fc24ddef57dc2b0731ed089f5583bcca0",
     "tests/fixtures/confidence/expected/many_low_dead_code.json": "8a6355b1a681996cd748e3feb0c1b410412b5ad9fe13aaa64bcaf223b70e1a9c",
