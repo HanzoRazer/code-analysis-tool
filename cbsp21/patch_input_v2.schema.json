@@ -57,11 +57,11 @@
         },
         "out_of_scope_notes": { "type": "string" },
         "min_coverage_percent": {
-          "type": "number",
-          "minimum": 0,
+          "type": "integer",
+          "minimum": 95,
           "maximum": 100,
           "default": 95,
-          "description": "Minimum fraction of changed files that must fall in declared scope (pr_scope detector)."
+          "description": "Minimum percentage of merge-base..HEAD changed files that must fall inside the declared scope. 95 is the acceptance-contract floor; this field may only raise the bar (a lower value is rejected here and clamped back to 95 by the detector), and fractional thresholds are not supported."
         }
       }
     },
@@ -73,20 +73,31 @@
         "base": {
           "type": "string",
           "minLength": 1,
-          "description": "Pinned base ref/SHA. Compared to the actual git merge-base for base-drift."
+          "description": "Base ref (e.g. \"main\") that pr_scope passes to `git merge-base HEAD <base>` to compute the actual merge-base. This value is NOT itself compared for drift — declare pinned_merge_base for that."
         },
-        "head": { "type": "string", "minLength": 1 },
+        "head": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Informational record of the reviewed head. pr_scope always diffs against the working checkout's HEAD and does not resolve this field."
+        },
         "pinned_merge_base": {
           "type": "string",
           "minLength": 1,
-          "description": "Optional explicit pinned merge-base SHA. When set, pr_scope compares against this instead of resolving diff_range.base."
+          "pattern": "^[0-9a-fA-F]{7,64}$",
+          "description": "Optional explicit merge-base SHA. When set, pr_scope compares it against the merge-base actually computed from `base` and raises a HIGH base-drift finding if they differ. When omitted, no drift check runs — omit it only for patches where base movement is acceptable."
         }
       }
     },
-    "changed_files_count": { "type": "integer", "minimum": 0 },
+    "changed_files_count": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Author-declared count of changed files. Recorded for review; pr_scope does not currently reconcile it against the real diff."
+    },
     "changed_files_exact": {
       "type": "array",
-      "items": { "type": "string" }
+      "items": { "type": "string" },
+      "uniqueItems": true,
+      "description": "Author-declared exact changed-file list. Recorded for review; pr_scope does not currently reconcile it against the real diff — scope enforcement is driven by scope.paths_in_scope / scope.files_expected_to_change."
     },
     "diff_articulation": {
       "type": "object",
@@ -121,7 +132,8 @@
     "file_context_coverage_percent": {
       "type": "number",
       "minimum": 0,
-      "maximum": 100
+      "maximum": 100,
+      "description": "Author's declaration of how much of each touched file's context was actually read before editing (a review-discipline metric, NOT test coverage and NOT the scope-coverage figure pr_scope computes from the diff). pr_scope holds it to the same scope.min_coverage_percent threshold: declaring a low value raises the same HIGH coverage finding, with metadata.triggered_by naming which metric tripped."
     },
     "metadata": {
       "type": "object",

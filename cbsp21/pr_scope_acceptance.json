@@ -44,6 +44,34 @@
     {
       "id": "fail_loud_on_uncheckable",
       "behavior": "Missing manifest, unresolved merge-base, shallow-clone failure, or failed git diff must fail loud — never return an empty pass."
+    },
+    {
+      "id": "fail_loud_on_malformed_manifest",
+      "behavior": "A manifest with wrong-typed or out-of-range fields (non-numeric min_coverage_percent, non-object scope/diff_range, non-string pinned_merge_base) yields a CRITICAL uncheckable finding of kind 'malformed_manifest'. An exception escaping run() would abort the scan, which is the silent pass this detector exists to prevent."
+    },
+    {
+      "id": "fail_loud_on_schema_version_mismatch",
+      "behavior": "A manifest whose schema_version is not 'cbsp21_patch_manifest_v2' is rejected (kind 'schema_version_mismatch'). A v1 manifest carries no pinned_merge_base, so the base-drift check would silently no-op and the scan would look clean for the wrong reason."
+    },
+    {
+      "id": "fail_loud_on_empty_declared_scope",
+      "behavior": "A manifest declaring neither paths_in_scope nor files_expected_to_change yields kind 'empty_declared_scope' rather than flagging every changed file."
+    },
+    {
+      "id": "min_coverage_percent_may_only_tighten",
+      "behavior": "scope.min_coverage_percent may raise the threshold above 95 but never below it. A manifest must not be able to opt itself out of the coverage_below_95 criterion."
+    },
+    {
+      "id": "coverage_message_names_the_metric",
+      "behavior": "The coverage finding distinguishes scope coverage (share of the real diff that was declared) from file_context_coverage_percent (author's declared review depth) and reports which tripped via metadata.triggered_by."
+    },
+    {
+      "id": "missing_base_never_degrades_to_head",
+      "behavior": "When diff_range.base is absent, the pinned merge-base is used as the diff base. Falling back to 'HEAD' would make `git merge-base HEAD HEAD` resolve to HEAD, producing an empty changed set and a silent clean pass."
+    },
+    {
+      "id": "stable_finding_identity",
+      "behavior": "Fingerprints exclude live percentages and SHAs so the same problem keeps one identity across runs; volatile detail stays in the message and metadata."
     }
   ],
   "land_order": [
