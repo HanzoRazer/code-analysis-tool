@@ -110,7 +110,7 @@
       "type": "array",
       "items": { "type": "string", "minLength": 1 },
       "uniqueItems": true,
-      "description": "Declared exact changed-file list. pr_scope reconciles this against the real diff and raises HIGH on mismatch, reporting manifest_only / git_only. This is a cross-check, NOT an authorization list — scope is granted only by scope.files_expected_to_change / scope.paths_in_scope."
+          "description": "Declared exact changed-file list. pr_scope reconciles this against the real diff and raises HIGH on mismatch, reporting manifest_only / git_only. Duplicate entries (including collisions after path normalization such as a.py vs ./a.py) are CRITICAL malformed input, not silently uniqued. This is a cross-check, NOT an authorization list — scope is granted only by scope.files_expected_to_change / scope.paths_in_scope."
     },
     "diff_articulation": {
       "type": "object",

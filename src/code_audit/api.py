@@ -83,6 +83,29 @@ _DEFAULT_ANALYZERS = (
 )
 
 
+def _activate_pr_scope(analyzers: list[Any], manifest: str | Path) -> list[Any]:
+    """Replace the silent pr_scope instance in-place; append if the list has none.
+
+    Keeping the original registry slot avoids reordering findings relative to
+    an ordinary scan. Extra silent copies are dropped rather than duplicated.
+    """
+    configured = PrScopeAnalyzer(
+        ReviewContext(manifest_path=_to_path(manifest))
+    )
+    replaced = False
+    out: list[Any] = []
+    for analyzer in analyzers:
+        if getattr(analyzer, "id", None) == "pr_scope":
+            if not replaced:
+                out.append(configured)
+                replaced = True
+            continue
+        out.append(analyzer)
+    if not replaced:
+        out.append(configured)
+    return out
+
+
 def _to_path(p: str | Path) -> Path:
     return p if isinstance(p, Path) else Path(p)
 
@@ -121,8 +144,10 @@ def scan_project(
         ``Analyzer`` protocol (``id``, ``version``, ``run()``).
     pr_scope_manifest:
         Optional path to a CBSP21 patch_input_v2 manifest. When set, the
-        ``PrScopeAnalyzer`` runs in review context; when omitted, pr_scope
-        stays silent (ordinary scan).
+        silent default ``PrScopeAnalyzer`` is replaced in-place (same
+        registry slot) with a review-context instance. Applied even if a
+        custom ``analyzers`` list is supplied; if that list has no pr_scope
+        analyzer, one is appended. When omitted, pr_scope stays silent.
 
     Returns
     -------
@@ -142,15 +167,10 @@ def scan_project(
         analyzer_instances = list(analyzers)
     else:
         analyzer_instances = [cls() for cls in _DEFAULT_ANALYZERS]
-        if pr_scope_manifest is not None:
-            analyzer_instances = [
-                a for a in analyzer_instances if getattr(a, "id", None) != "pr_scope"
-            ]
-            analyzer_instances.append(
-                PrScopeAnalyzer(
-                    ReviewContext(manifest_path=_to_path(pr_scope_manifest))
-                )
-            )
+    if pr_scope_manifest is not None:
+        analyzer_instances = _activate_pr_scope(
+            analyzer_instances, pr_scope_manifest
+        )
 
     kwargs: dict[str, Any] = {
         "project_id": project_id,
@@ -197,6 +217,13 @@ def check_pr_scope(
     coverage_threshold:
         Operator-level declared-file coverage floor as a fraction. The
         manifest's ``scope.min_coverage_percent`` may raise it, never lower it.
+
+    Raises
+    ------
+    FileNotFoundError
+        If *root* is not a directory (API input validation). Unusable
+        Git/manifest states inside a valid repository are returned as
+        findings, not raised.
     """
     root_p = _to_path(root).resolve()
     if not root_p.is_dir():

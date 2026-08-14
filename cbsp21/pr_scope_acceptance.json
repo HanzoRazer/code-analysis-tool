@@ -52,7 +52,7 @@
     },
     {
       "id": "base_pin_required",
-      "behavior": "A manifest with no base_sha (or pinned_merge_base alias) is CRITICAL 'pr_scope.base_pin_missing'. Without a pin, drift detection would silently never run."
+      "behavior": "A manifest with no diff_range.base_sha (or pinned_merge_base alias) is CRITICAL 'pr_scope.base_pin_missing'. Top-level manifest.base_sha is not a pin. Without a pin, drift detection would silently never run."
     },
     {
       "id": "observed_files_cross_checked_not_authorized",
@@ -64,11 +64,11 @@
     },
     {
       "id": "min_coverage_percent_may_only_tighten",
-      "behavior": "scope.min_coverage_percent may raise the threshold above the 0.95 floor but never lower it — a manifest must not be able to opt itself out of the coverage criterion. An explicit operator --coverage-threshold is honoured as-is; the manifest can only raise it."
+      "behavior": "scope.min_coverage_percent is an integer 95..100. It may raise the threshold above the 0.95 floor but never lower it — a manifest must not be able to opt itself out of the coverage criterion. Fractional values are CRITICAL malformed input. An explicit operator --coverage-threshold is honoured as-is; the manifest can only raise it."
     },
     {
       "id": "file_context_coverage_enforced",
-      "behavior": "file_context_coverage_percent (declared review depth) is held to the same threshold as scope coverage; metadata.triggered_by names which metric tripped so the message is never misleading."
+      "behavior": "file_context_coverage_percent (declared review depth) is held to the same threshold as scope coverage; metadata.triggered_by names which metric tripped. When only that metric trips, the summary message says the declared file_context_coverage_percent is below the review threshold rather than implying branch-diff coverage failed."
     },
     {
       "id": "clean_scope_zero_findings",
@@ -80,15 +80,19 @@
     },
     {
       "id": "fail_loud_on_uncheckable",
-      "behavior": "Missing/unreadable manifest, wrong schema_version, malformed manifest fields, empty declared scope, unresolved ref or merge-base, shallow clone, missing git executable, git timeout, or failed git diff must fail loud as CRITICAL — never an empty pass, and never an exception escaping run()."
+      "behavior": "Missing/unreadable manifest, wrong schema_version, malformed manifest fields (including non-string head_sha/base_sha, duplicate changed_files_exact or declared-scope entries, and collisions after path normalization), empty declared scope, unresolved ref or merge-base, shallow clone, missing git executable, git timeout, non-UTF-8 git output, unsafe observed git paths, or failed git diff must fail loud as CRITICAL — never an empty pass, never silent normalization of malformed input, and never an exception escaping run()."
     },
     {
       "id": "real_git_surface",
-      "behavior": "Changed files and merge-base are read from real Git (-z parsing, --find-renames, UTF-8 decode). No caller may inject a synthetic diff, which would allow manufacturing a clean pass."
+      "behavior": "Changed files and merge-base are read from real Git (`diff --name-status -z --find-renames`, UTF-8 decode). Rename/copy records authorize the destination path only. No caller may inject a synthetic diff, which would allow manufacturing a clean pass."
     },
     {
       "id": "stable_finding_identity",
       "behavior": "Fingerprints exclude live percentages and SHAs so the same problem keeps one identity across runs; volatile detail stays in the message and metadata."
+    },
+    {
+      "id": "scan_project_manifest_activation",
+      "behavior": "scan_project(..., pr_scope_manifest=M) runs the same detector as the dedicated gate, including when the caller also supplies a custom analyzers list. The configured PrScopeAnalyzer replaces the silent default instance in the same registry slot (appended only if the list had none). Omitting the manifest keeps ordinary scans silent. CLI positional mode (`code-audit <path> --pr-scope-manifest M`) and `scan --pr-scope-manifest` both forward the flag."
     },
     {
       "id": "api_cli_parity",

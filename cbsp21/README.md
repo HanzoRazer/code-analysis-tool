@@ -7,7 +7,7 @@ This folder contains the governance "patch manifest" artifacts used to describe,
 - `patch_input.schema.json` — JSON Schema for the patch manifest (v1).
 - `patch_input.json.example` — Example manifest tailored to this repo's layout and typical changes.
 - `patch_input.template.json` — Minimal fill-in template for new patches.
-- `patch_input_v2.schema.json` — v2 schema (adds `scope.min_coverage_percent` + `diff_range.pinned_merge_base` for `pr_scope`).
+- `patch_input_v2.schema.json` — v2 schema (adds `scope.min_coverage_percent`, required `diff_range.base_sha`, optional `diff_range.head_sha`; `pinned_merge_base` is a deprecated alias).
 - `patch_input_v2.template.json` / `patch_input_v2.example.json` — v2 fill-in + example.
 - `pr_scope_acceptance.json` — Locked acceptance contract for the pr_scope detector.
 
@@ -21,10 +21,11 @@ This folder contains the governance "patch manifest" artifacts used to describe,
 python -m code_audit pr-scope --root . --manifest cbsp21/patch_input_v2.json --json
 ```
 
-**Inside an ordinary scan** (findings join the normal run):
+**Inside an ordinary scan** (findings join the normal run). Both CLI scan styles accept the flag:
 
 ```
-python -m code_audit scan . --pr-scope-manifest cbsp21/patch_input_v2.json
+python -m code_audit . --pr-scope-manifest cbsp21/patch_input_v2.json
+python -m code_audit scan --root . --out artifacts/run.json --pr-scope-manifest cbsp21/patch_input_v2.json
 ```
 
 Programmatically: `code_audit.check_pr_scope(root, manifest=...)`.
@@ -35,8 +36,10 @@ It diffs `merge-base..HEAD` and reports:
 - **base drift** (HIGH) — `diff_range.base_sha` differs from the merge-base computed from `diff_range.base`. The pin is **required**: without it, drift detection would silently never run. `pinned_merge_base` is accepted as a deprecated alias;
 - **head drift** (HIGH) — optional, when `diff_range.head_sha` is set and the head has moved;
 - **observed-file mismatch** (HIGH) — `changed_files_exact` / `changed_files_count` disagree with the real diff. These are cross-checks, never authorization;
-- **coverage** (HIGH below threshold, MEDIUM at it) — in-scope share of the diff, or the declared `file_context_coverage_percent`. `scope.min_coverage_percent` may raise the 95% floor but never lower it;
-- **uncheckable** (CRITICAL) — missing/malformed/wrong-version manifest, empty declared scope, unresolved ref, shallow clone, git failure or timeout. The check never fails quiet.
+- **coverage** (HIGH below threshold, MEDIUM at it) — in-scope share of the diff, or the declared `file_context_coverage_percent`. When only the latter trips, the summary names that field instead of implying the branch diff is under-covered. `scope.min_coverage_percent` may raise the 95% floor but never lower it;
+- **uncheckable** (CRITICAL) — missing/malformed/wrong-version manifest (including duplicate `changed_files_exact` / declared-scope entries), empty declared scope, unresolved ref, shallow clone, git failure or timeout. The check never fails quiet.
+
+Renames are read from `git diff --name-status -z --find-renames`; only the destination path is authorized, so a manifest that lists the new name is not contaminated by the old name.
 
 Because drift detection needs a full merge-base, CI must check out with `fetch-depth: 0`; a shallow clone is CRITICAL rather than a pass.
 
