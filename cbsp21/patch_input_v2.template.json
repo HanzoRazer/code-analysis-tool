@@ -1,0 +1,37 @@
+{
+  "schema_version": "cbsp21_patch_manifest_v2",
+  "patch_id": "REPLACE-ME",
+  "title": "REPLACE-ME",
+  "intent": "REPLACE-ME",
+  "change_type": "code",
+  "behavior_change": "compatible",
+  "risk_level": "low",
+  "scope": {
+    "paths_in_scope": ["src/"],
+    "files_expected_to_change": ["src/REPLACE_ME.py"],
+    "out_of_scope_notes": "",
+    "min_coverage_percent": 95
+  },
+  "diff_range": {
+    "base": "main",
+    "base_sha": "0000000000000000000000000000000000000000",
+    "head": "HEAD"
+  },
+  "changed_files_count": 0,
+  "changed_files_exact": [],
+  "diff_articulation": {
+    "what_changed": ["REPLACE-ME"],
+    "why_not_redundant": "REPLACE-ME"
+  },
+  "verification": {
+    "commands_run": ["python -m pytest -q"],
+    "test_results": [],
+    "notes": ""
+  },
+  "file_context_coverage_percent": 100.0,
+  "metadata": {
+    "author": "",
+    "created_at": "1970-01-01T00:00:00Z",
+    "reviewers": []
+  }
+}
