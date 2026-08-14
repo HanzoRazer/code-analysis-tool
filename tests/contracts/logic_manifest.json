@@ -62,9 +62,9 @@
     },
     {
       "class_name": "MaxfailMaskingAnalyzer",
-      "logic_hash": "sha256:aa274b2a65dddc1f4fcf4ae7859d1f568ae0b18f0a2e1a29062c3475fb14abbd",
+      "logic_hash": "sha256:4aa1461e479e4edd13217ce78168311929c6e9846b356aed936e662c270ebbdf",
       "module": "code_audit.analyzers.maxfail_masking",
-      "version": "1.0.0"
+      "version": "2.0.0"
     },
     {
       "class_name": "OrderDependenceAnalyzer",
