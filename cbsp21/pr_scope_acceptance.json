@@ -52,7 +52,7 @@
     },
     {
       "id": "base_pin_required",
-      "behavior": "A manifest with no base_sha (or pinned_merge_base alias) is CRITICAL 'pr_scope.base_pin_missing'. Without a pin, drift detection would silently never run."
+      "behavior": "A manifest with no diff_range.base_sha (or pinned_merge_base alias) is CRITICAL 'pr_scope.base_pin_missing'. Top-level manifest.base_sha is not a pin. Without a pin, drift detection would silently never run."
     },
     {
       "id": "observed_files_cross_checked_not_authorized",
@@ -64,7 +64,7 @@
     },
     {
       "id": "min_coverage_percent_may_only_tighten",
-      "behavior": "scope.min_coverage_percent may raise the threshold above the 0.95 floor but never lower it — a manifest must not be able to opt itself out of the coverage criterion. An explicit operator --coverage-threshold is honoured as-is; the manifest can only raise it."
+      "behavior": "scope.min_coverage_percent is an integer 95..100. It may raise the threshold above the 0.95 floor but never lower it — a manifest must not be able to opt itself out of the coverage criterion. Fractional values are CRITICAL malformed input. An explicit operator --coverage-threshold is honoured as-is; the manifest can only raise it."
     },
     {
       "id": "file_context_coverage_enforced",
@@ -92,7 +92,7 @@
     },
     {
       "id": "scan_project_manifest_activation",
-      "behavior": "scan_project(..., pr_scope_manifest=M) runs the same detector as the dedicated gate, including when the caller also supplies a custom analyzers list. Omitting the manifest keeps ordinary scans silent."
+      "behavior": "scan_project(..., pr_scope_manifest=M) runs the same detector as the dedicated gate, including when the caller also supplies a custom analyzers list. The configured PrScopeAnalyzer replaces the silent default instance in the same registry slot (appended only if the list had none). Omitting the manifest keeps ordinary scans silent. CLI positional mode (`code-audit <path> --pr-scope-manifest M`) and `scan --pr-scope-manifest` both forward the flag."
     },
     {
       "id": "api_cli_parity",

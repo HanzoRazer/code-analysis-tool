@@ -74,9 +74,9 @@
     },
     {
       "class_name": "PrScopeAnalyzer",
-      "logic_hash": "sha256:db24a89440703ab82cb6ab7342e7ecbc0c3d7a6c163278172fd8b12326e845e0",
+      "logic_hash": "sha256:a13e0f87e67d747390a37afced41a2b600cf6e9b1e3f187de2f6e3be57a920ab",
       "module": "code_audit.analyzers.pr_scope",
-      "version": "2.1.0"
+      "version": "2.2.0"
     },
     {
       "class_name": "RoutersAnalyzer",

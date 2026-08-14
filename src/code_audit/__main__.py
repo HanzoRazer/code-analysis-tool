@@ -256,6 +256,23 @@ def _print_human(result_dict: dict) -> None:
     print("", file=sys.stderr)
 
 
+_PR_SCOPE_MANIFEST_HELP = (
+    "Path to a CBSP21 patch_input_v2 manifest. Activates pr_scope "
+    "review enforcement; omit for an ordinary silent scan."
+)
+
+
+def _add_pr_scope_manifest_arg(parser: argparse.ArgumentParser) -> None:
+    """Shared --pr-scope-manifest flag for scan, default, and positional parsers."""
+    parser.add_argument(
+        "--pr-scope-manifest",
+        dest="pr_scope_manifest",
+        type=Path,
+        default=None,
+        help=_PR_SCOPE_MANIFEST_HELP,
+    )
+
+
 def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="code-audit",
@@ -299,16 +316,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--max-file-lines", type=int, default=400)
     p.add_argument("--max-func-lines", type=int, default=60)
-    p.add_argument(
-        "--pr-scope-manifest",
-        dest="pr_scope_manifest",
-        type=Path,
-        default=None,
-        help=(
-            "Path to a CBSP21 patch_input_v2 manifest. Activates pr_scope "
-            "review enforcement; omit for an ordinary silent scan."
-        ),
-    )
+    _add_pr_scope_manifest_arg(p)
     _jsts_group = p.add_mutually_exclusive_group()
     _jsts_group.add_argument(
         "--enable-js-ts",
@@ -364,16 +372,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     scan_p.add_argument("--max-file-lines", type=int, default=400)
     scan_p.add_argument("--max-func-lines", type=int, default=60)
-    scan_p.add_argument(
-        "--pr-scope-manifest",
-        dest="pr_scope_manifest",
-        type=Path,
-        default=None,
-        help=(
-            "Path to a CBSP21 patch_input_v2 manifest. Activates pr_scope "
-            "review enforcement; omit for an ordinary silent scan."
-        ),
-    )
+    _add_pr_scope_manifest_arg(scan_p)
     _scan_jsts_group = scan_p.add_mutually_exclusive_group()
     _scan_jsts_group.add_argument(
         "--enable-js-ts",
@@ -408,7 +407,13 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     scope_p.add_argument("--git-timeout", type=float, default=30.0)
-    scope_p.add_argument("--json", dest="json_out", action="store_true", default=False)
+    scope_p.add_argument(
+        "--json",
+        dest="json_out",
+        action="store_true",
+        default=False,
+        help="Print findings as JSON to stdout (always byte-normalized).",
+    )
 
     # ── validate subcommand ─────────────────────────────────────────
     val_p = sub.add_parser(
@@ -1672,6 +1677,7 @@ def _build_default_parser() -> argparse.ArgumentParser:
         action="store_false",
         help="Disable JS/TS scanning (Python-only).",
     )
+    _add_pr_scope_manifest_arg(p)
     p.set_defaults(command=None)
     return p
 

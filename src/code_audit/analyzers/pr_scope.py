@@ -17,6 +17,13 @@ Every failure mode is a *finding*, never an exception: an exception escaping
 exists to prevent. States where the check cannot be performed at all are
 CRITICAL; genuine scope violations are HIGH/MEDIUM.
 
+Finding emission policy: failures before Git refs resolve (unreadable or
+malformed manifest, missing pin, unresolved base/head) return only that
+CRITICAL finding, because nothing else has been verified. After refs
+resolve, later uncheckable states (diff failure, malformed observed-file
+lists, unsafe git paths) are appended onto any drift findings already
+emitted so base/head drift is not discarded.
+
 Acceptance contract: ``cbsp21/pr_scope_acceptance.json``.
 """
 
@@ -212,7 +219,7 @@ class PrScopeAnalyzer:
     """Compare a branch diff with a CBSP21-declared file scope."""
 
     id: str = "pr_scope"
-    version: str = "2.1.0"
+    version: str = "2.2.0"
 
     def __init__(
         self,
@@ -268,7 +275,7 @@ class PrScopeAnalyzer:
         diff_range, scope, min_coverage_percent, declared_context_coverage = parsed
         threshold = _effective_threshold(self.coverage_threshold, min_coverage_percent)
 
-        refs = self._resolve_refs(root, diff_range, manifest, manifest_label)
+        refs = self._resolve_refs(root, diff_range, manifest_label)
         if isinstance(refs, Finding):
             return [refs]
         resolved, findings = refs
@@ -380,6 +387,7 @@ class PrScopeAnalyzer:
             min_coverage_percent = self._manifest_percent(
                 scope.get("min_coverage_percent"),
                 "scope.min_coverage_percent",
+                integer=True,
             )
         except ValueError as exc:
             return self._uncheckable(
@@ -401,15 +409,12 @@ class PrScopeAnalyzer:
     def _pinned_base_sha(
         self,
         diff_range: dict[str, Any],
-        manifest: dict[str, Any],
         manifest_label: str,
     ) -> str | Finding:
         if "base_sha" in diff_range:
             value, symbol = diff_range["base_sha"], "diff_range.base_sha"
         elif "pinned_merge_base" in diff_range:
             value, symbol = diff_range["pinned_merge_base"], "diff_range.pinned_merge_base"
-        elif "base_sha" in manifest:
-            value, symbol = manifest["base_sha"], "base_sha"
         else:
             return self._uncheckable(
                 "Manifest has no immutable base SHA. Use CBSP21 v2 and record "
@@ -433,7 +438,6 @@ class PrScopeAnalyzer:
         self,
         root: Path,
         diff_range: dict[str, Any],
-        manifest: dict[str, Any],
         manifest_label: str,
     ) -> tuple[_ResolvedRefs, list[Finding]] | Finding:
         if self.base is not None:
@@ -460,7 +464,7 @@ class PrScopeAnalyzer:
                 symbol="diff_range.head", rule="pr_scope.manifest_invalid",
             )
 
-        pinned_base = self._pinned_base_sha(diff_range, manifest, manifest_label)
+        pinned_base = self._pinned_base_sha(diff_range, manifest_label)
         if isinstance(pinned_base, Finding):
             return pinned_base
 
@@ -698,6 +702,9 @@ class PrScopeAnalyzer:
             )
         if not causes:
             return findings
+        # Rule id is historical: the summary also fires at exactly the
+        # threshold (MEDIUM) so consumers see undeclared-file coverage even
+        # when it is not strictly *below* the bar.
         below = coverage < threshold or context_short
         if context_short and not undeclared:
             message = (
@@ -735,10 +742,17 @@ class PrScopeAnalyzer:
     # ── manifest helpers ────────────────────────────────────────────
 
     @staticmethod
-    def _manifest_percent(value: Any, field: str) -> float | None:
+    def _manifest_percent(
+        value: Any, field: str, *, integer: bool = False
+    ) -> float | None:
         if value is None:
             return None
-        if isinstance(value, bool) or not isinstance(value, (int, float)):
+        if integer:
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise ValueError(
+                    f"{field} must be an integer, got {type(value).__name__}"
+                )
+        elif isinstance(value, bool) or not isinstance(value, (int, float)):
             raise ValueError(
                 f"{field} must be numeric, got {type(value).__name__}"
             )

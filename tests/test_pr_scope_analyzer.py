@@ -573,6 +573,31 @@ def test_non_numeric_min_coverage_fails_loud_not_crash(git_repo):
     assert "scope.min_coverage_percent" in findings[0].message
 
 
+def test_fractional_min_coverage_percent_fails_loud(git_repo):
+    """Schema declares min_coverage_percent as integer; floats are malformed."""
+    root, base = git_repo
+    manifest = _write_manifest(root, base, ["b.py"])
+    data = json.loads(manifest.read_text(encoding="utf-8"))
+    data["scope"]["min_coverage_percent"] = 95.5
+    manifest.write_text(json.dumps(data), encoding="utf-8")
+
+    findings = PrScopeAnalyzer(manifest=manifest).run(root, [])
+    assert _rules(findings) == {"pr_scope.manifest_invalid"}
+    assert "integer" in findings[0].message
+
+
+def test_top_level_base_sha_is_not_a_pin(git_repo):
+    """The pin lives under diff_range; a top-level base_sha must not hide a missing pin."""
+    root, base = git_repo
+    manifest = _write_manifest(root, base, ["b.py"], omit_base_sha=True)
+    data = json.loads(manifest.read_text(encoding="utf-8"))
+    data["base_sha"] = base
+    manifest.write_text(json.dumps(data), encoding="utf-8")
+
+    findings = PrScopeAnalyzer(manifest=manifest).run(root, [])
+    assert _rules(findings) == {"pr_scope.base_pin_missing"}
+
+
 def test_malformed_file_context_coverage_attributes_the_right_field(git_repo):
     root, base = git_repo
     manifest = _write_manifest(root, base, ["b.py"])
@@ -724,6 +749,59 @@ def test_scan_project_pr_scope_manifest_emits_contamination(git_repo):
         for finding in custom["findings_raw"]
     }
     assert "pr_scope.undeclared_file" in custom_rules
+
+
+def test_scan_project_replaces_pr_scope_in_registry_slot(tmp_path):
+    """Manifest activation must not shuffle the default analyzer order."""
+    from code_audit.analyzers.complexity import ComplexityAnalyzer
+    from code_audit.api import _DEFAULT_ANALYZERS, _activate_pr_scope
+
+    default = [cls() for cls in _DEFAULT_ANALYZERS]
+    default_ids = [a.id for a in default]
+    assert default_ids[-1] == "pr_scope"
+
+    activated = _activate_pr_scope(default, tmp_path / "m.json")
+    assert [a.id for a in activated] == default_ids
+    assert activated[-1].manifest == tmp_path / "m.json"
+
+    custom = [ComplexityAnalyzer(), PrScopeAnalyzer(), ComplexityAnalyzer()]
+    mid = _activate_pr_scope(custom, tmp_path / "m.json")
+    assert [a.id for a in mid] == ["complexity", "pr_scope", "complexity"]
+    assert mid[1].manifest == tmp_path / "m.json"
+
+    missing = _activate_pr_scope([ComplexityAnalyzer()], tmp_path / "m.json")
+    assert [a.id for a in missing] == ["complexity", "pr_scope"]
+
+
+def test_default_positional_parser_accepts_pr_scope_manifest(tmp_path, monkeypatch):
+    import code_audit.__main__ as main_mod
+    from code_audit.__main__ import _build_default_parser, main as cli_main
+
+    manifest = tmp_path / "patch.json"
+    manifest.write_text("{}", encoding="utf-8")
+    args = _build_default_parser().parse_args(
+        [str(tmp_path), "--pr-scope-manifest", str(manifest)]
+    )
+    assert args.pr_scope_manifest == manifest
+
+    seen: dict = {}
+
+    def fake_scan(**kwargs):
+        seen.update(kwargs)
+        return None, {
+            "summary": {
+                "confidence_score": 100,
+                "vibe_tier": "green",
+                "counts": {"findings_total": 0, "by_severity": {}},
+            },
+            "signals_snapshot": [],
+        }
+
+    monkeypatch.setattr(main_mod, "_env_requires_ci_mode", lambda: False)
+    monkeypatch.setattr(main_mod, "_api_scan_project", lambda **kw: fake_scan(**kw))
+    rc = cli_main([str(tmp_path), "--pr-scope-manifest", str(manifest)])
+    assert rc == ExitCode.SUCCESS
+    assert seen["pr_scope_manifest"] == manifest
 
 
 # ── governance artifacts ────────────────────────────────────────────

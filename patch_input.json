@@ -16,6 +16,7 @@
     "files_expected_to_change": [
       "src/code_audit/analyzers/pr_scope.py",
       "src/code_audit/api.py",
+      "src/code_audit/__main__.py",
       "tests/test_pr_scope_analyzer.py",
       "tests/contracts/logic_manifest.json",
       "cbsp21/README.md",
@@ -29,10 +30,11 @@
     "base": "cursor/pr-scope-detector-6227",
     "head": "HEAD"
   },
-  "changed_files_count": 8,
+  "changed_files_count": 9,
   "changed_files_exact": [
     "src/code_audit/analyzers/pr_scope.py",
     "src/code_audit/api.py",
+    "src/code_audit/__main__.py",
     "tests/test_pr_scope_analyzer.py",
     "tests/contracts/logic_manifest.json",
     "cbsp21/README.md",
@@ -47,8 +49,10 @@
       "Parse git diff --name-status -z and authorize only the rename/copy destination path.",
       "Fail loud on unsafe observed git paths and non-UTF-8 git output instead of dropping or replacing bytes.",
       "Attribute coverage-percent parse errors to the field that failed; clarify file_context_coverage-only summary wording.",
-      "Honour scan_project(..., pr_scope_manifest=) even when a custom analyzer list is supplied.",
-      "Split PrScopeAnalyzer.run() into load/validate/resolve/diff/reconcile helpers; bump analyzer 2.0.0 -> 2.1.0."
+      "Honour scan_project(..., pr_scope_manifest=) even when a custom analyzer list is supplied, replacing pr_scope in the same registry slot.",
+      "Add --pr-scope-manifest to default positional CLI mode; share the flag helper across parsers.",
+      "Reject fractional scope.min_coverage_percent; ignore undocumented top-level base_sha.",
+      "Split PrScopeAnalyzer.run() into load/validate/resolve/diff/reconcile helpers; bump analyzer 2.0.0 -> 2.2.0."
     ],
     "why_not_redundant": "PR #20 already ships the detector; this patch only closes the remaining fail-loud and rename-parsing defects that would make the gate untrustworthy."
   },
@@ -59,7 +63,7 @@
       "ruff check src/code_audit/analyzers/pr_scope.py tests/test_pr_scope_analyzer.py"
     ],
     "test_results": [
-      "pr_scope acceptance suite passed (53 tests)",
+      "pr_scope acceptance suite passed (57 tests)",
       "version bump enforcement passed on Python 3.11 after logic_manifest refresh",
       "ruff clean on authored files"
     ],
