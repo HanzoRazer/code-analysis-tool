@@ -22,6 +22,7 @@
   },
   "diff_range": {
     "base": "main",
+    "base_sha": "e54ee07601a59508895be6e1901048a9b3f66ba4",
     "head": "HEAD"
   },
   "changed_files_count": 3,

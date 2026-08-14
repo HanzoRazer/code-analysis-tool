@@ -13,20 +13,32 @@ This folder contains the governance "patch manifest" artifacts used to describe,
 
 ## Enforcing scope with `pr_scope`
 
-`pr_scope` is silent in ordinary scans. Pass a v2 manifest to activate it:
+`pr_scope` is silent in ordinary scans. There are two ways to activate it.
+
+**As a CI gate** (dedicated subcommand, exits `1` on any finding):
+
+```
+python -m code_audit pr-scope --root . --manifest cbsp21/patch_input_v2.json --json
+```
+
+**Inside an ordinary scan** (findings join the normal run):
 
 ```
 python -m code_audit scan . --pr-scope-manifest cbsp21/patch_input_v2.json
 ```
 
-It then diffs `merge-base..HEAD` and reports:
+Programmatically: `code_audit.check_pr_scope(root, manifest=...)`.
 
-- **contamination** (MEDIUM) — a changed file outside `scope.paths_in_scope` / `scope.files_expected_to_change`;
-- **base drift** (HIGH) — only when `diff_range.pinned_merge_base` is set and differs from the merge-base computed from `diff_range.base`. Omit the field and no drift check runs;
-- **coverage** (HIGH) — in-scope share of the diff, or the declared `file_context_coverage_percent`, below the threshold. `scope.min_coverage_percent` may raise the 95% contract floor but never lower it;
-- **uncheckable** (CRITICAL) — missing/malformed/wrong-version manifest, shallow clone, unresolved merge-base, git failure or timeout. The check never fails quiet.
+It diffs `merge-base..HEAD` and reports:
 
-Because base drift needs a full merge-base, CI must check out with `fetch-depth: 0`; a shallow clone is reported as CRITICAL rather than passing.
+- **contamination** (MEDIUM) — a changed file matching neither a `scope.files_expected_to_change` glob nor a `scope.paths_in_scope` directory prefix;
+- **base drift** (HIGH) — `diff_range.base_sha` differs from the merge-base computed from `diff_range.base`. The pin is **required**: without it, drift detection would silently never run. `pinned_merge_base` is accepted as a deprecated alias;
+- **head drift** (HIGH) — optional, when `diff_range.head_sha` is set and the head has moved;
+- **observed-file mismatch** (HIGH) — `changed_files_exact` / `changed_files_count` disagree with the real diff. These are cross-checks, never authorization;
+- **coverage** (HIGH below threshold, MEDIUM at it) — in-scope share of the diff, or the declared `file_context_coverage_percent`. `scope.min_coverage_percent` may raise the 95% floor but never lower it;
+- **uncheckable** (CRITICAL) — missing/malformed/wrong-version manifest, empty declared scope, unresolved ref, shallow clone, git failure or timeout. The check never fails quiet.
+
+Because drift detection needs a full merge-base, CI must check out with `fetch-depth: 0`; a shallow clone is CRITICAL rather than a pass.
 
 ## How to use
 

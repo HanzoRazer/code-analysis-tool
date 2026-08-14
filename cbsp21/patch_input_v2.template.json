@@ -14,6 +14,7 @@
   },
   "diff_range": {
     "base": "main",
+    "base_sha": "0000000000000000000000000000000000000000",
     "head": "HEAD"
   },
   "changed_files_count": 0,

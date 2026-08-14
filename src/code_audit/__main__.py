@@ -83,6 +83,7 @@ def _require_ci_flag(ci_mode: bool, *, what: str) -> int | None:
         return ExitCode.ERROR
     return None
 from code_audit.api import (
+    check_pr_scope as _api_check_pr_scope,
     compare_debt as _api_compare_debt,
     scan_project as _api_scan_project,
     snapshot_debt as _api_snapshot_debt,
@@ -387,6 +388,27 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_false",
         help="Disable JS/TS scanning (Python-only).",
     )
+
+    # ── pr-scope subcommand (review-time Git/manifest gate) ─────────
+    scope_p = sub.add_parser(
+        "pr-scope",
+        help="Verify a committed branch diff against a CBSP21 v2 manifest.",
+    )
+    scope_p.add_argument("--root", type=Path, required=True, help="Git repository root.")
+    scope_p.add_argument("--manifest", type=Path, required=True, help="CBSP21 manifest path.")
+    scope_p.add_argument("--base", default=None, help="Override manifest target base ref.")
+    scope_p.add_argument("--head", default=None, help="Override manifest head ref.")
+    scope_p.add_argument(
+        "--coverage-threshold",
+        type=float,
+        default=0.95,
+        help=(
+            "Declared-file coverage floor as a fraction (default: 0.95). The "
+            "manifest's scope.min_coverage_percent may raise it, never lower it."
+        ),
+    )
+    scope_p.add_argument("--git-timeout", type=float, default=30.0)
+    scope_p.add_argument("--json", dest="json_out", action="store_true", default=False)
 
     # ── validate subcommand ─────────────────────────────────────────
     val_p = sub.add_parser(
@@ -1663,6 +1685,7 @@ def main(argv: list[str] | None = None) -> int:
     # default-mode parser so `code-audit <path> --ci --json` works.
     known_commands = {
         "scan",
+        "pr-scope",
         "validate",
         "fence",
         "governance",
@@ -1684,6 +1707,35 @@ def main(argv: list[str] | None = None) -> int:
         args = _build_default_parser().parse_args(effective_argv)
     else:
         args = _build_parser().parse_args(effective_argv)
+
+    # ── pr-scope subcommand ─────────────────────────────────────────
+    if args.command == "pr-scope":
+        try:
+            findings = _api_check_pr_scope(
+                args.root,
+                manifest=args.manifest,
+                base=args.base,
+                head=args.head,
+                coverage_threshold=args.coverage_threshold,
+                git_timeout=args.git_timeout,
+            )
+        except (FileNotFoundError, ValueError) as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            return ExitCode.ERROR
+
+        payload = {
+            "passed": not findings,
+            "finding_count": len(findings),
+            "findings": [finding.to_dict() for finding in findings],
+        }
+        if args.json_out:
+            stable_json_dump(payload, sys.stdout, ci_mode=True, indent=2)
+        elif findings:
+            for finding in findings:
+                print(f"[{finding.severity.value}] {finding.message}", file=sys.stderr)
+        else:
+            print("PR scope verified.", file=sys.stderr)
+        return ExitCode.VIOLATION if findings else ExitCode.SUCCESS
 
     # ── validate subcommand ─────────────────────────────────────────
     if args.command == "validate":

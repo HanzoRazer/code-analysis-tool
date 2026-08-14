@@ -1,7 +1,14 @@
 {
-  "contract_id": "pr_scope_acceptance_v0",
-  "status": "locked_reconstructing",
+  "contract_id": "pr_scope_acceptance_v1",
+  "status": "reconciled",
+  "supersedes": "pr_scope_acceptance_v0",
   "intent": "Compare merge-base..HEAD changed files against a declared CBSP21/RPMCC24 scope manifest. Fail loud when the check cannot be performed.",
+  "reconciliation_note": "v1 merges two divergent pr_scope implementations. The review-gate lineage (dedicated pr-scope CLI, ExitCode.VIOLATION, glob scope, rename handling, observed-file reconciliation, required base pin) is the base; the scan-integrated lineage contributed paths_in_scope prefixes, scope.min_coverage_percent, file_context_coverage_percent, CRITICAL uncheckable severity, and schema_version validation. diff_range.base_sha is canonical; pinned_merge_base is a deprecated alias.",
+  "entry_points": [
+    "code_audit.api.check_pr_scope(root, manifest=..., base=..., head=...)",
+    "python -m code_audit pr-scope --root R --manifest M [--json]",
+    "code_audit.api.scan_project(root, pr_scope_manifest=M)"
+  ],
   "inputs_required": [
     "scope_manifest_path",
     "git_merge_base",
@@ -9,69 +16,83 @@
   ],
   "patch_input_v2_fields": [
     "schema_version=cbsp21_patch_manifest_v2",
-    "scope.min_coverage_percent",
-    "diff_range.pinned_merge_base",
-    "scope.paths_in_scope",
     "scope.files_expected_to_change",
+    "scope.paths_in_scope",
+    "scope.min_coverage_percent",
     "diff_range.base",
+    "diff_range.base_sha",
+    "diff_range.head",
+    "diff_range.head_sha",
+    "changed_files_exact",
+    "changed_files_count",
     "file_context_coverage_percent"
   ],
+  "severity_policy": {
+    "uncheckable": "CRITICAL — the review could not be performed at all",
+    "drift_and_mismatch": "HIGH — base/head drift, observed-file or count mismatch",
+    "contamination": "MEDIUM per undeclared file",
+    "coverage_summary": "HIGH when below threshold, otherwise MEDIUM"
+  },
   "acceptance": [
     {
       "id": "declared_changed_passes",
-      "behavior": "A changed file that is declared in scope produces no contamination finding."
+      "behavior": "A changed file that is declared in scope produces no contamination finding. Declaration is by fnmatch glob against files_expected_to_change or by directory prefix against paths_in_scope."
     },
     {
       "id": "undeclared_changed_contamination",
-      "behavior": "A changed file not declared in scope produces a contamination finding."
+      "behavior": "A changed file not declared in scope produces a MEDIUM contamination finding (rule pr_scope.undeclared_file)."
     },
     {
       "id": "pinned_base_drift",
-      "behavior": "A pinned base that differs from the actual merge-base produces a base-drift finding."
+      "behavior": "A pinned base (diff_range.base_sha) that differs from the actual merge-base produces a HIGH base-drift finding. Comparison is on fully resolved commit SHAs, not ref strings."
+    },
+    {
+      "id": "pinned_head_drift",
+      "behavior": "When diff_range.head_sha is present and the reviewed head has moved, a HIGH head-drift finding is produced."
+    },
+    {
+      "id": "base_pin_required",
+      "behavior": "A manifest with no base_sha (or pinned_merge_base alias) is CRITICAL 'pr_scope.base_pin_missing'. Without a pin, drift detection would silently never run."
+    },
+    {
+      "id": "observed_files_cross_checked_not_authorized",
+      "behavior": "changed_files_exact and changed_files_count are reconciled against the real diff (HIGH on mismatch, reporting manifest_only / git_only), but never grant scope. Authorization comes only from scope.*."
     },
     {
       "id": "coverage_below_95",
-      "behavior": "Declared-scope coverage below 95% produces the summary/high-severity result."
-    },
-    {
-      "id": "clean_scope_zero_findings",
-      "behavior": "A clean, fully covered scope produces zero findings."
-    },
-    {
-      "id": "ordinary_scan_silent",
-      "behavior": "Ordinary scans without review context remain silent (no findings)."
-    },
-    {
-      "id": "fail_loud_on_uncheckable",
-      "behavior": "Missing manifest, unresolved merge-base, shallow-clone failure, or failed git diff must fail loud — never return an empty pass."
-    },
-    {
-      "id": "fail_loud_on_malformed_manifest",
-      "behavior": "A manifest with wrong-typed or out-of-range fields (non-numeric min_coverage_percent, non-object scope/diff_range, non-string pinned_merge_base) yields a CRITICAL uncheckable finding of kind 'malformed_manifest'. An exception escaping run() would abort the scan, which is the silent pass this detector exists to prevent."
-    },
-    {
-      "id": "fail_loud_on_schema_version_mismatch",
-      "behavior": "A manifest whose schema_version is not 'cbsp21_patch_manifest_v2' is rejected (kind 'schema_version_mismatch'). A v1 manifest carries no pinned_merge_base, so the base-drift check would silently no-op and the scan would look clean for the wrong reason."
-    },
-    {
-      "id": "fail_loud_on_empty_declared_scope",
-      "behavior": "A manifest declaring neither paths_in_scope nor files_expected_to_change yields kind 'empty_declared_scope' rather than flagging every changed file."
+      "behavior": "Declared-scope coverage below the threshold produces the HIGH summary finding; at exactly the threshold it is MEDIUM."
     },
     {
       "id": "min_coverage_percent_may_only_tighten",
-      "behavior": "scope.min_coverage_percent may raise the threshold above 95 but never below it. A manifest must not be able to opt itself out of the coverage_below_95 criterion."
+      "behavior": "scope.min_coverage_percent may raise the threshold above the 0.95 floor but never lower it — a manifest must not be able to opt itself out of the coverage criterion. An explicit operator --coverage-threshold is honoured as-is; the manifest can only raise it."
     },
     {
-      "id": "coverage_message_names_the_metric",
-      "behavior": "The coverage finding distinguishes scope coverage (share of the real diff that was declared) from file_context_coverage_percent (author's declared review depth) and reports which tripped via metadata.triggered_by."
+      "id": "file_context_coverage_enforced",
+      "behavior": "file_context_coverage_percent (declared review depth) is held to the same threshold as scope coverage; metadata.triggered_by names which metric tripped so the message is never misleading."
     },
     {
-      "id": "missing_base_never_degrades_to_head",
-      "behavior": "When diff_range.base is absent, the pinned merge-base is used as the diff base. Falling back to 'HEAD' would make `git merge-base HEAD HEAD` resolve to HEAD, producing an empty changed set and a silent clean pass."
+      "id": "clean_scope_zero_findings",
+      "behavior": "A clean, fully covered, correctly pinned scope produces zero findings."
+    },
+    {
+      "id": "ordinary_scan_silent",
+      "behavior": "Ordinary scans without a manifest remain silent (no findings)."
+    },
+    {
+      "id": "fail_loud_on_uncheckable",
+      "behavior": "Missing/unreadable manifest, wrong schema_version, malformed manifest fields, empty declared scope, unresolved ref or merge-base, shallow clone, missing git executable, git timeout, or failed git diff must fail loud as CRITICAL — never an empty pass, and never an exception escaping run()."
+    },
+    {
+      "id": "real_git_surface",
+      "behavior": "Changed files and merge-base are read from real Git (-z parsing, --find-renames, UTF-8 decode). No caller may inject a synthetic diff, which would allow manufacturing a clean pass."
     },
     {
       "id": "stable_finding_identity",
       "behavior": "Fingerprints exclude live percentages and SHAs so the same problem keeps one identity across runs; volatile detail stays in the message and metadata."
+    },
+    {
+      "id": "api_cli_parity",
+      "behavior": "check_pr_scope() and `pr-scope --json` report the same findings; the CLI exits ExitCode.VIOLATION when any finding is present and ExitCode.SUCCESS when clean."
     }
   ],
   "land_order": [

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "cbsp21_patch_manifest_v2",
   "title": "CBSP21 Patch Manifest v2 (code-analysis-tool)",
-  "description": "v2 adds only fields required by the pr_scope detector: pinned merge-base identity and a minimum in-scope coverage threshold. All other v1 fields remain.",
+  "description": "v2 adds the fields the pr_scope detector needs: an immutable pinned base commit, an optional pinned head, and a minimum in-scope coverage threshold. All v1 fields remain.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -43,17 +43,25 @@
     "scope": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["paths_in_scope", "files_expected_to_change"],
+      "description": "The authorized change surface. At least one of files_expected_to_change / paths_in_scope must be non-empty; an empty scope is rejected by pr_scope rather than flagging every changed file.",
+      "anyOf": [
+        { "required": ["files_expected_to_change"] },
+        { "required": ["paths_in_scope"] }
+      ],
       "properties": {
         "paths_in_scope": {
           "type": "array",
-          "items": { "type": "string" },
-          "minItems": 1
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1,
+          "uniqueItems": true,
+          "description": "Directory prefixes. A changed file is declared if it sits under any of these (e.g. \"src/code_audit/analyzers/\")."
         },
         "files_expected_to_change": {
           "type": "array",
-          "items": { "type": "string" },
-          "minItems": 1
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1,
+          "uniqueItems": true,
+          "description": "File paths or fnmatch glob patterns (e.g. \"tests/fixtures/expected/*.json\"). Note that \"*\" also matches \"/\", so a glob can span directories."
         },
         "out_of_scope_notes": { "type": "string" },
         "min_coverage_percent": {
@@ -61,43 +69,48 @@
           "minimum": 95,
           "maximum": 100,
           "default": 95,
-          "description": "Minimum percentage of merge-base..HEAD changed files that must fall inside the declared scope. 95 is the acceptance-contract floor; this field may only raise the bar (a lower value is rejected here and clamped back to 95 by the detector), and fractional thresholds are not supported."
+          "description": "Minimum percentage of merge-base..HEAD changed files that must fall inside the declared scope. 95 is the acceptance-contract floor; this field may only raise the bar, never lower it, and fractional thresholds are not supported."
         }
       }
     },
     "diff_range": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["base", "head"],
+      "required": ["base", "base_sha", "head"],
       "properties": {
         "base": {
           "type": "string",
           "minLength": 1,
-          "description": "Base ref (e.g. \"main\") that pr_scope passes to `git merge-base HEAD <base>` to compute the actual merge-base. This value is NOT itself compared for drift — declare pinned_merge_base for that."
+          "description": "Base ref (e.g. \"main\") that pr_scope resolves and passes to `git merge-base` to compute the actual merge-base."
         },
-        "head": {
+        "base_sha": {
           "type": "string",
-          "minLength": 1,
-          "description": "Informational record of the reviewed head. pr_scope always diffs against the working checkout's HEAD and does not resolve this field."
+          "pattern": "^[0-9a-fA-F]{40}([0-9a-fA-F]{24})?$",
+          "description": "Immutable pinned merge-base commit. pr_scope compares it against the merge-base actually computed from `base` and raises a HIGH base-drift finding if they differ. Required: without a pin, drift detection would silently never run."
         },
         "pinned_merge_base": {
           "type": "string",
-          "minLength": 1,
-          "pattern": "^[0-9a-fA-F]{7,64}$",
-          "description": "Optional explicit merge-base SHA. When set, pr_scope compares it against the merge-base actually computed from `base` and raises a HIGH base-drift finding if they differ. When omitted, no drift check runs — omit it only for patches where base movement is acceptable."
+          "pattern": "^[0-9a-fA-F]{40}([0-9a-fA-F]{24})?$",
+          "description": "Deprecated alias for base_sha, accepted for manifests written against the earlier v2 draft. Prefer base_sha; if both are present, base_sha wins."
+        },
+        "head": { "type": "string", "minLength": 1 },
+        "head_sha": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{40}([0-9a-fA-F]{24})?$",
+          "description": "Optional pinned head commit. When set, pr_scope raises a HIGH head-drift finding if the reviewed head has moved."
         }
       }
     },
     "changed_files_count": {
       "type": "integer",
       "minimum": 0,
-      "description": "Author-declared count of changed files. Recorded for review; pr_scope does not currently reconcile it against the real diff."
+      "description": "Declared count of changed files. pr_scope reconciles this against the real diff and raises HIGH on mismatch."
     },
     "changed_files_exact": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": { "type": "string", "minLength": 1 },
       "uniqueItems": true,
-      "description": "Author-declared exact changed-file list. Recorded for review; pr_scope does not currently reconcile it against the real diff — scope enforcement is driven by scope.paths_in_scope / scope.files_expected_to_change."
+      "description": "Declared exact changed-file list. pr_scope reconciles this against the real diff and raises HIGH on mismatch, reporting manifest_only / git_only. This is a cross-check, NOT an authorization list — scope is granted only by scope.files_expected_to_change / scope.paths_in_scope."
     },
     "diff_articulation": {
       "type": "object",
@@ -106,7 +119,7 @@
       "properties": {
         "what_changed": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": { "type": "string", "minLength": 1 },
           "minItems": 1
         },
         "why_not_redundant": { "type": "string", "minLength": 1 }
@@ -119,7 +132,7 @@
       "properties": {
         "commands_run": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": { "type": "string", "minLength": 1 },
           "minItems": 1
         },
         "test_results": {
@@ -133,7 +146,7 @@
       "type": "number",
       "minimum": 0,
       "maximum": 100,
-      "description": "Author's declaration of how much of each touched file's context was actually read before editing (a review-discipline metric, NOT test coverage and NOT the scope-coverage figure pr_scope computes from the diff). pr_scope holds it to the same scope.min_coverage_percent threshold: declaring a low value raises the same HIGH coverage finding, with metadata.triggered_by naming which metric tripped."
+      "description": "Author's declaration of how much of each touched file's context was actually read before editing (a review-discipline metric, NOT test coverage and NOT the scope-coverage figure pr_scope computes from the diff). pr_scope holds it to the same threshold as scope coverage; metadata.triggered_by names which metric tripped."
     },
     "metadata": {
       "type": "object",
@@ -141,10 +154,7 @@
       "properties": {
         "author": { "type": "string" },
         "created_at": { "type": "string", "format": "date-time" },
-        "reviewers": {
-          "type": "array",
-          "items": { "type": "string" }
-        }
+        "reviewers": { "type": "array", "items": { "type": "string" } }
       }
     }
   }
