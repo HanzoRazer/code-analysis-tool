@@ -18,7 +18,12 @@ import pytest
 from code_audit import check_pr_scope
 from code_audit.__main__ import main
 from code_audit.analyzers import pr_scope as pr_scope_module
-from code_audit.analyzers.pr_scope import PrScopeAnalyzer, ReviewContext
+from code_audit.analyzers.pr_scope import (
+    PrScopeAnalyzer,
+    ReviewContext,
+    _parse_name_status,
+)
+from code_audit.api import scan_project
 from code_audit.contracts.validate import validate_finding
 from code_audit.model import AnalyzerType, Severity
 from code_audit.utils.exit_codes import ExitCode
@@ -181,6 +186,22 @@ def test_glob_declares_matching_files(git_repo):
     assert PrScopeAnalyzer(manifest=manifest, base=base).run(root, []) == []
 
 
+def test_glob_nested_directory_and_leading_dot_slash(git_repo):
+    root, base = git_repo
+    _commit_file(root, "src/pkg/mod.py", "x = 1\n")
+    manifest = _write_manifest(root, base, ["./src/*/*.py"])
+
+    assert PrScopeAnalyzer(manifest=manifest, base=base).run(root, []) == []
+
+
+def test_glob_pattern_with_spaces_matches(git_repo):
+    root, base = git_repo
+    _commit_file(root, "dir with spaces/file.py", "x = 1\n")
+    manifest = _write_manifest(root, base, ["dir with spaces/*.py"])
+
+    assert PrScopeAnalyzer(manifest=manifest, base=base).run(root, []) == []
+
+
 def test_paths_in_scope_prefix_declares_directory(git_repo):
     root, base = git_repo
     _commit_file(root, "src/code_audit/analyzers/x.py", "x = 1\n")
@@ -211,7 +232,23 @@ def test_rename_and_path_with_spaces_use_new_git_path(git_repo):
     _git(root, "commit", "-m", "rename file")
     manifest = _write_manifest(root, base, ["renamed file.py"])
 
-    assert PrScopeAnalyzer(manifest=manifest, base=base).run(root, []) == []
+    findings = PrScopeAnalyzer(manifest=manifest, base=base).run(root, [])
+    assert findings == [], [f.message for f in findings]
+    assert "pr_scope.undeclared_file" not in _rules(findings)
+
+
+def test_parse_name_status_authorizes_rename_destination_only():
+    """Status-bearing rename records must not treat the old path as changed."""
+    paths, error = _parse_name_status("R100\0a.py\0renamed file.py\0M\0kept.py\0")
+    assert error is None
+    assert paths == ["renamed file.py", "kept.py"]
+
+
+def test_parse_name_status_fails_loud_on_unsafe_git_path():
+    paths, error = _parse_name_status("M\0../secret.py\0")
+    assert paths == []
+    assert error is not None
+    assert "unsafe" in error.lower()
 
 
 def test_non_ascii_paths_are_not_mangled(git_repo):
@@ -240,6 +277,46 @@ def test_observed_files_and_count_are_cross_checked_not_authorized(git_repo):
     assert "pr_scope.observed_files_mismatch" in rules
     assert "pr_scope.observed_count_mismatch" in rules
     assert "pr_scope.undeclared_file" in rules
+
+
+def test_duplicate_changed_files_exact_fails_loud(git_repo):
+    root, base = git_repo
+    _commit_file(root, "b.py", "b = 2\n")
+    manifest = _write_manifest(
+        root, base, ["b.py"], observed=["b.py", "b.py"], observed_count=1
+    )
+
+    findings = PrScopeAnalyzer(manifest=manifest, base=base).run(root, [])
+
+    assert _rules(findings) == {"pr_scope.manifest_invalid"}
+    assert findings[0].location.path.endswith("patch.json")
+    assert "duplicate" in findings[0].message
+    assert findings[0].severity is Severity.CRITICAL
+
+
+def test_changed_files_exact_dot_slash_collision_fails_loud(git_repo):
+    """Normalization must not hide duplicates by collapsing ./a.py and a.py."""
+    root, base = git_repo
+    _commit_file(root, "b.py", "b = 2\n")
+    manifest = _write_manifest(
+        root, base, ["b.py"], observed=["b.py", "./b.py"]
+    )
+
+    findings = PrScopeAnalyzer(manifest=manifest, base=base).run(root, [])
+
+    assert _rules(findings) == {"pr_scope.manifest_invalid"}
+    assert "duplicate" in findings[0].message
+
+
+def test_duplicate_declared_scope_entries_fail_loud(git_repo):
+    root, base = git_repo
+    _commit_file(root, "b.py", "b = 2\n")
+    manifest = _write_manifest(root, base, ["b.py", "./b.py"])
+
+    findings = PrScopeAnalyzer(manifest=manifest, base=base).run(root, [])
+
+    assert _rules(findings) == {"pr_scope.manifest_invalid"}
+    assert findings[0].severity is Severity.CRITICAL
 
 
 # ── coverage threshold ──────────────────────────────────────────────
@@ -325,6 +402,7 @@ def test_low_file_context_coverage_trips_the_summary(git_repo):
 
     assert summary.metadata["triggered_by"] == ["file_context_coverage"]
     assert "file_context_coverage_percent" in summary.message
+    assert "below the review threshold" in summary.message
     assert summary.severity is Severity.HIGH
 
 
@@ -383,6 +461,40 @@ def test_optional_head_pin_detects_drift(git_repo):
     manifest = _write_manifest(root, base, ["b.py"], head_sha=base)
 
     assert "pr_scope.head_drift" in _rules(PrScopeAnalyzer(manifest=manifest).run(root, []))
+
+
+@pytest.mark.parametrize("head_sha", [{}, [], True, 0, ""])
+def test_malformed_head_sha_fails_loud_not_crash(git_repo, head_sha):
+    root, base = git_repo
+    _commit_file(root, "b.py", "b = 2\n")
+    manifest = _write_manifest(root, base, ["b.py"])
+    data = json.loads(manifest.read_text(encoding="utf-8"))
+    data["diff_range"]["head_sha"] = head_sha
+    manifest.write_text(json.dumps(data), encoding="utf-8")
+
+    findings = PrScopeAnalyzer(manifest=manifest).run(root, [])
+
+    assert "pr_scope.manifest_invalid" in _rules(findings)
+    invalid = next(f for f in findings if f.metadata["rule_id"] == "pr_scope.manifest_invalid")
+    assert invalid.severity is Severity.CRITICAL
+    assert "head_sha" in invalid.message
+
+
+def test_falsy_non_string_base_sha_does_not_fall_through_to_alias(git_repo):
+    """An empty-list base_sha used to be skipped by `or`, hiding the malformation."""
+    root, base = git_repo
+    _commit_file(root, "b.py", "b = 2\n")
+    manifest = _write_manifest(
+        root, base, ["b.py"], base_sha_field="pinned_merge_base"
+    )
+    data = json.loads(manifest.read_text(encoding="utf-8"))
+    data["diff_range"]["base_sha"] = []
+    manifest.write_text(json.dumps(data), encoding="utf-8")
+
+    findings = PrScopeAnalyzer(manifest=manifest).run(root, [])
+
+    assert _rules(findings) == {"pr_scope.manifest_invalid"}
+    assert findings[0].severity is Severity.CRITICAL
 
 
 def test_missing_base_pin_fails_loud(git_repo):
@@ -458,6 +570,21 @@ def test_non_numeric_min_coverage_fails_loud_not_crash(git_repo):
 
     findings = PrScopeAnalyzer(manifest=manifest).run(root, [])
     assert _rules(findings) == {"pr_scope.manifest_invalid"}
+    assert "scope.min_coverage_percent" in findings[0].message
+
+
+def test_malformed_file_context_coverage_attributes_the_right_field(git_repo):
+    root, base = git_repo
+    manifest = _write_manifest(root, base, ["b.py"])
+    data = json.loads(manifest.read_text(encoding="utf-8"))
+    data["file_context_coverage_percent"] = "forty"
+    manifest.write_text(json.dumps(data), encoding="utf-8")
+
+    findings = PrScopeAnalyzer(manifest=manifest).run(root, [])
+
+    assert _rules(findings) == {"pr_scope.manifest_invalid"}
+    assert "file_context_coverage_percent" in findings[0].message
+    assert "scope.min_coverage_percent" not in findings[0].message
 
 
 def test_unsafe_declared_path_is_rejected(git_repo):
@@ -503,6 +630,25 @@ def test_git_timeout_becomes_finding(git_repo, monkeypatch):
     assert _rules(findings) == {"pr_scope.git_timeout"}
 
 
+def test_non_utf8_git_output_fails_loud_not_mangled(git_repo, monkeypatch):
+    root, base = git_repo
+    manifest = _write_manifest(root, base, ["b.py"])
+
+    class FakeProc:
+        returncode = 0
+        stdout = b"\xff\xfe"
+        stderr = b""
+
+    def fake_run(*args, **kwargs):
+        return FakeProc()
+
+    monkeypatch.setattr(pr_scope_module.subprocess, "run", fake_run)
+    findings = PrScopeAnalyzer(manifest=manifest).run(root, [])
+
+    assert _rules(findings) == {"pr_scope.git_failed"}
+    assert all(f.severity is Severity.CRITICAL for f in findings)
+
+
 # ── API / CLI parity ────────────────────────────────────────────────
 
 
@@ -539,6 +685,47 @@ def test_cli_clean_scope_exits_success(git_repo, capsys):
     assert output["passed"] is True
 
 
+def test_scan_project_pr_scope_manifest_emits_contamination(git_repo):
+    """scan_project(..., pr_scope_manifest=) is a shipped activation path."""
+    root, base = git_repo
+    _commit_file(root, "leak.py", "leak = True\n")
+    manifest = _write_manifest(root, base, ["intended.py"])
+
+    _, with_manifest = scan_project(
+        root, pr_scope_manifest=manifest, ci_mode=True, enable_js_ts=False,
+    )
+    rules = {
+        finding.get("metadata", {}).get("rule_id")
+        for finding in with_manifest["findings_raw"]
+    }
+    assert "pr_scope.undeclared_file" in rules
+
+    _, silent = scan_project(
+        root,
+        analyzers=[PrScopeAnalyzer()],
+        ci_mode=True,
+        enable_js_ts=False,
+    )
+    silent_rules = {
+        finding.get("metadata", {}).get("rule_id")
+        for finding in silent["findings_raw"]
+    }
+    assert "pr_scope.undeclared_file" not in silent_rules
+
+    _, custom = scan_project(
+        root,
+        analyzers=[PrScopeAnalyzer()],
+        pr_scope_manifest=manifest,
+        ci_mode=True,
+        enable_js_ts=False,
+    )
+    custom_rules = {
+        finding.get("metadata", {}).get("rule_id")
+        for finding in custom["findings_raw"]
+    }
+    assert "pr_scope.undeclared_file" in custom_rules
+
+
 # ── governance artifacts ────────────────────────────────────────────
 
 
@@ -555,6 +742,10 @@ def test_acceptance_contract_file_lists_required_behaviors():
         "clean_scope_zero_findings",
         "ordinary_scan_silent",
         "fail_loud_on_uncheckable",
+        "real_git_surface",
+        "stable_finding_identity",
+        "api_cli_parity",
+        "scan_project_manifest_activation",
     } <= ids
 
 

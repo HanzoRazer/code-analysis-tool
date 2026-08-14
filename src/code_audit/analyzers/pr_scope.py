@@ -40,6 +40,9 @@ _SCHEMA_VERSION = "cbsp21_patch_manifest_v2"
 # lower it — see _effective_threshold().
 _CONTRACT_FLOOR = 0.95
 
+# git diff --name-status records that carry two paths (source + destination).
+_TWO_PATH_STATUS = frozenset({"R", "C"})
+
 
 @dataclass(frozen=True, slots=True)
 class ReviewContext:
@@ -63,6 +66,14 @@ class _GitResult:
     failure_rule: str = ""
 
 
+@dataclass(frozen=True, slots=True)
+class _ResolvedRefs:
+    base: str
+    head: str
+    pinned_base: str
+    merge_base: str
+
+
 def _git(root: Path, timeout: float, *args: str) -> _GitResult:
     """Run Git without a shell and turn process failures into data."""
     try:
@@ -70,11 +81,6 @@ def _git(root: Path, timeout: float, *args: str) -> _GitResult:
             ["git", *args],
             cwd=str(root),
             capture_output=True,
-            text=True,
-            # Git emits path bytes as UTF-8; the platform locale codec (cp1252
-            # on Windows) would mojibake non-ASCII names into false findings.
-            encoding="utf-8",
-            errors="replace",
             timeout=timeout,
             check=False,
         )
@@ -89,7 +95,19 @@ def _git(root: Path, timeout: float, *args: str) -> _GitResult:
         )
     except OSError as exc:
         return _GitResult(126, "", str(exc), "pr_scope.git_failed")
-    return _GitResult(proc.returncode, proc.stdout, proc.stderr)
+    stderr = proc.stderr.decode("utf-8", errors="replace")
+    # Paths and SHAs must decode cleanly. Replacing invalid bytes would
+    # manufacture a different path and silently contaminate (or pass) the gate.
+    try:
+        stdout = proc.stdout.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        return _GitResult(
+            proc.returncode,
+            "",
+            f"git output is not valid UTF-8: {exc}",
+            "pr_scope.git_failed",
+        )
+    return _GitResult(proc.returncode, stdout, stderr)
 
 
 def _normalized_path(value: str) -> str | None:
@@ -102,6 +120,67 @@ def _normalized_path(value: str) -> str | None:
     if any(part == ".." for part in path.split("/")):
         return None
     return path
+
+
+def _unique_normalized_paths(
+    values: Any, *, field: str, array_of_paths: bool = False
+) -> tuple[list[str], str | None]:
+    """Normalize a string array; reject non-strings, unsafe paths, and duplicates.
+
+    Uniqueness is checked *after* normalization so ``a.py`` and ``./a.py``
+    cannot collapse into one authorized/observed entry.
+    """
+    if not isinstance(values, list):
+        return [], f"{field} must be an array."
+    if array_of_paths and any(not isinstance(item, str) for item in values):
+        return [], f"{field} must be an array of paths."
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for raw in values:
+        if not isinstance(raw, str) or (path := _normalized_path(raw)) is None:
+            return [], f"Unsafe or invalid declared path: {raw!r}." if not array_of_paths else (
+                f"{field} contains an unsafe path."
+            )
+        if path in seen:
+            return [], f"{field} contains duplicate path {path!r}."
+        seen.add(path)
+        normalized.append(path)
+    return normalized, None
+
+
+def _parse_name_status(stdout: str) -> tuple[list[str], str | None]:
+    """Parse ``git diff --name-status -z`` into destination paths.
+
+    Rename/copy records are ``R100\\0old\\0new\\0`` (or ``C…``). Only the
+    destination is treated as the changed path so a manifest that correctly
+    authorizes the post-rename name is not contaminated by the old name.
+    Any path that cannot be normalized fails the parse rather than vanishing.
+    """
+    tokens = stdout.split("\0")
+    if tokens and tokens[-1] == "":
+        tokens.pop()
+    paths: list[str] = []
+    index = 0
+    while index < len(tokens):
+        status = tokens[index]
+        index += 1
+        if not status:
+            return [], "Git name-status output contained an empty status field."
+        two_path = status[0] in _TWO_PATH_STATUS
+        needed = 2 if two_path else 1
+        if index + needed > len(tokens):
+            return [], f"Git name-status record {status!r} is truncated."
+        if two_path:
+            raw = tokens[index + 1]
+            index += 2
+        else:
+            raw = tokens[index]
+            index += 1
+        path = _normalized_path(raw)
+        if path is None:
+            return [], f"Git reported an unsafe changed path: {raw!r}."
+        paths.append(path)
+    return paths, None
 
 
 def _manifest_location(root: Path, path: Path) -> str:
@@ -125,11 +204,15 @@ def _effective_threshold(ctor_threshold: float, manifest_percent: float | None) 
     return max(ctor_threshold, manifest_percent / 100.0)
 
 
+def _is_nonempty_str(value: Any) -> bool:
+    return isinstance(value, str) and bool(value.strip())
+
+
 class PrScopeAnalyzer:
     """Compare a branch diff with a CBSP21-declared file scope."""
 
     id: str = "pr_scope"
-    version: str = "2.0.0"
+    version: str = "2.1.0"
 
     def __init__(
         self,
@@ -174,196 +257,47 @@ class PrScopeAnalyzer:
         if self.manifest is None:
             return []
 
-        manifest_path = self.manifest
-        if not manifest_path.is_absolute():
-            manifest_path = root / manifest_path
-        manifest_label = _manifest_location(root, manifest_path)
+        loaded = self._load_manifest(root)
+        if isinstance(loaded, Finding):
+            return [loaded]
+        manifest, manifest_label = loaded
 
-        try:
-            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
-            return [self._uncheckable(
-                f"PR manifest cannot be read or parsed: {exc}",
-                manifest_label,
-                symbol="manifest",
-                rule="pr_scope.manifest_missing",
-            )]
-        if not isinstance(manifest, dict):
-            return [self._uncheckable(
-                "PR manifest must be a JSON object.",
-                manifest_label,
-                symbol="manifest",
-                rule="pr_scope.manifest_invalid",
-            )]
-
-        # A v1 manifest parses fine but pins no base SHA, so drift detection
-        # would silently never run and the gate would pass for the wrong reason.
-        version = manifest.get("schema_version")
-        if version != _SCHEMA_VERSION:
-            return [self._uncheckable(
-                f"PR manifest declares schema_version={version!r}; "
-                f"pr_scope requires {_SCHEMA_VERSION!r}.",
-                manifest_label,
-                symbol="schema_version",
-                rule="pr_scope.schema_version_mismatch",
-            )]
-
-        diff_range = manifest.get("diff_range")
-        scope = manifest.get("scope")
-        if not isinstance(diff_range, dict) or not isinstance(scope, dict):
-            return [self._uncheckable(
-                "PR manifest must contain object-valued scope and diff_range fields.",
-                manifest_label,
-                symbol="manifest",
-                rule="pr_scope.manifest_invalid",
-            )]
-
-        base_ref = self.base or diff_range.get("base")
-        head_ref = self.head or diff_range.get("head") or "HEAD"
-        # base_sha is canonical; pinned_merge_base is the accepted alias.
-        pinned_base = (
-            diff_range.get("base_sha")
-            or diff_range.get("pinned_merge_base")
-            or manifest.get("base_sha")
-        )
-        if not isinstance(base_ref, str) or not base_ref:
-            return [self._uncheckable(
-                "No target base ref was supplied.", manifest_label,
-                symbol="diff_range.base", rule="pr_scope.manifest_invalid",
-            )]
-        if not isinstance(head_ref, str) or not head_ref:
-            return [self._uncheckable(
-                "No head ref was supplied.", manifest_label,
-                symbol="diff_range.head", rule="pr_scope.manifest_invalid",
-            )]
-        if not isinstance(pinned_base, str) or not pinned_base:
-            return [self._uncheckable(
-                "Manifest has no immutable base SHA. Use CBSP21 v2 and record "
-                "diff_range.base_sha.",
-                manifest_label,
-                symbol="diff_range.base_sha",
-                rule="pr_scope.base_pin_missing",
-            )]
-
-        try:
-            min_coverage_percent = self._manifest_percent(
-                scope.get("min_coverage_percent")
-            )
-            declared_context_coverage = self._manifest_percent(
-                manifest.get("file_context_coverage_percent")
-            )
-        except ValueError as exc:
-            return [self._uncheckable(
-                str(exc), manifest_label, symbol="scope.min_coverage_percent",
-                rule="pr_scope.manifest_invalid",
-            )]
+        parsed = self._validate_manifest_shape(manifest, manifest_label)
+        if isinstance(parsed, Finding):
+            return [parsed]
+        diff_range, scope, min_coverage_percent, declared_context_coverage = parsed
         threshold = _effective_threshold(self.coverage_threshold, min_coverage_percent)
 
-        resolved: dict[str, str] = {}
-        for label, ref, rule in (
-            ("base", base_ref, "pr_scope.base_unresolved"),
-            ("head", head_ref, "pr_scope.head_unresolved"),
-            ("pinned base", pinned_base, "pr_scope.pinned_base_unresolved"),
-        ):
-            result = _git(root, self.git_timeout, "rev-parse", "--verify", f"{ref}^{{commit}}")
-            if result.returncode != 0 or not result.stdout.strip():
-                return [self._git_finding(
-                    result,
-                    fallback_rule=rule,
-                    message=f"Cannot resolve {label} ref {ref!r}; PR scope cannot be verified.",
-                )]
-            resolved[label] = result.stdout.strip().splitlines()[0]
+        refs = self._resolve_refs(root, diff_range, manifest, manifest_label)
+        if isinstance(refs, Finding):
+            return [refs]
+        resolved, findings = refs
 
-        merge = _git(root, self.git_timeout, "merge-base", resolved["base"], resolved["head"])
-        if merge.returncode != 0 or not merge.stdout.strip():
-            return [self._git_finding(
-                merge,
-                fallback_rule="pr_scope.base_unresolved",
-                message=(
-                    "Cannot resolve the merge-base; "
-                    f"{self._shallow_hint(root)}."
-                ),
-            )]
-        merge_base = merge.stdout.strip().splitlines()[0]
+        findings.extend(self._drift_findings(root, diff_range, resolved, manifest_label))
 
-        findings: list[Finding] = []
-        if resolved["pinned base"] != merge_base:
-            findings.append(self._finding(
-                Severity.HIGH,
-                0.95,
-                "Base drift: manifest pins "
-                f"{resolved['pinned base'][:12]}, but the current merge-base is "
-                f"{merge_base[:12]}.",
-                ".",
-                symbol="diff_range.base_sha",
-                rule="pr_scope.base_drift",
-                metadata={
-                    "pinned_base": resolved["pinned base"],
-                    "actual_merge_base": merge_base,
-                },
-            ))
+        changed = self._changed_paths(root, resolved)
+        if isinstance(changed, Finding):
+            return findings + [changed]
 
-        pinned_head = diff_range.get("head_sha")
-        if pinned_head:
-            result = _git(
-                root,
-                self.git_timeout,
-                "rev-parse",
-                "--verify",
-                f"{pinned_head}^{{commit}}",
+        raw_declared = scope.get("files_expected_to_change")
+        if raw_declared is None:
+            declared, invalid = [], None
+        else:
+            declared, invalid = _unique_normalized_paths(
+                raw_declared, field="scope.files_expected_to_change",
             )
-            if result.returncode != 0 or not result.stdout.strip():
-                findings.append(self._git_finding(
-                    result,
-                    fallback_rule="pr_scope.pinned_head_unresolved",
-                    message=f"Cannot resolve pinned head SHA {pinned_head!r}.",
-                ))
-            elif result.stdout.strip().splitlines()[0] != resolved["head"]:
-                findings.append(self._finding(
-                    Severity.HIGH,
-                    0.95,
-                    "Head drift: the reviewed head commit no longer matches diff_range.head_sha.",
-                    ".",
-                    symbol="diff_range.head_sha",
-                    rule="pr_scope.head_drift",
-                    metadata={
-                        "pinned_head": result.stdout.strip().splitlines()[0],
-                        "actual_head": resolved["head"],
-                    },
-                ))
-
-        diff = _git(
-            root,
-            self.git_timeout,
-            "diff",
-            "--name-only",
-            # -z keeps paths raw; without it core.quotePath escapes non-ASCII
-            # names and every scope comparison against them fails.
-            "-z",
-            "--find-renames",
-            f"{merge_base}..{resolved['head']}",
-            "--",
-        )
-        if diff.returncode != 0:
-            return findings + [self._git_finding(
-                diff,
-                fallback_rule="pr_scope.diff_failed",
-                message="Git diff failed; PR scope cannot be verified.",
-            )]
-        changed = sorted({
-            path
-            for raw in diff.stdout.split("\0")
-            if raw and (path := _normalized_path(raw)) is not None
-        })
-        changed_set = set(changed)
-
-        declared, invalid = self._declared_patterns(scope, "files_expected_to_change")
         if invalid is not None:
             return findings + [self._uncheckable(
                 invalid, manifest_label, symbol="scope.files_expected_to_change",
                 rule="pr_scope.manifest_invalid",
             )]
-        prefixes, invalid = self._declared_patterns(scope, "paths_in_scope")
+        raw_prefixes = scope.get("paths_in_scope")
+        if raw_prefixes is None:
+            prefixes, invalid = [], None
+        else:
+            prefixes, invalid = _unique_normalized_paths(
+                raw_prefixes, field="scope.paths_in_scope",
+            )
         if invalid is not None:
             return findings + [self._uncheckable(
                 invalid, manifest_label, symbol="scope.paths_in_scope",
@@ -378,22 +312,309 @@ class PrScopeAnalyzer:
                 rule="pr_scope.no_declared_files",
             )]
 
+        observed = self._reconcile_observed(manifest, changed, manifest_label)
+        if isinstance(observed, Finding):
+            return findings + [observed]
+        findings.extend(observed)
+
+        findings.extend(
+            self._scope_and_coverage_findings(
+                changed, declared, prefixes, declared_context_coverage, threshold,
+            )
+        )
+        return findings
+
+    # ── manifest loading / validation ───────────────────────────────
+
+    def _load_manifest(self, root: Path) -> tuple[dict[str, Any], str] | Finding:
+        manifest_path = self.manifest
+        assert manifest_path is not None
+        if not manifest_path.is_absolute():
+            manifest_path = root / manifest_path
+        manifest_label = _manifest_location(root, manifest_path)
+
+        try:
+            payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            return self._uncheckable(
+                f"PR manifest cannot be read or parsed: {exc}",
+                manifest_label,
+                symbol="manifest",
+                rule="pr_scope.manifest_missing",
+            )
+        if not isinstance(payload, dict):
+            return self._uncheckable(
+                "PR manifest must be a JSON object.",
+                manifest_label,
+                symbol="manifest",
+                rule="pr_scope.manifest_invalid",
+            )
+        return payload, manifest_label
+
+    def _validate_manifest_shape(
+        self, manifest: dict[str, Any], manifest_label: str
+    ) -> tuple[dict[str, Any], dict[str, Any], float | None, float | None] | Finding:
+        # A v1 manifest parses fine but pins no base SHA, so drift detection
+        # would silently never run and the gate would pass for the wrong reason.
+        version = manifest.get("schema_version")
+        if version != _SCHEMA_VERSION:
+            return self._uncheckable(
+                f"PR manifest declares schema_version={version!r}; "
+                f"pr_scope requires {_SCHEMA_VERSION!r}.",
+                manifest_label,
+                symbol="schema_version",
+                rule="pr_scope.schema_version_mismatch",
+            )
+
+        diff_range = manifest.get("diff_range")
+        scope = manifest.get("scope")
+        if not isinstance(diff_range, dict) or not isinstance(scope, dict):
+            return self._uncheckable(
+                "PR manifest must contain object-valued scope and diff_range fields.",
+                manifest_label,
+                symbol="manifest",
+                rule="pr_scope.manifest_invalid",
+            )
+
+        try:
+            min_coverage_percent = self._manifest_percent(
+                scope.get("min_coverage_percent"),
+                "scope.min_coverage_percent",
+            )
+        except ValueError as exc:
+            return self._uncheckable(
+                str(exc), manifest_label, symbol="scope.min_coverage_percent",
+                rule="pr_scope.manifest_invalid",
+            )
+        try:
+            declared_context_coverage = self._manifest_percent(
+                manifest.get("file_context_coverage_percent"),
+                "file_context_coverage_percent",
+            )
+        except ValueError as exc:
+            return self._uncheckable(
+                str(exc), manifest_label, symbol="file_context_coverage_percent",
+                rule="pr_scope.manifest_invalid",
+            )
+        return diff_range, scope, min_coverage_percent, declared_context_coverage
+
+    def _pinned_base_sha(
+        self,
+        diff_range: dict[str, Any],
+        manifest: dict[str, Any],
+        manifest_label: str,
+    ) -> str | Finding:
+        if "base_sha" in diff_range:
+            value, symbol = diff_range["base_sha"], "diff_range.base_sha"
+        elif "pinned_merge_base" in diff_range:
+            value, symbol = diff_range["pinned_merge_base"], "diff_range.pinned_merge_base"
+        elif "base_sha" in manifest:
+            value, symbol = manifest["base_sha"], "base_sha"
+        else:
+            return self._uncheckable(
+                "Manifest has no immutable base SHA. Use CBSP21 v2 and record "
+                "diff_range.base_sha.",
+                manifest_label,
+                symbol="diff_range.base_sha",
+                rule="pr_scope.base_pin_missing",
+            )
+        if not _is_nonempty_str(value):
+            return self._uncheckable(
+                f"{symbol} must be a non-empty string when provided.",
+                manifest_label,
+                symbol=symbol,
+                rule="pr_scope.manifest_invalid",
+            )
+        return value
+
+    # ── git refs / diff ─────────────────────────────────────────────
+
+    def _resolve_refs(
+        self,
+        root: Path,
+        diff_range: dict[str, Any],
+        manifest: dict[str, Any],
+        manifest_label: str,
+    ) -> tuple[_ResolvedRefs, list[Finding]] | Finding:
+        if self.base is not None:
+            base_ref = self.base
+        elif "base" in diff_range:
+            base_ref = diff_range["base"]
+        else:
+            base_ref = None
+        if self.head is not None:
+            head_ref = self.head
+        elif "head" in diff_range:
+            head_ref = diff_range["head"]
+        else:
+            head_ref = "HEAD"
+
+        if not _is_nonempty_str(base_ref):
+            return self._uncheckable(
+                "No target base ref was supplied.", manifest_label,
+                symbol="diff_range.base", rule="pr_scope.manifest_invalid",
+            )
+        if not _is_nonempty_str(head_ref):
+            return self._uncheckable(
+                "No head ref was supplied.", manifest_label,
+                symbol="diff_range.head", rule="pr_scope.manifest_invalid",
+            )
+
+        pinned_base = self._pinned_base_sha(diff_range, manifest, manifest_label)
+        if isinstance(pinned_base, Finding):
+            return pinned_base
+
+        resolved: dict[str, str] = {}
+        for label, ref, rule in (
+            ("base", base_ref, "pr_scope.base_unresolved"),
+            ("head", head_ref, "pr_scope.head_unresolved"),
+            ("pinned base", pinned_base, "pr_scope.pinned_base_unresolved"),
+        ):
+            result = _git(root, self.git_timeout, "rev-parse", "--verify", f"{ref}^{{commit}}")
+            if result.returncode != 0 or not result.stdout.strip():
+                return self._git_finding(
+                    result,
+                    fallback_rule=rule,
+                    message=f"Cannot resolve {label} ref {ref!r}; PR scope cannot be verified.",
+                )
+            resolved[label] = result.stdout.strip().splitlines()[0]
+
+        merge = _git(root, self.git_timeout, "merge-base", resolved["base"], resolved["head"])
+        if merge.returncode != 0 or not merge.stdout.strip():
+            return self._git_finding(
+                merge,
+                fallback_rule="pr_scope.base_unresolved",
+                message=(
+                    "Cannot resolve the merge-base; "
+                    f"{self._shallow_hint(root)}."
+                ),
+            )
+        merge_base = merge.stdout.strip().splitlines()[0]
+        return _ResolvedRefs(
+            base=resolved["base"],
+            head=resolved["head"],
+            pinned_base=resolved["pinned base"],
+            merge_base=merge_base,
+        ), []
+
+    def _drift_findings(
+        self,
+        root: Path,
+        diff_range: dict[str, Any],
+        resolved: _ResolvedRefs,
+        manifest_label: str,
+    ) -> list[Finding]:
+        findings: list[Finding] = []
+        if resolved.pinned_base != resolved.merge_base:
+            findings.append(self._finding(
+                Severity.HIGH,
+                0.95,
+                "Base drift: manifest pins "
+                f"{resolved.pinned_base[:12]}, but the current merge-base is "
+                f"{resolved.merge_base[:12]}.",
+                ".",
+                symbol="diff_range.base_sha",
+                rule="pr_scope.base_drift",
+                metadata={
+                    "pinned_base": resolved.pinned_base,
+                    "actual_merge_base": resolved.merge_base,
+                },
+            ))
+
+        if "head_sha" not in diff_range:
+            return findings
+        pinned_head = diff_range["head_sha"]
+        if not _is_nonempty_str(pinned_head):
+            findings.append(self._uncheckable(
+                "diff_range.head_sha must be a non-empty string when provided.",
+                manifest_label,
+                symbol="diff_range.head_sha",
+                rule="pr_scope.manifest_invalid",
+            ))
+            return findings
+        result = _git(
+            root,
+            self.git_timeout,
+            "rev-parse",
+            "--verify",
+            f"{pinned_head}^{{commit}}",
+        )
+        if result.returncode != 0 or not result.stdout.strip():
+            findings.append(self._git_finding(
+                result,
+                fallback_rule="pr_scope.pinned_head_unresolved",
+                message=f"Cannot resolve pinned head SHA {pinned_head!r}.",
+            ))
+        elif result.stdout.strip().splitlines()[0] != resolved.head:
+            findings.append(self._finding(
+                Severity.HIGH,
+                0.95,
+                "Head drift: the reviewed head commit no longer matches diff_range.head_sha.",
+                ".",
+                symbol="diff_range.head_sha",
+                rule="pr_scope.head_drift",
+                metadata={
+                    "pinned_head": result.stdout.strip().splitlines()[0],
+                    "actual_head": resolved.head,
+                },
+            ))
+        return findings
+
+    def _changed_paths(
+        self,
+        root: Path,
+        resolved: _ResolvedRefs,
+    ) -> list[str] | Finding:
+        diff = _git(
+            root,
+            self.git_timeout,
+            "diff",
+            "--name-status",
+            # -z keeps paths raw; without it core.quotePath escapes non-ASCII
+            # names and every scope comparison against them fails.
+            "-z",
+            "--find-renames",
+            f"{resolved.merge_base}..{resolved.head}",
+            "--",
+        )
+        if diff.returncode != 0 or diff.failure_rule:
+            return self._git_finding(
+                diff,
+                fallback_rule="pr_scope.diff_failed",
+                message="Git diff failed; PR scope cannot be verified.",
+            )
+        changed, error = _parse_name_status(diff.stdout)
+        if error is not None:
+            return self._uncheckable(
+                error,
+                ".",
+                symbol="git",
+                rule="pr_scope.diff_failed",
+            )
+        return sorted(set(changed))
+
+    # ── observed-file cross-checks / coverage ───────────────────────
+
+    def _reconcile_observed(
+        self,
+        manifest: dict[str, Any],
+        changed: list[str],
+        manifest_label: str,
+    ) -> list[Finding] | Finding:
+        findings: list[Finding] = []
+        changed_set = set(changed)
         observed = manifest.get("changed_files_exact")
         if observed is not None:
-            if not isinstance(observed, list) or any(not isinstance(p, str) for p in observed):
-                return findings + [self._uncheckable(
-                    "changed_files_exact must be an array of paths.",
-                    manifest_label, symbol="changed_files_exact",
+            normalized_observed, invalid = _unique_normalized_paths(
+                observed, field="changed_files_exact", array_of_paths=True,
+            )
+            if invalid is not None:
+                return self._uncheckable(
+                    invalid, manifest_label, symbol="changed_files_exact",
                     rule="pr_scope.manifest_invalid",
-                )]
-            normalized_observed = {_normalized_path(p) for p in observed}
-            if None in normalized_observed:
-                return findings + [self._uncheckable(
-                    "changed_files_exact contains an unsafe path.",
-                    manifest_label, symbol="changed_files_exact",
-                    rule="pr_scope.manifest_invalid",
-                )]
-            if normalized_observed != changed_set:
+                )
+            normalized_set = set(normalized_observed)
+            if normalized_set != changed_set:
                 findings.append(self._finding(
                     Severity.HIGH,
                     0.95,
@@ -402,8 +623,8 @@ class PrScopeAnalyzer:
                     symbol="changed_files_exact",
                     rule="pr_scope.observed_files_mismatch",
                     metadata={
-                        "manifest_only": sorted(normalized_observed - changed_set),
-                        "git_only": sorted(changed_set - normalized_observed),
+                        "manifest_only": sorted(normalized_set - changed_set),
+                        "git_only": sorted(changed_set - normalized_set),
                     },
                 ))
 
@@ -411,11 +632,11 @@ class PrScopeAnalyzer:
         if observed_count is not None and (
             not isinstance(observed_count, int) or isinstance(observed_count, bool)
         ):
-            return findings + [self._uncheckable(
+            return self._uncheckable(
                 "changed_files_count must be an integer.",
                 manifest_label, symbol="changed_files_count",
                 rule="pr_scope.manifest_invalid",
-            )]
+            )
         if isinstance(observed_count, int) and observed_count != len(changed_set):
             findings.append(self._finding(
                 Severity.HIGH,
@@ -427,7 +648,17 @@ class PrScopeAnalyzer:
                 rule="pr_scope.observed_count_mismatch",
                 metadata={"manifest_count": observed_count, "git_count": len(changed_set)},
             ))
+        return findings
 
+    def _scope_and_coverage_findings(
+        self,
+        changed: list[str],
+        declared: list[str],
+        prefixes: list[str],
+        declared_context_coverage: float | None,
+        threshold: float,
+    ) -> list[Finding]:
+        findings: list[Finding] = []
         undeclared = sorted(
             path
             for path in changed
@@ -465,63 +696,58 @@ class PrScopeAnalyzer:
                 f"manifest file_context_coverage_percent="
                 f"{declared_context_coverage:.1f}%"
             )
-        if causes:
-            below = coverage < threshold or context_short
-            findings.append(self._finding(
-                Severity.HIGH if below else Severity.MEDIUM,
-                0.95,
+        if not causes:
+            return findings
+        below = coverage < threshold or context_short
+        if context_short and not undeclared:
+            message = (
+                f"Declared file_context_coverage_percent is below the review "
+                f"threshold: {declared_context_coverage:.1f}% "
+                f"(threshold {threshold:.1%})."
+            )
+        else:
+            message = (
                 f"Branch diff scope coverage is under review: {'; '.join(causes)} "
-                f"(threshold {threshold:.1%}).",
-                ".",
-                symbol="scope_summary",
-                rule="pr_scope.coverage_below_threshold",
-                metadata={
-                    "declared_coverage": round(coverage, 6),
-                    "coverage_percent": round(coverage * 100.0, 6),
-                    "coverage_threshold": threshold,
-                    "threshold_percent": round(threshold * 100.0, 6),
-                    "undeclared_count": len(undeclared),
-                    "changed_count": len(changed),
-                    "file_context_coverage_percent": declared_context_coverage,
-                    "triggered_by": (
-                        ["scope_coverage"] if undeclared else []
-                    ) + (["file_context_coverage"] if context_short else []),
-                },
-            ))
+                f"(threshold {threshold:.1%})."
+            )
+        findings.append(self._finding(
+            Severity.HIGH if below else Severity.MEDIUM,
+            0.95,
+            message,
+            ".",
+            symbol="scope_summary",
+            rule="pr_scope.coverage_below_threshold",
+            metadata={
+                "declared_coverage": round(coverage, 6),
+                "coverage_percent": round(coverage * 100.0, 6),
+                "coverage_threshold": threshold,
+                "threshold_percent": round(threshold * 100.0, 6),
+                "undeclared_count": len(undeclared),
+                "changed_count": len(changed),
+                "file_context_coverage_percent": declared_context_coverage,
+                "triggered_by": (
+                    ["scope_coverage"] if undeclared else []
+                ) + (["file_context_coverage"] if context_short else []),
+            },
+        ))
         return findings
 
     # ── manifest helpers ────────────────────────────────────────────
 
     @staticmethod
-    def _manifest_percent(value: Any) -> float | None:
+    def _manifest_percent(value: Any, field: str) -> float | None:
         if value is None:
             return None
         if isinstance(value, bool) or not isinstance(value, (int, float)):
             raise ValueError(
-                f"coverage percentages must be numeric, got {type(value).__name__}"
+                f"{field} must be numeric, got {type(value).__name__}"
             )
         number = float(value)
         if not 0.0 <= number <= 100.0:
             raise ValueError(
-                f"coverage percentages must be between 0 and 100, got {number:g}"
+                f"{field} must be between 0 and 100, got {number:g}"
             )
         return number
-
-    @staticmethod
-    def _declared_patterns(
-        scope: dict[str, Any], field: str
-    ) -> tuple[list[str], str | None]:
-        raw_patterns = scope.get(field)
-        if raw_patterns is None:
-            return [], None
-        if not isinstance(raw_patterns, list):
-            return [], f"scope.{field} must be an array."
-        patterns: list[str] = []
-        for raw in raw_patterns:
-            if not isinstance(raw, str) or (pattern := _normalized_path(raw)) is None:
-                return [], f"Unsafe or invalid declared path: {raw!r}."
-            patterns.append(pattern)
-        return patterns, None
 
     def _shallow_hint(self, root: Path) -> str:
         result = _git(root, self.git_timeout, "rev-parse", "--is-shallow-repository")

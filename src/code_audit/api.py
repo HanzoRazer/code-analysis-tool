@@ -142,15 +142,17 @@ def scan_project(
         analyzer_instances = list(analyzers)
     else:
         analyzer_instances = [cls() for cls in _DEFAULT_ANALYZERS]
-        if pr_scope_manifest is not None:
-            analyzer_instances = [
-                a for a in analyzer_instances if getattr(a, "id", None) != "pr_scope"
-            ]
-            analyzer_instances.append(
-                PrScopeAnalyzer(
-                    ReviewContext(manifest_path=_to_path(pr_scope_manifest))
-                )
+    # Apply even when the caller supplied a custom analyzer list: dropping the
+    # manifest would silently disable the gate, which this detector forbids.
+    if pr_scope_manifest is not None:
+        analyzer_instances = [
+            a for a in analyzer_instances if getattr(a, "id", None) != "pr_scope"
+        ]
+        analyzer_instances.append(
+            PrScopeAnalyzer(
+                ReviewContext(manifest_path=_to_path(pr_scope_manifest))
             )
+        )
 
     kwargs: dict[str, Any] = {
         "project_id": project_id,
