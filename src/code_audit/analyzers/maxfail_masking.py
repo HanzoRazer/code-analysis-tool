@@ -13,10 +13,13 @@ first red on a broken run and cannot tell "one bug" from "a stack of them."
 
 **v1** scans the known test/CI config surfaces — ``pyproject.toml``,
 ``pytest.ini``, ``tox.ini``, ``setup.cfg``, and ``.github/workflows/*.yml`` — for
-fail-fast flags. It records in ``metadata`` whether a *collect-all escape* (a
-companion run with no fail-fast flag, i.e. a full-suite pass that enumerates
-everything) is **confirmed** — ``False`` in v1. A v2 pass enriches this by looking
-for that companion job, and downgrades when one exists.
+fail-fast flags.
+
+**v2** enriches findings by looking for a *collect-all escape*: a companion
+pytest invocation that does **not** inherit fail-fast (either no root fail-fast,
+or an explicit override such as ``-o addopts=""`` / ``--maxfail=0``). When
+confirmed, findings stay but downgrade (INFO) — fail-fast for speed is fine if
+a full-suite pass also enumerates the stack.
 
 Emits: keep fail-fast for CI speed if you like, but add a **collect-all pass**
 that enumerates the full failure set and groups by cause — don't diagnose a stack
@@ -25,6 +28,7 @@ one layer at a time.
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from pathlib import Path
 
 from code_audit.model import AnalyzerType, Severity
@@ -35,7 +39,7 @@ _RULE_ID = "MAXFAIL_MASKING_001"
 # Config surfaces that can carry a pytest fail-fast setting, relative to root.
 _ROOT_CONFIGS = ("pyproject.toml", "pytest.ini", "tox.ini", "setup.cfg")
 _WORKFLOW_DIR = ".github/workflows"
-_WORKFLOW_EXTS = frozenset({".yml", ".yaml"})   # matched case-insensitively
+_WORKFLOW_EXTS = frozenset({".yml", ".yaml"})  # matched case-insensitively
 
 # ``--maxfail`` / ``--maxfail=N`` / ``--maxfail N`` — but NOT ``--maxfail=0``
 # (0 means "no limit" = not fail-fast).
@@ -52,30 +56,52 @@ _RE_SHORT_X = re.compile(r"(?<![\w-])-[a-zA-Z]*x[a-zA-Z]*(?![\w-])")
 _RE_CMD_SPLIT = re.compile(r"&&|\|\||;|\|")
 _RE_PYTEST = re.compile(r"\b(?:pytest|py\.test)\b")
 
+# Explicit overrides that clear / neutralize inherited addopts fail-fast.
+# ``-o addopts=`` / ``-o addopts=""`` / ``--override-ini=addopts=`` /
+# ``--override-ini addopts=`` (with optional empty quotes).
+_RE_ADDOPTS_OVERRIDE = re.compile(
+    r"""(?:-o|--override-ini)\s*(?:=\s*)?
+        addopts\s*=\s*(?:""|'')?
+        (?=\s|$|[^\w=])
+    """,
+    re.VERBOSE | re.IGNORECASE,
+)
+
+
+@dataclass(frozen=True, slots=True)
+class _Escape:
+    confirmed: bool
+    evidence: str  # relative path + optional note; empty when not confirmed
+
 
 class MaxfailMaskingAnalyzer:
     """Detect fail-fast test/CI config that hides the true failure set."""
 
     id: str = "maxfail_masking"
-    version: str = "1.0.0"
+    version: str = "2.0.0"
 
     def run(self, root: Path, files: list[Path]) -> list[Finding]:
         # This analyzer inspects config surfaces, not the discovered .py files.
+        root_fail_fast = _root_has_fail_fast(root)
+        escape = _find_collect_all_escape(root, root_fail_fast=root_fail_fast)
+
         findings: list[Finding] = []
         for name in _ROOT_CONFIGS:
-            findings.extend(self._scan_config(root / name, root))
+            findings.extend(
+                self._scan_config(root / name, root, escape=escape)
+            )
         wf_dir = root / _WORKFLOW_DIR
         if wf_dir.is_dir():
-            # Case-insensitive .yml/.yaml (GitHub only recognises lowercase, but
-            # be robust on case-sensitive filesystems regardless).
             for wf in sorted(wf_dir.iterdir()):
                 if wf.is_file() and wf.suffix.lower() in _WORKFLOW_EXTS:
-                    findings.extend(self._scan_config(wf, root))
+                    findings.extend(self._scan_config(wf, root, escape=escape))
         return findings
 
     # ── per-config scan ─────────────────────────────────────────────
 
-    def _scan_config(self, path: Path, root: Path) -> list[Finding]:
+    def _scan_config(
+        self, path: Path, root: Path, *, escape: _Escape
+    ) -> list[Finding]:
         if not path.is_file():
             return []
         try:
@@ -106,22 +132,39 @@ class MaxfailMaskingAnalyzer:
             if maxfail_value is not None
             else ""
         )
-        message = (
-            f"'{rel}' runs pytest fail-fast ({', '.join(flag_names)}){limit_note} — "
-            f"CI stops at the first failure(s), so N independent failures are "
-            f"reported as one and a stack of bugs looks like a single sequential "
-            f"surprise. Fix: keep fail-fast for speed if you want, but add a "
-            f"collect-all pass (pytest with no --maxfail/-x/--exitfirst) that "
-            f"enumerates the full failure set and groups by cause — diagnose the "
-            f"whole stack at once."
-        )
+
+        if escape.confirmed:
+            severity = Severity.INFO
+            confidence = 0.45
+            message = (
+                f"'{rel}' runs pytest fail-fast ({', '.join(flag_names)})"
+                f"{limit_note} — a companion collect-all escape is confirmed "
+                f"({escape.evidence}), so the full failure set can still be "
+                f"enumerated. Keep fail-fast for speed; rely on the collect-all "
+                f"pass to diagnose stacks."
+            )
+        else:
+            severity = Severity.LOW
+            confidence = 0.6
+            message = (
+                f"'{rel}' runs pytest fail-fast ({', '.join(flag_names)})"
+                f"{limit_note} — CI stops at the first failure(s), so N "
+                f"independent failures are reported as one and a stack of bugs "
+                f"looks like a single sequential surprise. Fix: keep fail-fast "
+                f"for speed if you want, but add a collect-all pass (pytest with "
+                f"no --maxfail/-x/--exitfirst, and "
+                f'`-o addopts=""` if addopts inherits fail-fast) that enumerates '
+                f"the full failure set and groups by cause — diagnose the whole "
+                f"stack at once."
+            )
+
         fingerprint = make_fingerprint(_RULE_ID, rel, flag_names[0], snippet)
         return [
             Finding(
                 finding_id=fingerprint,
                 type=AnalyzerType.MAXFAIL_MASKING,
-                severity=Severity.LOW,
-                confidence=0.6,
+                severity=severity,
+                confidence=confidence,
                 message=message,
                 location=Location(path=rel, line_start=line, line_end=line),
                 fingerprint=fingerprint,
@@ -130,9 +173,8 @@ class MaxfailMaskingAnalyzer:
                     "rule_id": _RULE_ID,
                     "fail_fast_flags": flag_names,
                     "maxfail_value": maxfail_value,
-                    # v1 cannot confirm whether a companion collect-all run exists;
-                    # the v2 pass looks for one and downgrades/clears if present.
-                    "collect_all_escape_confirmed": False,
+                    "collect_all_escape_confirmed": escape.confirmed,
+                    "collect_all_escape_evidence": escape.evidence,
                 },
             )
         ]
@@ -159,7 +201,7 @@ def _detect_fail_fast(text: str) -> list[_Hit]:
 
         for m in _RE_MAXFAIL.finditer(line):
             val = int(m.group(1)) if m.group(1) is not None else None
-            if val != 0:   # --maxfail=0 = unlimited = not fail-fast
+            if val != 0:  # --maxfail=0 = unlimited = not fail-fast
                 hits.append(_Hit("--maxfail", i, val))
 
         if _RE_EXITFIRST.search(line):
@@ -178,6 +220,91 @@ def _detect_fail_fast(text: str) -> list[_Hit]:
                 break
 
     return hits
+
+
+def _root_has_fail_fast(root: Path) -> bool:
+    """True when a root pytest config surface declares fail-fast (inherited by
+    bare ``pytest`` invocations in CI)."""
+    for name in _ROOT_CONFIGS:
+        path = root / name
+        if not path.is_file():
+            continue
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        if _detect_fail_fast(text):
+            return True
+    return False
+
+
+def _find_collect_all_escape(root: Path, *, root_fail_fast: bool) -> _Escape:
+    """Look for a companion pytest invocation that enumerates the full suite.
+
+    A workflow (or root config) line is a collect-all escape when it invokes
+    pytest **without** fail-fast flags, and either:
+
+    - root config has no fail-fast to inherit, or
+    - the line explicitly clears/neutralizes inherited addopts
+      (``-o addopts=""`` / ``--override-ini addopts=``) or sets ``--maxfail=0``.
+    """
+    wf_dir = root / _WORKFLOW_DIR
+    candidates: list[Path] = []
+    if wf_dir.is_dir():
+        candidates.extend(
+            sorted(
+                p
+                for p in wf_dir.iterdir()
+                if p.is_file() and p.suffix.lower() in _WORKFLOW_EXTS
+            )
+        )
+
+    for path in candidates:
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        try:
+            rel = path.resolve().relative_to(root.resolve()).as_posix()
+        except ValueError:
+            rel = path.name
+
+        for i, raw in enumerate(text.splitlines(), start=1):
+            line = _strip_comment(raw)
+            if not _line_has_pytest_invocation(line):
+                continue
+            if _line_is_collect_all(line, root_fail_fast=root_fail_fast):
+                return _Escape(True, f"{rel}:{i}")
+
+    return _Escape(False, "")
+
+
+def _line_has_pytest_invocation(line: str) -> bool:
+    """True when a line segment looks like a pytest/py.test command."""
+    for segment in _RE_CMD_SPLIT.split(line):
+        if _RE_PYTEST.search(segment):
+            return True
+    return False
+
+
+def _line_is_collect_all(line: str, *, root_fail_fast: bool) -> bool:
+    """True when this pytest line is a full-suite (non-fail-fast) run."""
+    # Any positive fail-fast flag on the line (-x / --exitfirst / --maxfail=N>0)
+    # means this invocation is itself fail-fast — not a collect-all escape.
+    # (--maxfail=0 is never recorded as a hit by _detect_fail_fast.)
+    if _detect_fail_fast(line):
+        return False
+
+    has_maxfail_zero = any(
+        m.group(1) is not None and int(m.group(1)) == 0
+        for m in _RE_MAXFAIL.finditer(line)
+    )
+    if has_maxfail_zero or _RE_ADDOPTS_OVERRIDE.search(line):
+        return True
+
+    # Bare pytest with no fail-fast flags — only an escape if root does not
+    # inject fail-fast via addopts/ini.
+    return not root_fail_fast
 
 
 def _strip_comment(raw: str) -> str:
