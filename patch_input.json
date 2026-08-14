@@ -1,97 +1,74 @@
 {
   "schema_version": "cbsp21_patch_manifest_v1",
-  "patch_id": "CAT-0026",
-  "title": "Bump signal_logic_version to signals_v5 and refresh governance manifests",
-  "intent": "Unblock the pytest PR gate by bumping signal_logic_version from signals_v4 to signals_v5 (required because exit-code policy surface changed) and refreshing all governance manifests and golden fixtures to record the new version and current hashes.",
+  "patch_id": "CAT-0027",
+  "title": "Fail-loud fixes for pr_scope detector review findings",
+  "intent": "Close the request-changes items on PR #20: malformed manifests must not be silently normalized or crash run(), and rename parsing must authorize the destination path explicitly.",
   "change_type": "code",
   "behavior_change": "compatible",
-  "risk_level": "low",
+  "risk_level": "medium",
   "scope": {
     "paths_in_scope": [
-      "src/code_audit/model/",
-      "src/code_audit/contracts/",
-      "tests/contracts/",
-      "tests/fixtures/expected/"
+      "src/code_audit/analyzers/",
+      "src/code_audit/",
+      "tests/",
+      "cbsp21/"
     ],
     "files_expected_to_change": [
-      "src/code_audit/model/run_result.py",
-      "src/code_audit/contracts/versions.json",
-      "src/code_audit/contracts/rules_registry.json",
-      "tests/contracts/exit_code_policy_manifest.json",
-      "tests/contracts/golden_fixtures_manifest.json",
-      "tests/contracts/translator_policy_manifest.json",
-      "tests/contracts/drift_budget_signal_manifest.json",
-      "tests/contracts/openapi_manifest.json",
-      "tests/contracts/treesitter_manifest.json",
-      "tests/contracts/openapi_scrub_baseline_manifest.json",
-      "tests/contracts/openapi_scrub_budgets_manifest.json",
-      "tests/contracts/rule_registry_manifest.json",
+      "src/code_audit/analyzers/pr_scope.py",
+      "src/code_audit/api.py",
+      "tests/test_pr_scope_analyzer.py",
       "tests/contracts/logic_manifest.json",
-      "tests/fixtures/expected/*.json",
+      "cbsp21/README.md",
+      "cbsp21/patch_input_v2.schema.json",
+      "cbsp21/pr_scope_acceptance.json",
       "patch_input.json"
     ],
-    "out_of_scope_notes": "No analyzer logic, schema contracts, or API surface changed. The signal_logic_version bump is purely a governance version anchor update required when the exit-code policy surface changes."
+    "out_of_scope_notes": "Does not change other analyzers, OpenAPI, or i18n. Lands on the PR #20 branch rather than replacing it."
   },
   "diff_range": {
-    "base": "main",
-    "head": "working-tree"
+    "base": "cursor/pr-scope-detector-6227",
+    "head": "HEAD"
   },
-  "changed_files_count": 32,
+  "changed_files_count": 8,
   "changed_files_exact": [
-    "src/code_audit/model/run_result.py",
-    "src/code_audit/contracts/versions.json",
-    "src/code_audit/contracts/rules_registry.json",
-    "tests/contracts/exit_code_policy_manifest.json",
-    "tests/contracts/golden_fixtures_manifest.json",
-    "tests/contracts/translator_policy_manifest.json",
-    "tests/contracts/drift_budget_signal_manifest.json",
-    "tests/contracts/openapi_manifest.json",
-    "tests/contracts/treesitter_manifest.json",
-    "tests/contracts/openapi_scrub_baseline_manifest.json",
-    "tests/contracts/openapi_scrub_budgets_manifest.json",
-    "tests/contracts/rule_registry_manifest.json",
+    "src/code_audit/analyzers/pr_scope.py",
+    "src/code_audit/api.py",
+    "tests/test_pr_scope_analyzer.py",
     "tests/contracts/logic_manifest.json",
-    "tests/fixtures/expected/clean_project_run_result.json",
-    "tests/fixtures/expected/complexity_hot_run_result.json",
-    "tests/fixtures/expected/dead_code_clean_run_result.json",
-    "tests/fixtures/expected/dead_code_hot_run_result.json",
-    "tests/fixtures/expected/duplication_run_result.json",
-    "tests/fixtures/expected/global_state_clean_run_result.json",
-    "tests/fixtures/expected/global_state_hot_run_result.json",
-    "tests/fixtures/expected/import_ban_run_result.json",
-    "tests/fixtures/expected/large_file_run_result.json",
-    "tests/fixtures/expected/mixed_severity_run_result.json",
-    "tests/fixtures/expected/safety_fence_run_result.json",
-    "tests/fixtures/expected/sample_repo_exceptions_run_result.json",
-    "tests/fixtures/expected/sample_repo_js_ts_all_run_result.json",
-    "tests/fixtures/expected/sample_repo_js_ts_eval_run_result.json",
-    "tests/fixtures/expected/security_clean_run_result.json",
-    "tests/fixtures/expected/security_hot_run_result.json",
+    "cbsp21/README.md",
+    "cbsp21/patch_input_v2.schema.json",
+    "cbsp21/pr_scope_acceptance.json",
     "patch_input.json"
   ],
   "diff_articulation": {
     "what_changed": [
-      "Bumped signal_logic_version from signals_v4 to signals_v5 in src/code_audit/model/run_result.py (canonical source for most governance tests).",
-      "Bumped signal_logic_version in src/code_audit/contracts/versions.json (source for treesitter and rules_registry governance tests).",
-      "Refreshed rules_registry.json which reads signal_logic_version from versions.json.",
-      "Ran all 9 governance manifest refresh scripts (exit_code_policy, golden, translator, drift_budget, openapi, treesitter, scrub_baseline, scrub_budgets, rule_registry, logic) to record signals_v5 + current policy surface hashes.",
-      "Updated 16 golden fixture JSON files in tests/fixtures/expected/ to reflect signals_v5 in the run metadata field."
+      "Reject duplicate changed_files_exact and declared-scope entries, including collisions after ./ normalization.",
+      "Validate head_sha and present-but-falsy base_sha as non-empty strings so malformed pins are CRITICAL findings, never exceptions.",
+      "Parse git diff --name-status -z and authorize only the rename/copy destination path.",
+      "Fail loud on unsafe observed git paths and non-UTF-8 git output instead of dropping or replacing bytes.",
+      "Attribute coverage-percent parse errors to the field that failed; clarify file_context_coverage-only summary wording.",
+      "Honour scan_project(..., pr_scope_manifest=) even when a custom analyzer list is supplied.",
+      "Split PrScopeAnalyzer.run() into load/validate/resolve/diff/reconcile helpers; bump analyzer 2.0.0 -> 2.1.0."
     ],
-    "why_not_redundant": "The CI gate test_exit_code_policy_requires_signal_logic_bump enforces that any change to the governed exit-code policy surface (exit_codes.py AST) must be accompanied by a signal_logic_version bump. The policy surface hash changed in a previous commit without the required bump, causing CI to fail. This patch performs the required bump and cascading manifest refresh."
+    "why_not_redundant": "PR #20 already ships the detector; this patch only closes the remaining fail-loud and rename-parsing defects that would make the gate untrustworthy."
   },
   "verification": {
     "commands_run": [
-      "python -m pytest tests/test_exit_code_policy_requires_signal_logic_bump.py tests/test_golden_manifest_requires_signal_logic_bump.py tests/test_translator_policy_requires_signal_logic_bump.py tests/test_drift_budget_signal_requires_signal_logic_bump.py tests/test_openapi_manifest_requires_signal_logic_bump.py tests/test_treesitter_manifest_requires_signal_logic_bump.py tests/test_openapi_scrub_baseline_requires_signal_logic_bump.py tests/test_openapi_scrub_budgets_requires_signal_logic_bump.py tests/test_rule_registry_requires_signal_logic_bump.py tests/test_version_bump_enforcement.py tests/test_semantic_surface_requires_signal_logic_bump.py tests/test_rules_registry_gate.py tests/test_golden_fixtures.py -v"
+      "python -m pytest tests/test_pr_scope_analyzer.py --maxfail=0 -q",
+      "python3.11 -m pytest tests/test_version_bump_enforcement.py -q",
+      "ruff check src/code_audit/analyzers/pr_scope.py tests/test_pr_scope_analyzer.py"
     ],
     "test_results": [
-      "33 passed (all signal_logic_version governance gate tests and golden fixture tests pass)"
+      "pr_scope acceptance suite passed (53 tests)",
+      "version bump enforcement passed on Python 3.11 after logic_manifest refresh",
+      "ruff clean on authored files"
     ],
-    "notes": "Confidence policy and golden manifests use AST hashing that is Python-3.11-specific; those manifests are not refreshed here as they must only be refreshed on Python 3.11 (CI). The tests for those manifests pass in CI because the confidence policy code was not changed."
+    "notes": "logic_manifest.json refreshed on Python 3.11. Full pytest suite not re-run; targeted to pr_scope plus the version-bump gate."
   },
   "file_context_coverage_percent": 100.0,
   "metadata": {
-    "author": "copilot-swe-agent",
-    "created_at": "2026-07-25T06:50:00Z",
+    "author": "cursor-agent",
+    "created_at": "2026-08-14T06:00:00Z",
     "reviewers": []
   }
 }
