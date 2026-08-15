@@ -37,10 +37,10 @@ than merely co-occurring in one body:
    semantics; binary ones (``pickle``/``marshal``/``msgpack``) write IEEE-754
    bytes that round-trip exactly. Neither is on the allowlist.
 3. *The payload carries floats.* A true division, a float literal, a
-   ``float``/``round``/``math.*`` call, or a ``float``-annotated name — resolved
-   one hop through local assignments. So ``json.dumps({"name": "x"})`` stays
-   silent, and a ``round()`` elsewhere in the function cannot downgrade an
-   unrelated unquantized hash.
+   ``float``/``round``/``math.*`` call, or a ``float``-annotated name, resolved
+   up to two local bindings. So ``json.dumps({"name": "x"})`` stays silent, and
+   a ``round()`` elsewhere in the function cannot downgrade an unrelated
+   unquantized hash.
 
 ``Decimal`` is deliberately *not* float evidence. It exists to avoid binary
 float drift and mainstream JSON encoders refuse it outright, so treating it as
@@ -48,11 +48,12 @@ evidence would flag the code that already fixed the problem. It remains a
 *mitigation* signal, because evidence and mitigation are different questions
 and only evidence opens a finding.
 
-One hop deliberately buys precision with recall: a payload built behind a call
-(``json.dumps(build_payload())``) or accumulated in a loop variable carries no
-visible evidence, so it is *not* flagged. On a detector whose whole value is
-being believed, a miss costs less than a false alarm; the v2 pass, which reads
-the serialised artifact itself, is where that recall comes back.
+That bounded chase deliberately buys precision with recall: a payload built
+behind a call (``json.dumps(build_payload())``), accumulated in a loop
+variable, or sitting further than two bindings away carries no visible
+evidence, so it is *not* flagged. On a detector whose whole value is being
+believed, a miss costs less than a false alarm; the v2 pass, which reads the
+serialised artifact itself, is where that recall comes back.
 
 Fix it emits: *record the context* — normalize the input (LF), pin the generator
 (one interpreter), quantize floats before serialising, or declare the context in
@@ -62,8 +63,9 @@ next context.
 from __future__ import annotations
 
 import ast
-import re
+from collections.abc import Iterator
 from pathlib import Path
+import re
 
 from code_audit.model import AnalyzerType, Severity
 from code_audit.model.finding import Finding, Location, make_fingerprint
@@ -112,12 +114,22 @@ _FLOAT_MODULES = frozenset({"math", "cmath", "statistics", "numpy", "np"})
 # float evidence would flag the code that already fixed the problem.
 _FLOAT_CALL_NAMES = frozenset({"float", "round", "fsum", "mean"})
 
+# How far name resolution may chase a local binding. The ``seen`` set alone only
+# guarantees termination, not *relevance*: an unbounded chase walked
+# ``ids -> reg -> p -> ROOT / meta["path"]`` — four names deep — and read a
+# *pathlib* ``/`` as float division. Two hops covers the shapes that actually
+# occur (``q = a / 2.0; payload = {"x": q}; dumps(payload)``, or
+# ``s = dumps(p); b = s.encode(); sha256(b)``) while cutting the chain before it
+# wanders into unrelated locals.
+_MAX_SERIALISER_HOPS = 2
+_MAX_EVIDENCE_HOPS = 2
+
 
 class ContextPinnedHashAnalyzer:
     """Detect hashes asserted byte-equal across a context they weren't computed in."""
 
     id: str = "context_pinned_hash"
-    version: str = "1.1.0"
+    version: str = "1.2.0"
 
     def run(self, root: Path, files: list[Path]) -> list[Finding]:
         findings: list[Finding] = []
@@ -280,6 +292,28 @@ class ContextPinnedHashAnalyzer:
 # ── AST feature detection (module-scoped) ───────────────────────────
 
 
+def _walk_scope(node: ast.AST) -> Iterator[ast.AST]:
+    """Walk *node*'s own body, stopping at nested ``def`` boundaries.
+
+    ``_scan_module`` reaches every ``FunctionDef`` in the module, including
+    nested ones. Walking a parent with plain ``ast.walk`` therefore visits an
+    inner function's hash a second time and reports it twice — once against the
+    inner name, once against the outer. Pruning here makes the two traversals
+    exactly complementary: every statement belongs to precisely one scope.
+
+    ``Lambda`` and ``ClassDef`` are *not* pruned — ``_scan_module`` does not
+    treat them as scopes of their own, so pruning them would drop their bodies
+    from analysis entirely rather than move them.
+    """
+    stack = list(ast.iter_child_nodes(node))
+    while stack:
+        current = stack.pop()
+        yield current
+        if isinstance(current, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        stack.extend(ast.iter_child_nodes(current))
+
+
 def _module_has_version_guard(tree: ast.Module) -> bool:
     for node in ast.walk(tree):
         if isinstance(node, ast.Attribute) and node.attr in _VERSION_GUARD_NAMES:
@@ -326,7 +360,7 @@ def _hash_wrapper_names(tree: ast.Module) -> frozenset[str]:
     names: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            for sub in ast.walk(node):
+            for sub in _walk_scope(node):
                 if isinstance(sub, ast.Call) and _is_hash_constructor(sub):
                     names.add(node.name)
                     break
@@ -355,9 +389,11 @@ def _scope_features(
     # a log line is not a context-pinned hash, however float-heavy it is.
     hashed_inputs: list[tuple[int, ast.AST]] = []
 
-    for node in ast.walk(fn):
+    for node in _walk_scope(fn):
         if isinstance(node, ast.Call):
-            is_hash = _is_hash_constructor(node) or _calls_hash_wrapper(node, hash_wrappers, fn_name)
+            is_hash = _is_hash_constructor(node) or _calls_hash_wrapper(
+                node, hash_wrappers, fn_name
+            )
             if is_hash:
                 f.has_hash = True
                 if not f.hash_line:
@@ -390,7 +426,7 @@ def _hash_object_names(fn: ast.AST) -> frozenset[str]:
     streaming shape (``h.update(chunk)``) reaches the float axis at all.
     """
     names: set[str] = set()
-    for node in ast.walk(fn):
+    for node in _walk_scope(fn):
         value = getattr(node, "value", None)
         if not (isinstance(value, ast.Call) and _is_hash_constructor(value)):
             continue
@@ -420,7 +456,8 @@ def _float_sites(
 ) -> tuple[int, int]:
     """Count ``(float serialisation sites, quantized sites)`` reachable from *expr*.
 
-    *expr* is a hashed input. Local names are followed one hop, so
+    *expr* is a hashed input. Local names are followed up to
+    ``_MAX_SERIALISER_HOPS`` bindings, so
     ``s = json.dumps(payload); sha256(s.encode())`` is seen through. Each site
     is counted once — descent stops at a serialiser, whose payload has already
     been accounted for.
@@ -429,7 +466,7 @@ def _float_sites(
     sites = 0
     quantized = 0
 
-    def visit(n: ast.AST) -> None:
+    def visit(n: ast.AST, hops: int) -> None:
         nonlocal sites, quantized
         if isinstance(n, ast.Call) and _is_payload_serialiser(n, serialisers):
             has_float = False
@@ -456,16 +493,16 @@ def _float_sites(
                 if quant:
                     quantized += 1
             return
-        if isinstance(n, ast.Name) and n.id not in seen:
+        if isinstance(n, ast.Name) and n.id not in seen and hops < _MAX_SERIALISER_HOPS:
             values = assigns.get(n.id)
             if values:
                 seen.add(n.id)
                 for value in values:
-                    visit(value)
+                    visit(value, hops + 1)
         for child in ast.iter_child_nodes(n):
-            visit(child)
+            visit(child, hops)
 
-    visit(expr)
+    visit(expr, 0)
     return sites, quantized
 
 
@@ -535,17 +572,33 @@ def _has_binary_mode_arg(call: ast.Call) -> bool:
 
 
 def _is_lf_normalize(call: ast.Call) -> bool:
-    """Detect ``x.replace(b'\\r\\n', b'\\n')`` / ``x.replace('\\r\\n', '\\n')``."""
+    """Detect ``x.replace(b'\\r\\n', b'\\n')`` / ``x.replace('\\r\\n', '\\n')``.
+
+    **Both** arguments are checked. ``.replace('\\r\\n', '')`` deletes the line
+    break rather than normalizing it — a different transformation, and one that
+    leaves the hash just as context-pinned as before (a CRLF file and an LF file
+    still differ, now by the ``\\n`` the LF side keeps). Crediting it as a
+    mitigation downgraded a live finding to LOW.
+
+    The two constants must also agree in type: ``b'\\r\\n'`` cannot be replaced
+    with ``'\\n'``, so a mixed pair is not this shape at all.
+
+    A non-constant replacement (``replace(b'\\r\\n', nl)``) is not credited
+    either. It may well be a real mitigation, but it is not a *visible* one, and
+    declining costs one severity step where crediting wrongly hides the defect.
+    """
     fn = call.func
     if not (isinstance(fn, ast.Attribute) and fn.attr == "replace"):
         return False
-    if not call.args:
+    if len(call.args) < 2:
         return False
-    first = call.args[0]
-    if isinstance(first, ast.Constant):
-        v = first.value
-        if isinstance(v, (bytes, str)):
-            return b"\r\n" == v if isinstance(v, bytes) else "\r\n" == v
+    old, new = call.args[0], call.args[1]
+    if not (isinstance(old, ast.Constant) and isinstance(new, ast.Constant)):
+        return False
+    if isinstance(old.value, bytes) and isinstance(new.value, bytes):
+        return old.value == b"\r\n" and new.value == b"\n"
+    if isinstance(old.value, str) and isinstance(new.value, str):
+        return old.value == "\r\n" and new.value == "\n"
     return False
 
 
@@ -680,11 +733,11 @@ def _target_names(target: ast.AST) -> list[str]:
 def _assignment_map(fn: ast.AST) -> dict[str, list[ast.AST]]:
     """``name -> value expressions bound to it`` within this scope.
 
-    One hop of local dataflow: enough to follow the ubiquitous
+    A few hops of local dataflow: enough to follow the ubiquitous
     ``payload = {...}; json.dumps(payload)`` shape without a real solver.
     """
     out: dict[str, list[ast.AST]] = {}
-    for node in ast.walk(fn):
+    for node in _walk_scope(fn):
         if isinstance(node, ast.Assign):
             for tgt in node.targets:
                 for name in _target_names(tgt):
@@ -711,7 +764,8 @@ def _payload_float_state(
 ) -> tuple[bool, bool]:
     """Return ``(has_float, has_unquantized_float)`` for a serialised payload.
 
-    Local names are followed one hop through *assigns*, so the ubiquitous
+    Local names are followed up to ``_MAX_EVIDENCE_HOPS`` bindings through
+    *assigns*, so the ubiquitous
     ``payload = {...}; json.dumps(payload)`` shape is seen through. Descent
     **stops** at a quantization boundary — ``round(...)``, ``.quantize(...)``, a
     precision format — because everything under it is already pinned.
@@ -724,7 +778,7 @@ def _payload_float_state(
     has_float = False
     has_unquantized = False
 
-    def visit(n: ast.AST) -> None:
+    def visit(n: ast.AST, hops: int) -> None:
         nonlocal has_float, has_unquantized
         if _node_is_quantiser(n):
             has_float = True
@@ -732,16 +786,16 @@ def _payload_float_state(
         if _node_is_float_evidence(n, float_names):
             has_float = True
             has_unquantized = True
-        if isinstance(n, ast.Name) and n.id not in seen:
+        if isinstance(n, ast.Name) and n.id not in seen and hops < _MAX_EVIDENCE_HOPS:
             values = assigns.get(n.id)
             if values:
                 seen.add(n.id)                  # terminates ``x = x / 2``
                 for value in values:
-                    visit(value)
+                    visit(value, hops + 1)
         for child in ast.iter_child_nodes(n):
-            visit(child)
+            visit(child, hops)                  # siblings share the hop budget
 
-    visit(node)
+    visit(node, 0)
     return has_float, has_unquantized
 
 
@@ -777,7 +831,7 @@ def _float_annotated_names(fn: ast.AST) -> frozenset[str]:
         for a in declared:
             if _annotation_is_float(a.annotation):
                 names.add(a.arg)
-    for node in ast.walk(fn):
+    for node in _walk_scope(fn):
         if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
             if _annotation_is_float(node.annotation):
                 names.add(node.target.id)
