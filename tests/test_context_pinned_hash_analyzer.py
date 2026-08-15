@@ -1,9 +1,10 @@
 """Unit tests for the context-pinned-hash detector.
 
 The detector flags a hash asserted byte-equal across a context it wasn't computed
-in — line endings (CRLF/LF/OS) or interpreter version (ast.dump). v1 is a
-source-pattern heuristic that records the axis + whether an in-file mitigation is
-visible, leaving ``context_confirmed=False`` for the v2 enrichment pass.
+in — line endings (CRLF/LF/OS), interpreter version (ast.dump), or float
+shortest-repr (platform ULP / formatting drift). v1 is a source-pattern heuristic
+that records the axis + whether an in-file mitigation is visible, leaving
+``context_confirmed=False`` for the v2 enrichment pass.
 """
 from __future__ import annotations
 
@@ -114,6 +115,419 @@ def test_ast_dump_hash_with_version_guard_is_mitigated(tmp_path):
     assert f[0].metadata["context_axis"] == "python_version"
     assert f[0].metadata["mitigation_detected"] is True
     assert f[0].metadata["mitigation_kind"] == "generator_python_pinned"
+
+
+# ── float shortest-repr axis (POS-007) ──────────────────────────────
+
+
+def test_float_json_dumps_hash_flagged_unmitigated(tmp_path):
+    # POS-007 shape: hash over json.dumps of divided geometry floats.
+    src = (
+        "import hashlib, json\n"
+        "def compute_report_id(coords, frequency):\n"
+        "    payload = {\n"
+        "        'x': coords[0] / 1000.0,\n"
+        "        'y': coords[1] / 1000.0,\n"
+        "        'f': frequency,\n"
+        "    }\n"
+        "    return hashlib.sha256(\n"
+        "        json.dumps(payload, sort_keys=True).encode()\n"
+        "    ).hexdigest()\n"
+    )
+    f = _run(tmp_path, src)
+    assert len(f) == 1
+    assert f[0].type is AnalyzerType.CONTEXT_PINNED_HASH
+    assert f[0].metadata["rule_id"] == "CTX_PINNED_HASH_FLOAT_001"
+    assert f[0].metadata["context_axis"] == "float_repr"
+    assert f[0].metadata["mitigation_detected"] is False
+    assert f[0].metadata["mitigation_kind"] is None
+    assert f[0].metadata["context_confirmed"] is False
+    assert f[0].severity is Severity.MEDIUM
+    assert "quantize" in f[0].message.lower()
+    assert "ulp" in f[0].message.lower()
+
+
+def test_float_json_dumps_with_round_is_mitigated(tmp_path):
+    src = (
+        "import hashlib, json\n"
+        "def compute_report_id_safe(coords, frequency):\n"
+        "    payload = {\n"
+        "        'x': round(coords[0] / 1000.0, 9),\n"
+        "        'y': round(coords[1] / 1000.0, 9),\n"
+        "        'f': frequency,\n"
+        "    }\n"
+        "    return hashlib.sha256(\n"
+        "        json.dumps(payload, sort_keys=True).encode()\n"
+        "    ).hexdigest()\n"
+    )
+    f = _run(tmp_path, src)
+    assert len(f) == 1
+    assert f[0].metadata["context_axis"] == "float_repr"
+    assert f[0].metadata["mitigation_detected"] is True
+    assert f[0].metadata["mitigation_kind"] == "floats_quantized"
+    assert f[0].severity is Severity.LOW
+
+
+def test_float_fstring_precision_is_mitigated(tmp_path):
+    src = (
+        "import hashlib\n"
+        "def compute_report_id_fstring(x, y):\n"
+        "    s = f'{x:.9g}|{y:.9g}'\n"
+        "    return hashlib.sha256(s.encode()).hexdigest()\n"
+    )
+    f = _run(tmp_path, src)
+    assert len(f) == 1
+    assert f[0].metadata["context_axis"] == "float_repr"
+    assert f[0].metadata["mitigation_detected"] is True
+    assert f[0].metadata["mitigation_kind"] == "floats_quantized"
+    assert f[0].severity is Severity.LOW
+
+
+def test_plain_byte_hash_no_float_axis(tmp_path):
+    # Line-ending axis may fire; float axis must stay silent.
+    src = (
+        "import hashlib\n"
+        "from pathlib import Path\n"
+        "def hash_plain_bytes(p: Path):\n"
+        "    return hashlib.sha256(p.read_bytes()).hexdigest()\n"
+    )
+    f = _run(tmp_path, src)
+    assert all(x.metadata["context_axis"] != "float_repr" for x in f)
+    assert any(x.metadata["context_axis"] == "line_ending" for x in f)
+
+
+def test_float_annotated_param_is_evidence(tmp_path):
+    # No literal and no division — the ``: float`` annotation is the evidence.
+    src = (
+        "import hashlib, json\n"
+        "def h(x: float, name: str):\n"
+        "    return hashlib.sha256(json.dumps({'x': x, 'n': name}).encode()).hexdigest()\n"
+    )
+    f = _run(tmp_path, src)
+    assert [x.metadata["context_axis"] for x in f] == ["float_repr"]
+    assert f[0].metadata["mitigation_detected"] is False
+
+
+def test_float_fstring_dynamic_precision_is_mitigated(tmp_path):
+    # f"{x:.{p}f}" pins the precision even though the constant spec text is ".f".
+    src = (
+        "import hashlib\n"
+        "def h(x, p):\n"
+        "    return hashlib.sha256(f'{x:.{p}f}'.encode()).hexdigest()\n"
+    )
+    f = _run(tmp_path, src)
+    assert len(f) == 1
+    assert f[0].metadata["context_axis"] == "float_repr"
+    assert f[0].metadata["mitigation_kind"] == "floats_quantized"
+    assert f[0].severity is Severity.LOW
+
+
+# ── float axis: payload scoping (false-positive guards) ─────────────
+
+
+def test_json_dumps_without_float_payload_not_flagged(tmp_path):
+    # str/bool/int payload — dumps alone must not open the float axis.
+    src = (
+        "import hashlib, json\n"
+        "def h():\n"
+        "    payload = {'name': 'alice', 'enabled': True, 'count': 3}\n"
+        "    return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()\n"
+    )
+    f = _run(tmp_path, src)
+    assert f == []
+
+
+def test_json_dumps_of_ast_dump_keeps_only_python_version_axis(tmp_path):
+    # A serialiser in a hash function is not, by itself, a float hash.
+    src = (
+        "import ast, hashlib, json\n"
+        "def h(src: str):\n"
+        "    return hashlib.sha256(json.dumps(ast.dump(ast.parse(src))).encode()).hexdigest()\n"
+    )
+    f = _run(tmp_path, src)
+    assert [x.metadata["context_axis"] for x in f] == ["python_version"]
+
+
+def test_unrelated_round_does_not_mitigate_float_hash(tmp_path):
+    # ``z`` never reaches the hashed payload — it must not downgrade to LOW.
+    src = (
+        "import hashlib, json\n"
+        "def h(x, y):\n"
+        "    z = round(x, 2)\n"
+        "    payload = {'raw': y / 3.0}\n"
+        "    return hashlib.sha256(json.dumps(payload).encode()).hexdigest()\n"
+    )
+    f = _run(tmp_path, src)
+    assert len(f) == 1
+    assert f[0].metadata["context_axis"] == "float_repr"
+    assert f[0].metadata["mitigation_detected"] is False
+    assert f[0].metadata["mitigation_kind"] is None
+    assert f[0].severity is Severity.MEDIUM
+
+
+def test_pickle_dumps_not_float_serialiser(tmp_path):
+    # pickle writes IEEE-754 bytes — exact round-trip, not shortest-repr.
+    src = (
+        "import hashlib, pickle\n"
+        "def h(coords):\n"
+        "    return hashlib.sha256(pickle.dumps({'x': coords[0] / 1000.0})).hexdigest()\n"
+    )
+    f = _run(tmp_path, src)
+    assert all(x.metadata["context_axis"] != "float_repr" for x in f)
+
+
+def test_fstring_without_precision_is_not_mitigated(tmp_path):
+    # f"{x:g}" serialises a float with no pinned precision — still MEDIUM.
+    src = (
+        "import hashlib\n"
+        "def h(x):\n"
+        "    return hashlib.sha256(f'{x:g}'.encode()).hexdigest()\n"
+    )
+    f = _run(tmp_path, src)
+    assert len(f) == 1
+    assert f[0].metadata["context_axis"] == "float_repr"
+    assert f[0].metadata["mitigation_detected"] is False
+    assert f[0].severity is Severity.MEDIUM
+
+
+def test_fstring_one_unquantized_field_defeats_mitigation(tmp_path):
+    # One bare float field leaves the whole string repr-sensitive.
+    src = (
+        "import hashlib\n"
+        "def h(x, y):\n"
+        "    return hashlib.sha256(f'{x:.9g}|{y:g}'.encode()).hexdigest()\n"
+    )
+    f = _run(tmp_path, src)
+    assert len(f) == 1
+    assert f[0].metadata["mitigation_detected"] is False
+    assert f[0].severity is Severity.MEDIUM
+
+
+def test_fstring_non_float_field_does_not_defeat_mitigation(tmp_path):
+    # ``{name}`` carries no float spec — it is not evidence either way.
+    src = (
+        "import hashlib\n"
+        "def h(x, name):\n"
+        "    return hashlib.sha256(f'{name}|{x:.9g}'.encode()).hexdigest()\n"
+    )
+    f = _run(tmp_path, src)
+    assert len(f) == 1
+    assert f[0].metadata["mitigation_detected"] is True
+    assert f[0].severity is Severity.LOW
+
+
+def test_quantized_field_does_not_mitigate_raw_sibling_field(tmp_path):
+    # One field is pinned, the sibling is a raw quotient — payload still drifts.
+    src = (
+        "import hashlib, json\n"
+        "def h(x, y):\n"
+        "    payload = {'a': round(x, 9), 'b': y / 3.0}\n"
+        "    return hashlib.sha256(json.dumps(payload).encode()).hexdigest()\n"
+    )
+    f = _run(tmp_path, src)
+    assert len(f) == 1
+    assert f[0].metadata["context_axis"] == "float_repr"
+    assert f[0].metadata["mitigation_detected"] is False
+    assert f[0].severity is Severity.MEDIUM
+
+
+def test_quantized_site_does_not_mitigate_unquantized_sibling(tmp_path):
+    # Two float serialisation sites, one quantized — the scope stays MEDIUM.
+    src = (
+        "import hashlib, json\n"
+        "def h(a, b):\n"
+        "    left = json.dumps({'v': round(a / 2.0, 9)})\n"
+        "    right = json.dumps({'v': b / 3.0})\n"
+        "    return hashlib.sha256((left + right).encode()).hexdigest()\n"
+    )
+    f = _run(tmp_path, src)
+    assert len(f) == 1
+    assert f[0].metadata["context_axis"] == "float_repr"
+    assert f[0].metadata["mitigation_detected"] is False
+    assert f[0].severity is Severity.MEDIUM
+
+
+def test_float_serialisation_off_the_hashed_path_not_flagged(tmp_path):
+    # Floats are serialised for a log line; the hash consumes a constant.
+    # Co-location in one function is not a context-pinned hash.
+    src = (
+        "import hashlib, json, logging\n"
+        "def h(a):\n"
+        "    logging.info(json.dumps({'x': a / 2.0}))\n"
+        "    return hashlib.sha256(b'const').hexdigest()\n"
+    )
+    f = _run(tmp_path, src)
+    assert f == []
+
+
+def test_float_serialisation_off_path_does_not_taint_byte_axis(tmp_path):
+    # The byte axis still fires on its own evidence; float must not tag along.
+    src = (
+        "import hashlib, json, logging\n"
+        "from pathlib import Path\n"
+        "def h(p: Path, a):\n"
+        "    logging.info(json.dumps({'x': a / 2.0}))\n"
+        "    return hashlib.sha256(p.read_bytes()).hexdigest()\n"
+    )
+    f = _run(tmp_path, src)
+    assert [x.metadata["context_axis"] for x in f] == ["line_ending"]
+
+
+def test_float_payload_reaches_hash_via_local_binding(tmp_path):
+    src = (
+        "import hashlib, json\n"
+        "def h(a):\n"
+        "    s = json.dumps({'x': a / 2.0})\n"
+        "    return hashlib.sha256(s.encode()).hexdigest()\n"
+    )
+    f = _run(tmp_path, src)
+    assert [x.metadata["context_axis"] for x in f] == ["float_repr"]
+
+
+def test_float_payload_reaches_hash_via_update(tmp_path):
+    # Streaming shape: the payload enters through ``h.update(...)``, and the
+    # finding anchors on that line rather than on the constructor.
+    src = (
+        "import hashlib, json\n"
+        "def h(a):\n"
+        "    d = hashlib.sha256()\n"
+        "    d.update(json.dumps({'x': a / 2.0}).encode())\n"
+        "    return d.hexdigest()\n"
+    )
+    f = _run(tmp_path, src)
+    assert [x.metadata["context_axis"] for x in f] == ["float_repr"]
+    assert f[0].location.line_start == 4
+
+
+# ── float axis: serialiser resolution ───────────────────────────────
+
+
+def test_unresolved_dumps_method_not_a_serialiser(tmp_path):
+    # ``ser`` is an opaque local — its float semantics are unknown, so an
+    # attribute call named ``dumps`` on it is not evidence of anything.
+    src = (
+        "import hashlib\n"
+        "def h(ser, a):\n"
+        "    return hashlib.sha256(ser.dumps({'x': a / 2.0}).encode()).hexdigest()\n"
+    )
+    f = _run(tmp_path, src)
+    assert f == []
+
+
+def test_aliased_json_import_is_a_serialiser(tmp_path):
+    src = (
+        "import hashlib, json as J\n"
+        "def h(a):\n"
+        "    return hashlib.sha256(J.dumps({'x': a / 2.0}).encode()).hexdigest()\n"
+    )
+    f = _run(tmp_path, src)
+    assert [x.metadata["context_axis"] for x in f] == ["float_repr"]
+
+
+def test_from_import_dumps_is_a_serialiser(tmp_path):
+    src = (
+        "import hashlib\n"
+        "from orjson import dumps\n"
+        "def h(a):\n"
+        "    return hashlib.sha256(dumps({'x': a / 2.0})).hexdigest()\n"
+    )
+    f = _run(tmp_path, src)
+    assert [x.metadata["context_axis"] for x in f] == ["float_repr"]
+
+
+# ── float axis: Decimal is not on this axis ─────────────────────────
+
+
+def test_decimal_payload_not_float_repr(tmp_path):
+    # Decimal carries its digits in the value rather than recovering them by
+    # repr — it is the *cure* for this defect, not an instance of it.
+    src = (
+        "import hashlib, json\n"
+        "from decimal import Decimal\n"
+        "def h(c):\n"
+        "    return hashlib.sha256(\n"
+        "        json.dumps({'x': Decimal(c)}, default=str).encode()\n"
+        "    ).hexdigest()\n"
+    )
+    f = _run(tmp_path, src)
+    assert f == []
+
+
+def test_decimal_annotation_not_float_evidence(tmp_path):
+    src = (
+        "import hashlib, json\n"
+        "from decimal import Decimal\n"
+        "def h(x: Decimal):\n"
+        "    return hashlib.sha256(json.dumps({'x': x}, default=str).encode()).hexdigest()\n"
+    )
+    f = _run(tmp_path, src)
+    assert f == []
+
+
+def test_quantize_still_mitigates_a_real_float_payload(tmp_path):
+    # ``.quantize`` is dropped as float *evidence* but kept as a mitigation:
+    # here the division is the evidence and quantize is the visible pin.
+    src = (
+        "import hashlib, json\n"
+        "from decimal import Decimal\n"
+        "def h(a):\n"
+        "    v = Decimal(a / 3.0).quantize(Decimal('0.000000001'))\n"
+        "    return hashlib.sha256(json.dumps({'x': str(v)}).encode()).hexdigest()\n"
+    )
+    f = _run(tmp_path, src)
+    assert [x.metadata["context_axis"] for x in f] == ["float_repr"]
+    assert f[0].metadata["mitigation_kind"] == "floats_quantized"
+    assert f[0].severity is Severity.LOW
+
+
+# ── float axis: annotation / operator evidence ──────────────────────
+
+
+def test_augmented_division_is_float_evidence(tmp_path):
+    # ``x /= n`` has no float literal — the operator is the evidence.
+    src = (
+        "import hashlib, json\n"
+        "def h(x, n):\n"
+        "    x /= n\n"
+        "    return hashlib.sha256(json.dumps({'x': x}).encode()).hexdigest()\n"
+    )
+    f = _run(tmp_path, src)
+    assert [x.metadata["context_axis"] for x in f] == ["float_repr"]
+
+
+def test_string_annotation_matches_float_as_a_whole_word(tmp_path):
+    src = (
+        "import hashlib, json\n"
+        "def h(x: 'float | None'):\n"
+        "    return hashlib.sha256(json.dumps({'x': x}).encode()).hexdigest()\n"
+    )
+    f = _run(tmp_path, src)
+    assert [x.metadata["context_axis"] for x in f] == ["float_repr"]
+
+
+def test_string_annotation_substring_is_not_float_evidence(tmp_path):
+    src = (
+        "import hashlib, json\n"
+        "def h(x: 'MyFloatWrapper'):\n"
+        "    return hashlib.sha256(json.dumps({'x': x}).encode()).hexdigest()\n"
+    )
+    f = _run(tmp_path, src)
+    assert f == []
+
+
+def test_float_axis_emit_branch_not_line_ending_copy(tmp_path):
+    # Integration guard: float findings must not inherit the line-ending fix text.
+    src = (
+        "import hashlib, json\n"
+        "def compute_report_id(coords):\n"
+        "    return hashlib.sha256(json.dumps({'x': coords[0] / 2.0}).encode()).hexdigest()\n"
+    )
+    f = _run(tmp_path, src)
+    assert len(f) == 1
+    assert f[0].metadata["context_axis"] == "float_repr"
+    assert "line ending" not in f[0].message.lower()
+    assert "gitattributes" not in f[0].message.lower()
+    assert "quantize" in f[0].message.lower()
 
 
 # ── helper / wrapper indirection ────────────────────────────────────

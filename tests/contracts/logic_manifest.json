@@ -8,9 +8,9 @@
     },
     {
       "class_name": "ContextPinnedHashAnalyzer",
-      "logic_hash": "sha256:424ef03e2ca86a880b3e2eb635e29d49267d171a01bab955aeafbcc2160e36b7",
+      "logic_hash": "sha256:743de751491cc3c80a9414a376bad829aba062115a14598ce136fd3dcdcfffdd",
       "module": "code_audit.analyzers.context_pinned_hash",
-      "version": "1.0.0"
+      "version": "1.1.0"
     },
     {
       "class_name": "CrossCopyDriftAnalyzer",

@@ -30,6 +30,8 @@ Confidence: no
 Web API: no
 Breaking: no
 
+- `context_pinned_hash` **1.1.0**: add `float_repr` axis (`CTX_PINNED_HASH_FLOAT_001`) for hashes over unquantized float serialisation (POS-007 / `json.dumps` + geometry floats); mitigation `floats_quantized` when `round` / precision format-specs are visible. The axis is scoped to the hashed payload, not the function: it fires only where a value reaches a hash (constructor, module-local wrapper, or `.update()`), through a call whose receiver resolves via this module's imports to a known text serialiser (`json`/`orjson`/`yaml`/… — never an opaque `serializer.dumps` or a binary `pickle`/`marshal`/`msgpack`), carrying float evidence in its own argument (division, float literal, `float`/`round`/`math.*`, or a `float` annotation) resolved one hop through local assignments. `Decimal` is not float evidence — it is the cure for this defect, not an instance of it — though it remains a mitigation signal. Serialisation that only reaches a log line, `json.dumps({"name": "x"})`, and an unrelated `round()` all stay silent
+
 ## [0.1.0] - 2025-01-01
 
 Schema: no
