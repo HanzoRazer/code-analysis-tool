@@ -8,7 +8,7 @@
     },
     {
       "class_name": "ContextPinnedHashAnalyzer",
-      "logic_hash": "sha256:d8aef3287bd783f36d7e3d3b226b42a2cd194e256712e781ccba16fcdfb799f2",
+      "logic_hash": "sha256:743de751491cc3c80a9414a376bad829aba062115a14598ce136fd3dcdcfffdd",
       "module": "code_audit.analyzers.context_pinned_hash",
       "version": "1.1.0"
     },

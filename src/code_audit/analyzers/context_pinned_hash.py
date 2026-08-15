@@ -23,22 +23,36 @@ the manifest). A follow-up pass (v2) reads those artifacts and confirms/clears
 each finding — it enriches this metadata rather than restructuring it, so
 nothing here has to change.
 
-**The float axis is payload-scoped, not function-scoped.** A serialiser call
-(``json.dumps(...)``) only opens the ``float_repr`` axis when *its own argument*
-carries float evidence — a true division, a float literal, a ``float``/``round``/
-``Decimal``/``math.*`` call, or a ``float``-annotated name — resolved one hop
-through local assignments. The same resolution decides mitigation, so a
-``round()`` elsewhere in the function does not silently downgrade an unrelated
-unquantized hash, and hashing ``json.dumps({"name": "x"})`` stays silent.
-Binary serialisers (``pickle``/``marshal``/``msgpack``) write IEEE-754 bytes,
-not shortest-repr text, so they are excluded from the axis entirely.
+**The float axis is scoped to the hashed payload, not to the function.** Three
+things must line up before it fires, each checked against the others rather
+than merely co-occurring in one body:
 
-That resolution is one hop and deliberately buys precision with recall: a
-payload built behind a call (``json.dumps(build_payload())``) or accumulated in
-a loop variable carries no visible evidence, so it is *not* flagged. On a
-detector whose whole value is being believed, a miss costs less than a false
-alarm; the v2 pass, which reads the serialised artifact itself, is where that
-recall comes back.
+1. *The value reaches a hash.* Sites are counted only over the arguments of a
+   hash constructor, a module-local hash wrapper, or ``.update(...)`` on a hash
+   object. A ``json.dumps`` that feeds a log line is not a context-pinned hash,
+   however float-heavy it is.
+2. *The call is a text serialiser.* The receiver must resolve, through this
+   module's imports, to a known shortest-repr emitter (``json``, ``orjson``,
+   ``yaml``, …). An opaque ``serializer.dumps(...)`` has unknown float
+   semantics; binary ones (``pickle``/``marshal``/``msgpack``) write IEEE-754
+   bytes that round-trip exactly. Neither is on the allowlist.
+3. *The payload carries floats.* A true division, a float literal, a
+   ``float``/``round``/``math.*`` call, or a ``float``-annotated name — resolved
+   one hop through local assignments. So ``json.dumps({"name": "x"})`` stays
+   silent, and a ``round()`` elsewhere in the function cannot downgrade an
+   unrelated unquantized hash.
+
+``Decimal`` is deliberately *not* float evidence. It exists to avoid binary
+float drift and mainstream JSON encoders refuse it outright, so treating it as
+evidence would flag the code that already fixed the problem. It remains a
+*mitigation* signal, because evidence and mitigation are different questions
+and only evidence opens a finding.
+
+One hop deliberately buys precision with recall: a payload built behind a call
+(``json.dumps(build_payload())``) or accumulated in a loop variable carries no
+visible evidence, so it is *not* flagged. On a detector whose whole value is
+being believed, a miss costs less than a false alarm; the v2 pass, which reads
+the serialised artifact itself, is where that recall comes back.
 
 Fix it emits: *record the context* — normalize the input (LF), pin the generator
 (one interpreter), quantize floats before serialising, or declare the context in
@@ -74,19 +88,29 @@ _VERSION_GUARD_NAMES = frozenset(
 # precision — e.g. ``.9g``, ``.6f``, ``#.12e`` — count as in-file quantization.
 _FLOAT_QUANTIZE_SPEC = re.compile(r"\.\d+[fgFeE]")
 
-# ``*.dumps`` receivers that emit IEEE-754 bytes rather than shortest-repr text.
-# A float round-trips through these byte-exactly, so they are not on this axis.
-_BINARY_SERIALISER_MODULES = frozenset(
-    {"pickle", "cPickle", "dill", "marshal", "msgpack", "cbor2", "bson", "struct"}
+# ``float`` as a whole word inside a string annotation (``"float | None"``).
+_FLOAT_ANNOTATION = re.compile(r"\bfloat\b")
+
+# Modules whose ``dumps`` writes floats as **shortest-repr text**. This is a
+# positive allowlist, not "anything called dumps except these binaries": a
+# custom ``serializer.dumps()`` has unknown float semantics, and guessing that
+# it is repr-sensitive is exactly the over-approximation this axis must avoid.
+# Binary serialisers (pickle/marshal/msgpack) are absent by construction — they
+# write IEEE-754 bytes, which round-trip exactly.
+_TEXT_SERIALISER_MODULES = frozenset(
+    {"json", "simplejson", "orjson", "ujson", "rapidjson", "hyperjson", "yaml", "toml"}
 )
 
 # Modules whose calls return floats — evidence that a serialised payload is
 # float-bearing even when no literal or division is visible at the call site.
 _FLOAT_MODULES = frozenset({"math", "cmath", "statistics", "numpy", "np"})
 
-# Builtins/constructors that produce a float (or a Decimal, which is serialised
-# through ``float()`` by every mainstream JSON encoder).
-_FLOAT_CALL_NAMES = frozenset({"float", "round", "Decimal", "fsum", "mean"})
+# Builtins that produce a float. ``Decimal`` is deliberately **absent**: it
+# exists precisely to avoid binary-float drift, its digits are carried in the
+# value rather than recovered by repr, and mainstream JSON encoders refuse it
+# outright rather than round-tripping it through ``float()``. Treating it as
+# float evidence would flag the code that already fixed the problem.
+_FLOAT_CALL_NAMES = frozenset({"float", "round", "fsum", "mean"})
 
 
 class ContextPinnedHashAnalyzer:
@@ -122,6 +146,9 @@ class ContextPinnedHashAnalyzer:
         # one is a hash producer, so a *caller* that reads bytes and passes them
         # in is context-pinned even though the hash constructor is elsewhere.
         hash_wrappers = _hash_wrapper_names(tree)
+        # Which local names resolve, via this module's imports, to a text
+        # serialiser — see ``_is_payload_serialiser``.
+        serialisers = _serialiser_names(tree)
         src_lines = src.splitlines()
         findings: list[Finding] = []
 
@@ -129,7 +156,7 @@ class ContextPinnedHashAnalyzer:
         for node in ast.walk(tree):
             if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
-            feats = _scope_features(node, hash_wrappers)
+            feats = _scope_features(node, hash_wrappers, serialisers)
             if not feats.has_hash:
                 continue
 
@@ -170,7 +197,7 @@ class ContextPinnedHashAnalyzer:
                         mitigation_kind="floats_quantized"
                         if feats.has_quantize else None,
                         fn_name=node.name,
-                        line=feats.hash_line,
+                        line=feats.float_line or feats.hash_line,
                         rel=rel,
                         src_lines=src_lines,
                     )
@@ -223,8 +250,8 @@ class ContextPinnedHashAnalyzer:
 
         message = (
             f"'{fn_name}' hashes an input that varies by {axis_phrase}, then this "
-            f"hash is typically asserted byte-equal against a stored value — it will "
-            f"pass in the context it was baked in and fail in any other. "
+            f"hash is typically asserted byte-equal against a stored value — it "
+            f"passes in the context it was baked in and can fail in any other. "
             f"Fix: {fix} — record the context, don't just regenerate.{mit_note}"
         )
         fingerprint = make_fingerprint(rule_id, rel, fn_name, snippet)
@@ -266,7 +293,7 @@ class _ScopeFeatures:
     __slots__ = (
         "has_hash", "hashes_ast_dump", "hashes_file_bytes",
         "float_sites", "float_quantized_sites", "has_lf_normalize",
-        "hash_line",
+        "hash_line", "float_line",
     )
 
     def __init__(self) -> None:
@@ -280,6 +307,9 @@ class _ScopeFeatures:
         self.float_quantized_sites = 0
         self.has_lf_normalize = False
         self.hash_line = 0
+        # The hash call that actually consumes the float payload — not merely
+        # the first hash in the function.
+        self.float_line = 0
 
     @property
     def hashes_serialised_floats(self) -> bool:
@@ -303,7 +333,11 @@ def _hash_wrapper_names(tree: ast.Module) -> frozenset[str]:
     return frozenset(names)
 
 
-def _scope_features(fn: ast.AST, hash_wrappers: frozenset[str] = frozenset()) -> _ScopeFeatures:
+def _scope_features(
+    fn: ast.AST,
+    hash_wrappers: frozenset[str] = frozenset(),
+    serialisers: tuple[frozenset[str], frozenset[str]] = (frozenset(), frozenset()),
+) -> _ScopeFeatures:
     """Detect, within a single function body, whether it computes a hash and
     feeds it a context-sensitive input, plus any in-scope mitigation."""
     f = _ScopeFeatures()
@@ -313,6 +347,13 @@ def _scope_features(fn: ast.AST, hash_wrappers: frozenset[str] = frozenset()) ->
     # serialised *payload* instead of "anything anywhere in this function".
     assigns = _assignment_map(fn)
     float_names = _float_annotated_names(fn)
+    hash_objects = _hash_object_names(fn)
+
+    # Expressions that actually reach a hash: the arguments of a hash
+    # constructor / wrapper call, and of ``.update(...)`` on a hash object.
+    # Float sites are counted over *these* — a ``json.dumps`` that only reaches
+    # a log line is not a context-pinned hash, however float-heavy it is.
+    hashed_inputs: list[tuple[int, ast.AST]] = []
 
     for node in ast.walk(fn):
         if isinstance(node, ast.Call):
@@ -321,37 +362,111 @@ def _scope_features(fn: ast.AST, hash_wrappers: frozenset[str] = frozenset()) ->
                 f.has_hash = True
                 if not f.hash_line:
                     f.hash_line = getattr(node, "lineno", 0)
+            if is_hash or _is_hash_update(node, hash_objects):
+                line = getattr(node, "lineno", 0)
+                hashed_inputs.extend((line, arg) for arg in node.args)
             if _is_ast_dump(node):
                 f.hashes_ast_dump = True
             if _is_binary_file_read(node):
                 f.hashes_file_bytes = True
             if _is_lf_normalize(node):
                 f.has_lf_normalize = True
-            if _is_payload_serialiser(node):
-                # Only a payload that demonstrably carries floats opens the axis
-                # — ``json.dumps({"name": "x"})`` is not a float hash.
-                has_float = False
-                has_raw = False
-                for arg in node.args:
-                    a_float, a_raw = _payload_float_state(arg, assigns, float_names)
-                    has_float = has_float or a_float
-                    has_raw = has_raw or a_raw
-                if has_float:
-                    f.float_sites += 1
-                    if not has_raw:
-                        f.float_quantized_sites += 1
-            if _call_format_has_float_quantize(node):
-                # ``"{:.9g}".format(x)`` / ``format(x, ".9g")`` — the explicit
-                # precision is both the float evidence and the quantization.
-                f.float_sites += 1
-                f.float_quantized_sites += 1
-        elif isinstance(node, ast.JoinedStr):
-            serial, quant = _joined_str_float_feats(node)
-            if serial:
-                f.float_sites += 1
-                if quant:
-                    f.float_quantized_sites += 1
+
+    for line, expr in hashed_inputs:
+        sites, quantized = _float_sites(expr, assigns, float_names, serialisers)
+        if not sites:
+            continue
+        f.float_sites += sites
+        f.float_quantized_sites += quantized
+        if not f.float_line:
+            f.float_line = line
     return f
+
+
+def _hash_object_names(fn: ast.AST) -> frozenset[str]:
+    """Locals bound to a hash object — ``h = hashlib.sha256()``.
+
+    Their ``.update(...)`` arguments are hashed input, which is how the
+    streaming shape (``h.update(chunk)``) reaches the float axis at all.
+    """
+    names: set[str] = set()
+    for node in ast.walk(fn):
+        value = getattr(node, "value", None)
+        if not (isinstance(value, ast.Call) and _is_hash_constructor(value)):
+            continue
+        if isinstance(node, ast.Assign):
+            for tgt in node.targets:
+                names.update(_target_names(tgt))
+        elif isinstance(node, (ast.AnnAssign, ast.NamedExpr)):
+            names.update(_target_names(node.target))
+    return frozenset(names)
+
+
+def _is_hash_update(call: ast.Call, hash_objects: frozenset[str]) -> bool:
+    fn = call.func
+    return (
+        isinstance(fn, ast.Attribute)
+        and fn.attr == "update"
+        and isinstance(fn.value, ast.Name)
+        and fn.value.id in hash_objects
+    )
+
+
+def _float_sites(
+    expr: ast.AST,
+    assigns: dict[str, list[ast.AST]],
+    float_names: frozenset[str],
+    serialisers: tuple[frozenset[str], frozenset[str]],
+) -> tuple[int, int]:
+    """Count ``(float serialisation sites, quantized sites)`` reachable from *expr*.
+
+    *expr* is a hashed input. Local names are followed one hop, so
+    ``s = json.dumps(payload); sha256(s.encode())`` is seen through. Each site
+    is counted once — descent stops at a serialiser, whose payload has already
+    been accounted for.
+    """
+    seen: set[str] = set()
+    sites = 0
+    quantized = 0
+
+    def visit(n: ast.AST) -> None:
+        nonlocal sites, quantized
+        if isinstance(n, ast.Call) and _is_payload_serialiser(n, serialisers):
+            has_float = False
+            has_raw = False
+            for arg in n.args:
+                a_float, a_raw = _payload_float_state(arg, assigns, float_names)
+                has_float = has_float or a_float
+                has_raw = has_raw or a_raw
+            if has_float:
+                sites += 1
+                if not has_raw:
+                    quantized += 1
+            return
+        if isinstance(n, ast.Call) and _call_format_has_float_quantize(n):
+            # ``"{:.9g}".format(x)`` / ``format(x, ".9g")`` — the explicit
+            # precision is both the float evidence and the quantization.
+            sites += 1
+            quantized += 1
+            return
+        if isinstance(n, ast.JoinedStr):
+            serial, quant = _joined_str_float_feats(n)
+            if serial:
+                sites += 1
+                if quant:
+                    quantized += 1
+            return
+        if isinstance(n, ast.Name) and n.id not in seen:
+            values = assigns.get(n.id)
+            if values:
+                seen.add(n.id)
+                for value in values:
+                    visit(value)
+        for child in ast.iter_child_nodes(n):
+            visit(child)
+
+    visit(expr)
+    return sites, quantized
 
 
 def _is_hash_constructor(call: ast.Call) -> bool:
@@ -434,27 +549,59 @@ def _is_lf_normalize(call: ast.Call) -> bool:
     return False
 
 
-def _is_payload_serialiser(call: ast.Call) -> bool:
+def _serialiser_names(tree: ast.Module) -> tuple[frozenset[str], frozenset[str]]:
+    """Resolve imports to ``(module_aliases, dumps_aliases)`` for text serialisers.
+
+    Binding ``dumps`` to an actual import is what keeps an unrelated
+    ``serializer.dumps(...)`` — whose float semantics are unknown — off this
+    axis. ``import json as J`` and ``from orjson import dumps as jd`` both
+    resolve; a bare attribute call on a local object does not.
+    """
+    modules: set[str] = set()
+    functions: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                root = alias.name.split(".")[0]
+                if root in _TEXT_SERIALISER_MODULES:
+                    modules.add(alias.asname or root)
+        elif isinstance(node, ast.ImportFrom):
+            if node.module and node.module.split(".")[0] in _TEXT_SERIALISER_MODULES:
+                for alias in node.names:
+                    if alias.name == "dumps":
+                        functions.add(alias.asname or alias.name)
+                    else:
+                        # ``from msgspec import json`` — the name is a submodule.
+                        modules.add(alias.asname or alias.name)
+    return frozenset(modules), frozenset(functions)
+
+
+def _is_payload_serialiser(
+    call: ast.Call, serialisers: tuple[frozenset[str], frozenset[str]]
+) -> bool:
     """Detect a *text* serialiser whose float output is shortest-repr sensitive.
 
-    Primary POS-007 shape: ``json.dumps(...)`` (and sibling ``*.dumps``). This
-    predicate answers "is this serialisation?" only — whether the payload is
-    float-bearing is decided separately by ``_node_is_float_evidence`` against
-    the call's own arguments, so ``json.dumps({"name": "x"})`` does not fire.
+    Primary POS-007 shape: ``json.dumps(...)``. This predicate answers "is this
+    serialisation?" only — whether the payload is float-bearing is decided
+    separately against the call's own arguments, so ``json.dumps({"name": "x"})``
+    does not fire.
 
-    Binary ``*.dumps`` (``pickle``/``marshal``/``msgpack``/…) writes IEEE-754
-    bytes, which round-trip exactly, and is excluded.
+    The receiver must resolve, through an import in this module, to a known
+    text serialiser. ``pickle``/``marshal``/``msgpack`` write IEEE-754 bytes and
+    are simply not on the allowlist; neither is an arbitrary object that happens
+    to expose a ``dumps`` method.
     """
+    modules, functions = serialisers
     fn = call.func
     if isinstance(fn, ast.Attribute) and fn.attr == "dumps":
         recv = fn.value
-        if isinstance(recv, ast.Name) and recv.id in _BINARY_SERIALISER_MODULES:
-            return False
-        if isinstance(recv, ast.Attribute) and recv.attr in _BINARY_SERIALISER_MODULES:
-            return False
-        return True
-    if isinstance(fn, ast.Name) and fn.id == "dumps":
-        return True
+        if isinstance(recv, ast.Name):
+            return recv.id in modules
+        if isinstance(recv, ast.Attribute):     # msgspec.json.dumps
+            return recv.attr in _TEXT_SERIALISER_MODULES
+        return False
+    if isinstance(fn, ast.Name):
+        return fn.id in functions
     return False
 
 
@@ -471,13 +618,16 @@ def _is_quantiser(call: ast.Call) -> bool:
 
 
 def _is_float_producing_call(call: ast.Call) -> bool:
-    """True when *call* returns a float (or a Decimal serialised as one)."""
+    """True when *call* returns a binary float.
+
+    ``.quantize(...)`` is absent on purpose: it is a Decimal method, and Decimal
+    is not on this axis. It stays a *quantiser* (a mitigation signal) — evidence
+    and mitigation are different questions, and only evidence opens a finding.
+    """
     fn = call.func
     if isinstance(fn, ast.Name) and fn.id in _FLOAT_CALL_NAMES:
         return True
     if isinstance(fn, ast.Attribute):
-        if fn.attr == "quantize":
-            return True
         if isinstance(fn.value, ast.Name) and fn.value.id in _FLOAT_MODULES:
             return True
     return False
@@ -539,7 +689,12 @@ def _assignment_map(fn: ast.AST) -> dict[str, list[ast.AST]]:
             for tgt in node.targets:
                 for name in _target_names(tgt):
                     out.setdefault(name, []).append(node.value)
-        elif isinstance(node, (ast.AnnAssign, ast.AugAssign)):
+        elif isinstance(node, ast.AugAssign):
+            # Bind the whole node, not just the RHS: ``x /= n`` is float
+            # evidence through the *operator*, which the RHS alone loses.
+            for name in _target_names(node.target):
+                out.setdefault(name, []).append(node)
+        elif isinstance(node, ast.AnnAssign):
             if node.value is not None:
                 for name in _target_names(node.target):
                     out.setdefault(name, []).append(node.value)
@@ -594,11 +749,12 @@ def _annotation_is_float(ann: ast.AST | None) -> bool:
     if ann is None:
         return False
     if isinstance(ann, ast.Name):
-        return ann.id in {"float", "Decimal"}
+        return ann.id == "float"
     if isinstance(ann, ast.Attribute):
-        return ann.attr in {"float", "Decimal"}
+        return ann.attr == "float"
     if isinstance(ann, ast.Constant) and isinstance(ann.value, str):
-        return "float" in ann.value or "Decimal" in ann.value
+        # Word-boundary, so a ``"MyFloatWrapper"`` annotation is not evidence.
+        return bool(_FLOAT_ANNOTATION.search(ann.value))
     if isinstance(ann, ast.Subscript):   # list[float], Optional[float], dict[str, float]
         return _annotation_is_float(ann.slice)
     if isinstance(ann, ast.Tuple):

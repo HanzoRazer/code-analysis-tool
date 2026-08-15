@@ -347,6 +347,174 @@ def test_quantized_site_does_not_mitigate_unquantized_sibling(tmp_path):
     assert f[0].severity is Severity.MEDIUM
 
 
+def test_float_serialisation_off_the_hashed_path_not_flagged(tmp_path):
+    # Floats are serialised for a log line; the hash consumes a constant.
+    # Co-location in one function is not a context-pinned hash.
+    src = (
+        "import hashlib, json, logging\n"
+        "def h(a):\n"
+        "    logging.info(json.dumps({'x': a / 2.0}))\n"
+        "    return hashlib.sha256(b'const').hexdigest()\n"
+    )
+    f = _run(tmp_path, src)
+    assert f == []
+
+
+def test_float_serialisation_off_path_does_not_taint_byte_axis(tmp_path):
+    # The byte axis still fires on its own evidence; float must not tag along.
+    src = (
+        "import hashlib, json, logging\n"
+        "from pathlib import Path\n"
+        "def h(p: Path, a):\n"
+        "    logging.info(json.dumps({'x': a / 2.0}))\n"
+        "    return hashlib.sha256(p.read_bytes()).hexdigest()\n"
+    )
+    f = _run(tmp_path, src)
+    assert [x.metadata["context_axis"] for x in f] == ["line_ending"]
+
+
+def test_float_payload_reaches_hash_via_local_binding(tmp_path):
+    src = (
+        "import hashlib, json\n"
+        "def h(a):\n"
+        "    s = json.dumps({'x': a / 2.0})\n"
+        "    return hashlib.sha256(s.encode()).hexdigest()\n"
+    )
+    f = _run(tmp_path, src)
+    assert [x.metadata["context_axis"] for x in f] == ["float_repr"]
+
+
+def test_float_payload_reaches_hash_via_update(tmp_path):
+    # Streaming shape: the payload enters through ``h.update(...)``, and the
+    # finding anchors on that line rather than on the constructor.
+    src = (
+        "import hashlib, json\n"
+        "def h(a):\n"
+        "    d = hashlib.sha256()\n"
+        "    d.update(json.dumps({'x': a / 2.0}).encode())\n"
+        "    return d.hexdigest()\n"
+    )
+    f = _run(tmp_path, src)
+    assert [x.metadata["context_axis"] for x in f] == ["float_repr"]
+    assert f[0].location.line_start == 4
+
+
+# ── float axis: serialiser resolution ───────────────────────────────
+
+
+def test_unresolved_dumps_method_not_a_serialiser(tmp_path):
+    # ``ser`` is an opaque local — its float semantics are unknown, so an
+    # attribute call named ``dumps`` on it is not evidence of anything.
+    src = (
+        "import hashlib\n"
+        "def h(ser, a):\n"
+        "    return hashlib.sha256(ser.dumps({'x': a / 2.0}).encode()).hexdigest()\n"
+    )
+    f = _run(tmp_path, src)
+    assert f == []
+
+
+def test_aliased_json_import_is_a_serialiser(tmp_path):
+    src = (
+        "import hashlib, json as J\n"
+        "def h(a):\n"
+        "    return hashlib.sha256(J.dumps({'x': a / 2.0}).encode()).hexdigest()\n"
+    )
+    f = _run(tmp_path, src)
+    assert [x.metadata["context_axis"] for x in f] == ["float_repr"]
+
+
+def test_from_import_dumps_is_a_serialiser(tmp_path):
+    src = (
+        "import hashlib\n"
+        "from orjson import dumps\n"
+        "def h(a):\n"
+        "    return hashlib.sha256(dumps({'x': a / 2.0})).hexdigest()\n"
+    )
+    f = _run(tmp_path, src)
+    assert [x.metadata["context_axis"] for x in f] == ["float_repr"]
+
+
+# ── float axis: Decimal is not on this axis ─────────────────────────
+
+
+def test_decimal_payload_not_float_repr(tmp_path):
+    # Decimal carries its digits in the value rather than recovering them by
+    # repr — it is the *cure* for this defect, not an instance of it.
+    src = (
+        "import hashlib, json\n"
+        "from decimal import Decimal\n"
+        "def h(c):\n"
+        "    return hashlib.sha256(\n"
+        "        json.dumps({'x': Decimal(c)}, default=str).encode()\n"
+        "    ).hexdigest()\n"
+    )
+    f = _run(tmp_path, src)
+    assert f == []
+
+
+def test_decimal_annotation_not_float_evidence(tmp_path):
+    src = (
+        "import hashlib, json\n"
+        "from decimal import Decimal\n"
+        "def h(x: Decimal):\n"
+        "    return hashlib.sha256(json.dumps({'x': x}, default=str).encode()).hexdigest()\n"
+    )
+    f = _run(tmp_path, src)
+    assert f == []
+
+
+def test_quantize_still_mitigates_a_real_float_payload(tmp_path):
+    # ``.quantize`` is dropped as float *evidence* but kept as a mitigation:
+    # here the division is the evidence and quantize is the visible pin.
+    src = (
+        "import hashlib, json\n"
+        "from decimal import Decimal\n"
+        "def h(a):\n"
+        "    v = Decimal(a / 3.0).quantize(Decimal('0.000000001'))\n"
+        "    return hashlib.sha256(json.dumps({'x': str(v)}).encode()).hexdigest()\n"
+    )
+    f = _run(tmp_path, src)
+    assert [x.metadata["context_axis"] for x in f] == ["float_repr"]
+    assert f[0].metadata["mitigation_kind"] == "floats_quantized"
+    assert f[0].severity is Severity.LOW
+
+
+# ── float axis: annotation / operator evidence ──────────────────────
+
+
+def test_augmented_division_is_float_evidence(tmp_path):
+    # ``x /= n`` has no float literal — the operator is the evidence.
+    src = (
+        "import hashlib, json\n"
+        "def h(x, n):\n"
+        "    x /= n\n"
+        "    return hashlib.sha256(json.dumps({'x': x}).encode()).hexdigest()\n"
+    )
+    f = _run(tmp_path, src)
+    assert [x.metadata["context_axis"] for x in f] == ["float_repr"]
+
+
+def test_string_annotation_matches_float_as_a_whole_word(tmp_path):
+    src = (
+        "import hashlib, json\n"
+        "def h(x: 'float | None'):\n"
+        "    return hashlib.sha256(json.dumps({'x': x}).encode()).hexdigest()\n"
+    )
+    f = _run(tmp_path, src)
+    assert [x.metadata["context_axis"] for x in f] == ["float_repr"]
+
+
+def test_string_annotation_substring_is_not_float_evidence(tmp_path):
+    src = (
+        "import hashlib, json\n"
+        "def h(x: 'MyFloatWrapper'):\n"
+        "    return hashlib.sha256(json.dumps({'x': x}).encode()).hexdigest()\n"
+    )
+    f = _run(tmp_path, src)
+    assert f == []
+
+
 def test_float_axis_emit_branch_not_line_ending_copy(tmp_path):
     # Integration guard: float findings must not inherit the line-ending fix text.
     src = (
