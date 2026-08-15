@@ -2,32 +2,36 @@
 
 Flags a hash (sha256/sha1/md5/…) computed over an input whose bytes depend on a
 **context the hash does not record** — line endings (CRLF vs LF), interpreter
-version (``ast.dump`` differs across Python minor versions), or OS — and then
-asserted byte-equal against a stored value. Such a hash passes in the context it
-was baked in and fails everywhere else: the classic "green on my machine, red on
-CI" manifest/golden-file bug that no mainstream linter checks for.
+version (``ast.dump`` differs across Python minor versions), float shortest-repr
+(platform ULP / formatting drift), or OS — and then asserted byte-equal against a
+stored value. Such a hash passes in the context it was baked in and fails
+everywhere else: the classic "green on my machine, red on CI" manifest/golden-
+file bug that no mainstream linter checks for.
 
 **Family II (implicit context).** Every team that bakes a hash on one platform
 and checks it on another has this latent defect — a lockfile digest, a golden-
-file test, an AST-fingerprint gate.
+file test, an AST-fingerprint gate, a geometry ``report_id``.
 
 **v1 is a source-pattern heuristic.** It finds the *candidate* — a function that
 both computes a hash and feeds it a context-sensitive input — and records, in the
 finding's ``metadata``, which context axis is at risk and whether an *in-file*
 mitigation is visible (LF-normalization for byte hashes; a Python-version guard
-for ``ast.dump`` hashes). It sets ``context_confirmed = False`` because the real
-mitigation may live outside the source (``.gitattributes eol=lf``, a CI matrix
-pin, a context field recorded in the manifest). A follow-up pass (v2) reads those
-artifacts and confirms/clears each finding — it enriches this metadata rather than
-restructuring it, so nothing here has to change.
+for ``ast.dump`` hashes; float quantization before serialise+hash). It sets
+``context_confirmed = False`` because the real mitigation may live outside the
+source (``.gitattributes eol=lf``, a CI matrix pin, a context field recorded in
+the manifest). A follow-up pass (v2) reads those artifacts and confirms/clears
+each finding — it enriches this metadata rather than restructuring it, so
+nothing here has to change.
 
 Fix it emits: *record the context* — normalize the input (LF), pin the generator
-(one interpreter), or declare the context in the manifest — not a one-off
-regenerate, which only relocates the defect to the next context.
+(one interpreter), quantize floats before serialising, or declare the context in
+the manifest — not a one-off regenerate, which only relocates the defect to the
+next context.
 """
 from __future__ import annotations
 
 import ast
+import re
 from pathlib import Path
 
 from code_audit.model import AnalyzerType, Severity
@@ -40,6 +44,7 @@ _HASH_FUNCS = frozenset(
 
 _RULE_BYTE = "CTX_PINNED_HASH_BYTES_001"   # line-ending / OS axis
 _RULE_AST = "CTX_PINNED_HASH_AST_001"      # interpreter-version axis
+_RULE_FLOAT = "CTX_PINNED_HASH_FLOAT_001"  # float shortest-repr axis
 
 # Names that, present anywhere in the module, indicate the generator is pinned to
 # one interpreter (mitigation for the ast.dump / interpreter-version axis).
@@ -48,12 +53,16 @@ _VERSION_GUARD_NAMES = frozenset(
      "_REQUIRED_PYTHON", "_CI_PYTHON", "CI_PYTHON"}
 )
 
+# f-string / format specs that look like float formatting with an explicit
+# precision — e.g. ``.9g``, ``.6f``, ``#.12e`` — count as in-file quantization.
+_FLOAT_QUANTIZE_SPEC = re.compile(r"\.\d+[fgFeE]")
+
 
 class ContextPinnedHashAnalyzer:
     """Detect hashes asserted byte-equal across a context they weren't computed in."""
 
     id: str = "context_pinned_hash"
-    version: str = "1.0.0"
+    version: str = "1.1.0"
 
     def run(self, root: Path, files: list[Path]) -> list[Finding]:
         findings: list[Finding] = []
@@ -121,6 +130,20 @@ class ContextPinnedHashAnalyzer:
                         src_lines=src_lines,
                     )
                 )
+            if feats.hashes_serialised_floats:
+                findings.append(
+                    self._emit(
+                        rule_id=_RULE_FLOAT,
+                        axis="float_repr",
+                        mitigated=feats.has_quantize,
+                        mitigation_kind="floats_quantized"
+                        if feats.has_quantize else None,
+                        fn_name=node.name,
+                        line=feats.hash_line,
+                        rel=rel,
+                        src_lines=src_lines,
+                    )
+                )
         return findings
 
     # ── finding construction ────────────────────────────────────────
@@ -145,6 +168,12 @@ class ContextPinnedHashAnalyzer:
                 "pin the generator to one interpreter (fail loudly on any other), "
                 "and skip the gate off that version"
             )
+        elif axis == "float_repr":
+            axis_phrase = (
+                "float shortest-repr (platform float formatting can differ by one "
+                "ULP across platforms, and CI is structurally blind to that drift)"
+            )
+            fix = "quantize floats before serialising and hashing"
         else:
             axis_phrase = "line endings (CRLF vs LF) and OS"
             fix = (
@@ -205,14 +234,17 @@ def _module_has_version_guard(tree: ast.Module) -> bool:
 class _ScopeFeatures:
     __slots__ = (
         "has_hash", "hashes_ast_dump", "hashes_file_bytes",
-        "has_lf_normalize", "hash_line",
+        "hashes_serialised_floats", "has_lf_normalize", "has_quantize",
+        "hash_line",
     )
 
     def __init__(self) -> None:
         self.has_hash = False
         self.hashes_ast_dump = False
         self.hashes_file_bytes = False
+        self.hashes_serialised_floats = False
         self.has_lf_normalize = False
+        self.has_quantize = False
         self.hash_line = 0
 
 
@@ -246,6 +278,16 @@ def _scope_features(fn: ast.AST, hash_wrappers: frozenset[str] = frozenset()) ->
                 f.hashes_file_bytes = True
             if _is_lf_normalize(node):
                 f.has_lf_normalize = True
+            if _is_serialiser(node):
+                f.hashes_serialised_floats = True
+            if _is_quantiser(node):
+                f.has_quantize = True
+        elif isinstance(node, ast.JoinedStr):
+            serial, quant = _joined_str_float_feats(node)
+            if serial:
+                f.hashes_serialised_floats = True
+            if quant:
+                f.has_quantize = True
     return f
 
 
@@ -327,3 +369,82 @@ def _is_lf_normalize(call: ast.Call) -> bool:
         if isinstance(v, (bytes, str)):
             return b"\r\n" == v if isinstance(v, bytes) else "\r\n" == v
     return False
+
+
+def _is_serialiser(call: ast.Call) -> bool:
+    """Detect serializers whose float formatting is platform-/repr-sensitive.
+
+    Primary POS-007 shape: ``json.dumps(...)`` (and sibling ``*.dumps``) of a
+    payload that includes floats. ``str.format`` / f-strings with an explicit
+    float format-spec are handled via ``_call_format_has_float_quantize`` /
+    ``_joined_str_float_feats`` so plain ``"{}".format(name)`` does not fire.
+    """
+    fn = call.func
+    if isinstance(fn, ast.Attribute) and fn.attr == "dumps":
+        return True
+    if isinstance(fn, ast.Name) and fn.id == "dumps":
+        return True
+    # "{:.9g}".format(x) / format(x, ".9g") — float serialise+quantize in one.
+    if _call_format_has_float_quantize(call):
+        return True
+    return False
+
+
+def _is_quantiser(call: ast.Call) -> bool:
+    """Detect in-file float quantization before serialise+hash."""
+    fn = call.func
+    if isinstance(fn, ast.Name) and fn.id == "round":
+        return True
+    if isinstance(fn, ast.Attribute) and fn.attr == "quantize":
+        return True
+    if _call_format_has_float_quantize(call):
+        return True
+    return False
+
+def _call_format_has_float_quantize(call: ast.Call) -> bool:
+    fn = call.func
+    # format(value, ".9g")
+    if isinstance(fn, ast.Name) and fn.id == "format" and len(call.args) >= 2:
+        spec = call.args[1]
+        if isinstance(spec, ast.Constant) and isinstance(spec.value, str):
+            return bool(_FLOAT_QUANTIZE_SPEC.search(spec.value))
+    # "{:.9g}".format(value)
+    if isinstance(fn, ast.Attribute) and fn.attr == "format":
+        recv = fn.value
+        if isinstance(recv, ast.Constant) and isinstance(recv.value, str):
+            return bool(_FLOAT_QUANTIZE_SPEC.search(recv.value))
+    return False
+
+
+def _format_spec_text(spec: ast.AST | None) -> str:
+    if spec is None:
+        return ""
+    if isinstance(spec, ast.JoinedStr):
+        parts: list[str] = []
+        for v in spec.values:
+            if isinstance(v, ast.Constant) and isinstance(v.value, str):
+                parts.append(v.value)
+        return "".join(parts)
+    return ""
+
+
+def _joined_str_float_feats(node: ast.JoinedStr) -> tuple[bool, bool]:
+    """Return ``(is_float_serialiser, is_quantised)`` for an f-string.
+
+    An f-string with an explicit float format-spec (``.9g``, ``.6f``, …) is both
+    a float serialiser and an in-file quantization signal — the POS-007-safe
+    ``f"{x:.9g}"`` shape.
+    """
+    serial = False
+    quant = False
+    for v in node.values:
+        if not isinstance(v, ast.FormattedValue):
+            continue
+        text = _format_spec_text(v.format_spec)
+        if not text:
+            continue
+        if text[-1:] in "fgFeE" or _FLOAT_QUANTIZE_SPEC.search(text):
+            serial = True
+        if _FLOAT_QUANTIZE_SPEC.search(text):
+            quant = True
+    return serial, quant

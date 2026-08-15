@@ -1,9 +1,10 @@
 """Unit tests for the context-pinned-hash detector.
 
 The detector flags a hash asserted byte-equal across a context it wasn't computed
-in — line endings (CRLF/LF/OS) or interpreter version (ast.dump). v1 is a
-source-pattern heuristic that records the axis + whether an in-file mitigation is
-visible, leaving ``context_confirmed=False`` for the v2 enrichment pass.
+in — line endings (CRLF/LF/OS), interpreter version (ast.dump), or float
+shortest-repr (platform ULP / formatting drift). v1 is a source-pattern heuristic
+that records the axis + whether an in-file mitigation is visible, leaving
+``context_confirmed=False`` for the v2 enrichment pass.
 """
 from __future__ import annotations
 
@@ -114,6 +115,100 @@ def test_ast_dump_hash_with_version_guard_is_mitigated(tmp_path):
     assert f[0].metadata["context_axis"] == "python_version"
     assert f[0].metadata["mitigation_detected"] is True
     assert f[0].metadata["mitigation_kind"] == "generator_python_pinned"
+
+
+# ── float shortest-repr axis (POS-007) ──────────────────────────────
+
+
+def test_float_json_dumps_hash_flagged_unmitigated(tmp_path):
+    # POS-007 shape: hash over json.dumps of divided geometry floats.
+    src = (
+        "import hashlib, json\n"
+        "def compute_report_id(coords, frequency):\n"
+        "    payload = {\n"
+        "        'x': coords[0] / 1000.0,\n"
+        "        'y': coords[1] / 1000.0,\n"
+        "        'f': frequency,\n"
+        "    }\n"
+        "    return hashlib.sha256(\n"
+        "        json.dumps(payload, sort_keys=True).encode()\n"
+        "    ).hexdigest()\n"
+    )
+    f = _run(tmp_path, src)
+    assert len(f) == 1
+    assert f[0].type is AnalyzerType.CONTEXT_PINNED_HASH
+    assert f[0].metadata["rule_id"] == "CTX_PINNED_HASH_FLOAT_001"
+    assert f[0].metadata["context_axis"] == "float_repr"
+    assert f[0].metadata["mitigation_detected"] is False
+    assert f[0].metadata["mitigation_kind"] is None
+    assert f[0].metadata["context_confirmed"] is False
+    assert f[0].severity is Severity.MEDIUM
+    assert "quantize" in f[0].message.lower()
+    assert "ulp" in f[0].message.lower()
+
+
+def test_float_json_dumps_with_round_is_mitigated(tmp_path):
+    src = (
+        "import hashlib, json\n"
+        "def compute_report_id_safe(coords, frequency):\n"
+        "    payload = {\n"
+        "        'x': round(coords[0] / 1000.0, 9),\n"
+        "        'y': round(coords[1] / 1000.0, 9),\n"
+        "        'f': frequency,\n"
+        "    }\n"
+        "    return hashlib.sha256(\n"
+        "        json.dumps(payload, sort_keys=True).encode()\n"
+        "    ).hexdigest()\n"
+    )
+    f = _run(tmp_path, src)
+    assert len(f) == 1
+    assert f[0].metadata["context_axis"] == "float_repr"
+    assert f[0].metadata["mitigation_detected"] is True
+    assert f[0].metadata["mitigation_kind"] == "floats_quantized"
+    assert f[0].severity is Severity.LOW
+
+
+def test_float_fstring_precision_is_mitigated(tmp_path):
+    src = (
+        "import hashlib\n"
+        "def compute_report_id_fstring(x, y):\n"
+        "    s = f'{x:.9g}|{y:.9g}'\n"
+        "    return hashlib.sha256(s.encode()).hexdigest()\n"
+    )
+    f = _run(tmp_path, src)
+    assert len(f) == 1
+    assert f[0].metadata["context_axis"] == "float_repr"
+    assert f[0].metadata["mitigation_detected"] is True
+    assert f[0].metadata["mitigation_kind"] == "floats_quantized"
+    assert f[0].severity is Severity.LOW
+
+
+def test_plain_byte_hash_no_float_axis(tmp_path):
+    # Line-ending axis may fire; float axis must stay silent.
+    src = (
+        "import hashlib\n"
+        "from pathlib import Path\n"
+        "def hash_plain_bytes(p: Path):\n"
+        "    return hashlib.sha256(p.read_bytes()).hexdigest()\n"
+    )
+    f = _run(tmp_path, src)
+    assert all(x.metadata["context_axis"] != "float_repr" for x in f)
+    assert any(x.metadata["context_axis"] == "line_ending" for x in f)
+
+
+def test_float_axis_emit_branch_not_line_ending_copy(tmp_path):
+    # Integration guard: float findings must not inherit the line-ending fix text.
+    src = (
+        "import hashlib, json\n"
+        "def compute_report_id(coords):\n"
+        "    return hashlib.sha256(json.dumps({'x': coords[0] / 2.0}).encode()).hexdigest()\n"
+    )
+    f = _run(tmp_path, src)
+    assert len(f) == 1
+    assert f[0].metadata["context_axis"] == "float_repr"
+    assert "line ending" not in f[0].message.lower()
+    assert "gitattributes" not in f[0].message.lower()
+    assert "quantize" in f[0].message.lower()
 
 
 # ── helper / wrapper indirection ────────────────────────────────────

@@ -30,6 +30,8 @@ Confidence: no
 Web API: no
 Breaking: no
 
+- `context_pinned_hash` **1.1.0**: add `float_repr` axis (`CTX_PINNED_HASH_FLOAT_001`) for hashes over unquantized float serialisation (POS-007 / `json.dumps` + geometry floats); mitigation `floats_quantized` when `round` / precision format-specs are visible
+
 ## [0.1.0] - 2025-01-01
 
 Schema: no
