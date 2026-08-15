@@ -23,6 +23,23 @@ the manifest). A follow-up pass (v2) reads those artifacts and confirms/clears
 each finding — it enriches this metadata rather than restructuring it, so
 nothing here has to change.
 
+**The float axis is payload-scoped, not function-scoped.** A serialiser call
+(``json.dumps(...)``) only opens the ``float_repr`` axis when *its own argument*
+carries float evidence — a true division, a float literal, a ``float``/``round``/
+``Decimal``/``math.*`` call, or a ``float``-annotated name — resolved one hop
+through local assignments. The same resolution decides mitigation, so a
+``round()`` elsewhere in the function does not silently downgrade an unrelated
+unquantized hash, and hashing ``json.dumps({"name": "x"})`` stays silent.
+Binary serialisers (``pickle``/``marshal``/``msgpack``) write IEEE-754 bytes,
+not shortest-repr text, so they are excluded from the axis entirely.
+
+That resolution is one hop and deliberately buys precision with recall: a
+payload built behind a call (``json.dumps(build_payload())``) or accumulated in
+a loop variable carries no visible evidence, so it is *not* flagged. On a
+detector whose whole value is being believed, a miss costs less than a false
+alarm; the v2 pass, which reads the serialised artifact itself, is where that
+recall comes back.
+
 Fix it emits: *record the context* — normalize the input (LF), pin the generator
 (one interpreter), quantize floats before serialising, or declare the context in
 the manifest — not a one-off regenerate, which only relocates the defect to the
@@ -56,6 +73,20 @@ _VERSION_GUARD_NAMES = frozenset(
 # f-string / format specs that look like float formatting with an explicit
 # precision — e.g. ``.9g``, ``.6f``, ``#.12e`` — count as in-file quantization.
 _FLOAT_QUANTIZE_SPEC = re.compile(r"\.\d+[fgFeE]")
+
+# ``*.dumps`` receivers that emit IEEE-754 bytes rather than shortest-repr text.
+# A float round-trips through these byte-exactly, so they are not on this axis.
+_BINARY_SERIALISER_MODULES = frozenset(
+    {"pickle", "cPickle", "dill", "marshal", "msgpack", "cbor2", "bson", "struct"}
+)
+
+# Modules whose calls return floats — evidence that a serialised payload is
+# float-bearing even when no literal or division is visible at the call site.
+_FLOAT_MODULES = frozenset({"math", "cmath", "statistics", "numpy", "np"})
+
+# Builtins/constructors that produce a float (or a Decimal, which is serialised
+# through ``float()`` by every mainstream JSON encoder).
+_FLOAT_CALL_NAMES = frozenset({"float", "round", "Decimal", "fsum", "mean"})
 
 
 class ContextPinnedHashAnalyzer:
@@ -234,7 +265,7 @@ def _module_has_version_guard(tree: ast.Module) -> bool:
 class _ScopeFeatures:
     __slots__ = (
         "has_hash", "hashes_ast_dump", "hashes_file_bytes",
-        "hashes_serialised_floats", "has_lf_normalize", "has_quantize",
+        "float_sites", "float_quantized_sites", "has_lf_normalize",
         "hash_line",
     )
 
@@ -242,10 +273,22 @@ class _ScopeFeatures:
         self.has_hash = False
         self.hashes_ast_dump = False
         self.hashes_file_bytes = False
-        self.hashes_serialised_floats = False
+        # Float serialisation sites in this scope, and how many of them carry a
+        # visible quantization. Counted per *site* (not a single function-wide
+        # flag) so one quantized site cannot mitigate an unquantized sibling.
+        self.float_sites = 0
+        self.float_quantized_sites = 0
         self.has_lf_normalize = False
-        self.has_quantize = False
         self.hash_line = 0
+
+    @property
+    def hashes_serialised_floats(self) -> bool:
+        return self.float_sites > 0
+
+    @property
+    def has_quantize(self) -> bool:
+        """True only when *every* float serialisation site is quantized."""
+        return self.float_sites > 0 and self.float_quantized_sites == self.float_sites
 
 
 def _hash_wrapper_names(tree: ast.Module) -> frozenset[str]:
@@ -265,6 +308,12 @@ def _scope_features(fn: ast.AST, hash_wrappers: frozenset[str] = frozenset()) ->
     feeds it a context-sensitive input, plus any in-scope mitigation."""
     f = _ScopeFeatures()
     fn_name = getattr(fn, "name", None)
+    # One-hop local dataflow: which expression(s) each local name was bound to,
+    # and which names are declared float. Both scope the float axis to the
+    # serialised *payload* instead of "anything anywhere in this function".
+    assigns = _assignment_map(fn)
+    float_names = _float_annotated_names(fn)
+
     for node in ast.walk(fn):
         if isinstance(node, ast.Call):
             is_hash = _is_hash_constructor(node) or _calls_hash_wrapper(node, hash_wrappers, fn_name)
@@ -278,16 +327,30 @@ def _scope_features(fn: ast.AST, hash_wrappers: frozenset[str] = frozenset()) ->
                 f.hashes_file_bytes = True
             if _is_lf_normalize(node):
                 f.has_lf_normalize = True
-            if _is_serialiser(node):
-                f.hashes_serialised_floats = True
-            if _is_quantiser(node):
-                f.has_quantize = True
+            if _is_payload_serialiser(node):
+                # Only a payload that demonstrably carries floats opens the axis
+                # — ``json.dumps({"name": "x"})`` is not a float hash.
+                has_float = False
+                has_raw = False
+                for arg in node.args:
+                    a_float, a_raw = _payload_float_state(arg, assigns, float_names)
+                    has_float = has_float or a_float
+                    has_raw = has_raw or a_raw
+                if has_float:
+                    f.float_sites += 1
+                    if not has_raw:
+                        f.float_quantized_sites += 1
+            if _call_format_has_float_quantize(node):
+                # ``"{:.9g}".format(x)`` / ``format(x, ".9g")`` — the explicit
+                # precision is both the float evidence and the quantization.
+                f.float_sites += 1
+                f.float_quantized_sites += 1
         elif isinstance(node, ast.JoinedStr):
             serial, quant = _joined_str_float_feats(node)
             if serial:
-                f.hashes_serialised_floats = True
-            if quant:
-                f.has_quantize = True
+                f.float_sites += 1
+                if quant:
+                    f.float_quantized_sites += 1
     return f
 
 
@@ -371,21 +434,26 @@ def _is_lf_normalize(call: ast.Call) -> bool:
     return False
 
 
-def _is_serialiser(call: ast.Call) -> bool:
-    """Detect serializers whose float formatting is platform-/repr-sensitive.
+def _is_payload_serialiser(call: ast.Call) -> bool:
+    """Detect a *text* serialiser whose float output is shortest-repr sensitive.
 
-    Primary POS-007 shape: ``json.dumps(...)`` (and sibling ``*.dumps``) of a
-    payload that includes floats. ``str.format`` / f-strings with an explicit
-    float format-spec are handled via ``_call_format_has_float_quantize`` /
-    ``_joined_str_float_feats`` so plain ``"{}".format(name)`` does not fire.
+    Primary POS-007 shape: ``json.dumps(...)`` (and sibling ``*.dumps``). This
+    predicate answers "is this serialisation?" only — whether the payload is
+    float-bearing is decided separately by ``_node_is_float_evidence`` against
+    the call's own arguments, so ``json.dumps({"name": "x"})`` does not fire.
+
+    Binary ``*.dumps`` (``pickle``/``marshal``/``msgpack``/…) writes IEEE-754
+    bytes, which round-trip exactly, and is excluded.
     """
     fn = call.func
     if isinstance(fn, ast.Attribute) and fn.attr == "dumps":
+        recv = fn.value
+        if isinstance(recv, ast.Name) and recv.id in _BINARY_SERIALISER_MODULES:
+            return False
+        if isinstance(recv, ast.Attribute) and recv.attr in _BINARY_SERIALISER_MODULES:
+            return False
         return True
     if isinstance(fn, ast.Name) and fn.id == "dumps":
-        return True
-    # "{:.9g}".format(x) / format(x, ".9g") — float serialise+quantize in one.
-    if _call_format_has_float_quantize(call):
         return True
     return False
 
@@ -400,6 +468,165 @@ def _is_quantiser(call: ast.Call) -> bool:
     if _call_format_has_float_quantize(call):
         return True
     return False
+
+
+def _is_float_producing_call(call: ast.Call) -> bool:
+    """True when *call* returns a float (or a Decimal serialised as one)."""
+    fn = call.func
+    if isinstance(fn, ast.Name) and fn.id in _FLOAT_CALL_NAMES:
+        return True
+    if isinstance(fn, ast.Attribute):
+        if fn.attr == "quantize":
+            return True
+        if isinstance(fn.value, ast.Name) and fn.value.id in _FLOAT_MODULES:
+            return True
+    return False
+
+
+def _node_is_float_evidence(node: ast.AST, float_names: frozenset[str]) -> bool:
+    """True when *node itself* shows the value being serialised is a float.
+
+    Deliberately narrow — this is what keeps the ``float_repr`` axis off every
+    ``dumps(...)`` of a string/int/bool payload.
+    """
+    if isinstance(node, ast.Constant):
+        # bool is a subclass of int, not float; complex is not shortest-repr.
+        return isinstance(node.value, float)
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div):
+        return True          # true division always yields a float
+    if isinstance(node, ast.AugAssign) and isinstance(node.op, ast.Div):
+        return True
+    if isinstance(node, ast.Call):
+        return _is_float_producing_call(node) or _call_format_has_float_quantize(node)
+    if isinstance(node, ast.Name):
+        return node.id in float_names
+    if isinstance(node, ast.JoinedStr):
+        return _joined_str_float_feats(node)[0]
+    return False
+
+
+def _node_is_quantiser(node: ast.AST) -> bool:
+    """True when *node itself* is a visible float-quantization step."""
+    if isinstance(node, ast.Call):
+        return _is_quantiser(node)
+    if isinstance(node, ast.JoinedStr):
+        return _joined_str_float_feats(node)[1]
+    return False
+
+
+def _target_names(target: ast.AST) -> list[str]:
+    if isinstance(target, ast.Name):
+        return [target.id]
+    if isinstance(target, (ast.Tuple, ast.List)):
+        out: list[str] = []
+        for el in target.elts:
+            out.extend(_target_names(el))
+        return out
+    if isinstance(target, ast.Starred):
+        return _target_names(target.value)
+    return []
+
+
+def _assignment_map(fn: ast.AST) -> dict[str, list[ast.AST]]:
+    """``name -> value expressions bound to it`` within this scope.
+
+    One hop of local dataflow: enough to follow the ubiquitous
+    ``payload = {...}; json.dumps(payload)`` shape without a real solver.
+    """
+    out: dict[str, list[ast.AST]] = {}
+    for node in ast.walk(fn):
+        if isinstance(node, ast.Assign):
+            for tgt in node.targets:
+                for name in _target_names(tgt):
+                    out.setdefault(name, []).append(node.value)
+        elif isinstance(node, (ast.AnnAssign, ast.AugAssign)):
+            if node.value is not None:
+                for name in _target_names(node.target):
+                    out.setdefault(name, []).append(node.value)
+        elif isinstance(node, ast.NamedExpr):
+            for name in _target_names(node.target):
+                out.setdefault(name, []).append(node.value)
+    return out
+
+
+def _payload_float_state(
+    node: ast.AST,
+    assigns: dict[str, list[ast.AST]],
+    float_names: frozenset[str],
+) -> tuple[bool, bool]:
+    """Return ``(has_float, has_unquantized_float)`` for a serialised payload.
+
+    Local names are followed one hop through *assigns*, so the ubiquitous
+    ``payload = {...}; json.dumps(payload)`` shape is seen through. Descent
+    **stops** at a quantization boundary — ``round(...)``, ``.quantize(...)``, a
+    precision format — because everything under it is already pinned.
+
+    Reporting the two flags separately is what stops one quantized field from
+    covering for a raw sibling: ``{"a": round(x, 9), "b": y / 3}`` is float-
+    bearing *and* still unquantized, so it stays MEDIUM.
+    """
+    seen: set[str] = set()
+    has_float = False
+    has_unquantized = False
+
+    def visit(n: ast.AST) -> None:
+        nonlocal has_float, has_unquantized
+        if _node_is_quantiser(n):
+            has_float = True
+            return                              # pinned subtree — do not descend
+        if _node_is_float_evidence(n, float_names):
+            has_float = True
+            has_unquantized = True
+        if isinstance(n, ast.Name) and n.id not in seen:
+            values = assigns.get(n.id)
+            if values:
+                seen.add(n.id)                  # terminates ``x = x / 2``
+                for value in values:
+                    visit(value)
+        for child in ast.iter_child_nodes(n):
+            visit(child)
+
+    visit(node)
+    return has_float, has_unquantized
+
+
+def _annotation_is_float(ann: ast.AST | None) -> bool:
+    if ann is None:
+        return False
+    if isinstance(ann, ast.Name):
+        return ann.id in {"float", "Decimal"}
+    if isinstance(ann, ast.Attribute):
+        return ann.attr in {"float", "Decimal"}
+    if isinstance(ann, ast.Constant) and isinstance(ann.value, str):
+        return "float" in ann.value or "Decimal" in ann.value
+    if isinstance(ann, ast.Subscript):   # list[float], Optional[float], dict[str, float]
+        return _annotation_is_float(ann.slice)
+    if isinstance(ann, ast.Tuple):
+        return any(_annotation_is_float(e) for e in ann.elts)
+    if isinstance(ann, ast.BinOp):       # float | None
+        return _annotation_is_float(ann.left) or _annotation_is_float(ann.right)
+    return False
+
+
+def _float_annotated_names(fn: ast.AST) -> frozenset[str]:
+    """Parameters / locals declared ``float`` — evidence without a literal."""
+    names: set[str] = set()
+    args = getattr(fn, "args", None)
+    if isinstance(args, ast.arguments):
+        declared = [*args.posonlyargs, *args.args, *args.kwonlyargs]
+        if args.vararg is not None:
+            declared.append(args.vararg)
+        if args.kwarg is not None:
+            declared.append(args.kwarg)
+        for a in declared:
+            if _annotation_is_float(a.annotation):
+                names.add(a.arg)
+    for node in ast.walk(fn):
+        if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            if _annotation_is_float(node.annotation):
+                names.add(node.target.id)
+    return frozenset(names)
+
 
 def _call_format_has_float_quantize(call: ast.Call) -> bool:
     fn = call.func
@@ -416,35 +643,54 @@ def _call_format_has_float_quantize(call: ast.Call) -> bool:
     return False
 
 
-def _format_spec_text(spec: ast.AST | None) -> str:
+def _format_spec_parts(spec: ast.AST | None) -> tuple[str, bool]:
+    """Return ``(constant_text, has_dynamic_part)`` for an f-string format spec.
+
+    ``has_dynamic_part`` is True for a computed precision — ``f"{x:.{p}f}"``,
+    whose constant text is only ``".f"`` and so never matches the precision
+    regex even though the author *did* pin the precision.
+    """
     if spec is None:
-        return ""
+        return "", False
     if isinstance(spec, ast.JoinedStr):
         parts: list[str] = []
+        dynamic = False
         for v in spec.values:
             if isinstance(v, ast.Constant) and isinstance(v.value, str):
                 parts.append(v.value)
-        return "".join(parts)
-    return ""
+            else:
+                dynamic = True
+        return "".join(parts), dynamic
+    if isinstance(spec, ast.Constant) and isinstance(spec.value, str):
+        return spec.value, False
+    return "", False
 
 
 def _joined_str_float_feats(node: ast.JoinedStr) -> tuple[bool, bool]:
     """Return ``(is_float_serialiser, is_quantised)`` for an f-string.
 
-    An f-string with an explicit float format-spec (``.9g``, ``.6f``, …) is both
-    a float serialiser and an in-file quantization signal — the POS-007-safe
-    ``f"{x:.9g}"`` shape.
+    A field whose format-spec ends in a float presentation type (``g``/``f``/
+    ``e``) serialises a float. It counts as quantised only when the spec carries
+    an **explicit** precision (``.9g``, ``.6f``) or a computed one
+    (``f"{x:.{p}f}"``) — the POS-007-safe shape.
+
+    ``is_quantised`` requires *every* float-formatted field to be quantised: one
+    bare ``f"{x:g}"`` leaves the whole string shortest-repr sensitive. Fields
+    with no float format-spec (``f"{name}"``) are ignored either way — nothing
+    marks them as floats.
     """
     serial = False
-    quant = False
+    unquantized = 0
     for v in node.values:
         if not isinstance(v, ast.FormattedValue):
             continue
-        text = _format_spec_text(v.format_spec)
+        text, dynamic = _format_spec_parts(v.format_spec)
         if not text:
             continue
-        if text[-1:] in "fgFeE" or _FLOAT_QUANTIZE_SPEC.search(text):
-            serial = True
-        if _FLOAT_QUANTIZE_SPEC.search(text):
-            quant = True
-    return serial, quant
+        has_precision = bool(_FLOAT_QUANTIZE_SPEC.search(text))
+        if not (has_precision or text[-1:] in "fgFeE"):
+            continue
+        serial = True
+        if not (has_precision or (dynamic and "." in text)):
+            unquantized += 1
+    return serial, serial and unquantized == 0
