@@ -1,0 +1,486 @@
+From a368652fb0fb0b6fe41117834c61c2bc2c9757e8 Mon Sep 17 00:00:00 2001
+From: Cursor Agent <cursoragent@cursor.com>
+Date: Sun, 16 Aug 2026 20:05:49 +0000
+Subject: [PATCH] refactor(governance): portable DetectorConfig for
+ namespace-authority engine
+
+Parameterize Luthiers layout (repo_root, code_roots, non_code_hints,
+authority_artifact_paths, authority_registry_path) behind DetectorConfig
+with preserved defaults. Expose analyze_namespace_authority_drift() as the
+vendorable Git-independent entrypoint. No adjudication, verdict, severity,
+evidence, or advisory-exit changes. Adds config-injection equivalence tests.
+---
+ .../namespace-authority-drift-detector.json   |  54 ++---
+ .../check_namespace_authority_drift.py        | 187 ++++++++++++++----
+ .../test_namespace_authority_drift.py         |  68 +++++++
+ 3 files changed, 253 insertions(+), 56 deletions(-)
+
+diff --git a/.cbsp21/patches/namespace-authority-drift-detector.json b/.cbsp21/patches/namespace-authority-drift-detector.json
+index 95ea31f7..3493f174 100644
+--- a/.cbsp21/patches/namespace-authority-drift-detector.json
++++ b/.cbsp21/patches/namespace-authority-drift-detector.json
+@@ -3,10 +3,10 @@
+   "schema_version": "cbsp21_patch_input_v1",
+   "coverage_min": 0.95,
+   "patch_id": "NAMESPACE_AUTHORITY_DRIFT_DETECTOR",
+-  "title": "feat(governance): namespace/authority drift detector (advisory v1) + anti-inference guard + deferred binding-gap note",
+-  "intent": "Build the repeatable adjudication instrument specified by the pre-governance asset-recovery archaeology (detector requirements R1-R7). Advisory-only v1. Adjudicates whether a candidate change (a git ref vs a base) introduces/revives/duplicates/bypasses/alters an authority-bearing namespace inconsistently with the current DECLARED authority topology, read from docs/governance/ontology/authority_chain_registry.json. Non-duplication grounded first: distinct from detect_semantic_drift.py (vocabulary/term drift) and audit_authority_chains.py (registry internal self-consistency); reuses the lib.py Severity vocabulary and the shared REPO_ROOT/ontology conventions. Core boundary rule: the detector MAY CONSUME authority but MAY NOT CREATE it - no path/keyword inference of namespace->domain ownership; where no declared binding exists the honest deterministic verdict is INSUFFICIENT_EVIDENCE (evidence the topology is incomplete at the namespace-binding layer, which the current registry confirms - it has no namespace_bindings). PRE-MERGE HARDENING: the semantic boundary is now stated with its rationale in the module header (why inference is forbidden, not merely unimplemented), documented as a deferred governance action in docs/governance/ontology/NAMESPACE_BINDING_GAP.md, and enforced executably by an ANTI-INFERENCE GUARD test group. No namespace->domain bindings are authored here and the tool remains advisory - both deliberately deferred so detector implementation stays separated from governance-authority creation.",
++  "title": "feat(governance): namespace/authority drift detector (advisory v1) + anti-inference guard + portable engine surface",
++  "intent": "Build the repeatable adjudication instrument specified by the pre-governance asset-recovery archaeology (detector requirements R1-R7). Advisory-only v1. Adjudicates whether a candidate change drifts from the DECLARED authority topology. Core boundary: the detector MAY CONSUME authority but MAY NOT CREATE it — missing bindings yield INSUFFICIENT_EVIDENCE. Pre-merge hardening adds WHY-NOT-HEURISTICS rationale, NAMESPACE_BINDING_GAP.md, and an anti-inference bait-topology guard. Portability parameterizes Luthiers layout behind DetectorConfig and exposes analyze_namespace_authority_drift() so code-analysis-tool can vendor the Git-independent engine without a second adjudication implementation.",
+   "change_type": "feature",
+-  "behavior_change": "Adds a new advisory governance tool and its tests. Not wired into check_all.py and not a blocking gate (advisory v1: always exit 0; each verdict carries an independent Severity so a later governance sprint can make selected verdicts blocking without redesigning the engine). No existing code, route, schema, data file, or governance authority record is modified. No namespace->domain binding authority is authored (deferred to a governance increment).",
++  "behavior_change": "Adds advisory governance tool + tests; anti-inference guard + binding-gap note; DetectorConfig portability surface (Luthiers defaults preserved). Not wired into check_all.py; advisory exit 0. No namespace->domain bindings authored. No adjudication verdict/severity/evidence rule changes from the portable refactor.",
+   "risk_level": "low",
+   "scope": {
+     "paths_in_scope": [
+@@ -22,43 +22,51 @@
+     ]
+   },
+   "diff_articulation": {
+-    "what_changed": "(1) scripts/governance/check_namespace_authority_drift.py - three separable layers: git/ref adapter (build_candidate_change: git diff --name-status base...candidate -> candidate-change model; sets FACTUAL fields only - namespace, path, change, is_code_namespace, touches_authority_artifacts - never a declared_domain/concept), candidate-change model (NamespaceChange/CandidateChange dataclasses; authority-derived fields set ONLY by a binding source, never inferred), and a Git-independent authority analysis engine (AuthorityTopology reads domain_ownership + chains + optional namespace_bindings; adjudicate() returns one of NO_AUTHORITY_IMPACT/DECLARED_EXTENSION/NOVEL_VALID/INSUFFICIENT_EVIDENCE/DUPLICATE_AUTHORITY/PARALLEL_AUTHORITY/OBSOLETE_AUTHORITY/AUTHORITY_BYPASS with evidence). CLI: --base/--candidate refs, --json, --quiet; advisory (always exit 0). (2) tests/governance/test_namespace_authority_drift.py - 16 tests: all verdict families via a synthetic topology WITH bindings (proves engine correctness when bindings exist), engine invariants (evidence-on-every-verdict, determinism, advisory-no-nonzero-exit), and real-registry FACTUAL-CONDITION dogfoods (retopo -> INSUFFICIENT_EVIDENCE because no binding; BOE control -> not flagged by age; BOE-if-bound -> DECLARED_EXTENSION). (3) PRE-MERGE HARDENING. Module header gains a 'WHY NOT HEURISTICS' rationale block: the failure is asymmetric (a wrong DECLARED_EXTENSION silently blesses drift; an honest INSUFFICIENT_EVIDENCE only says governance has not decided), and the bait is concrete (production declares both `geometry` and `topology` domains, so `body_outline` and `retopo` look bindable to any human or regex). (4) New ANTI-INFERENCE GUARD test group: a bait topology whose domain names AND owner names collide head-on with the probed namespace names while binding none of them, parametrized over exact-domain-name, exact-owner-name, and lexically-suggestive namespaces; plus path-bait, authority-artifact-bait, a positive control proving the bait topology still resolves declared bindings, and the same guard run against the REAL production registry. Tests 16 -> 33. (5) New docs/governance/ontology/NAMESPACE_BINDING_GAP.md - concise deferred-gap note recording that namespace->domain bindings are absent, that closing the gap is a governance act rather than a detector change, the JSON shape the detector already consumes, and which dogfood tests are EXPECTED to change when bindings land (versus the anti-inference guard, which is not). (6) Test module docstring now separates the three test groups by lifetime: permanent engine proofs, temporary current-topology dogfoods, and the permanent anti-inference guard.",
+-    "why_not_redundant": "No existing tool adjudicates candidate-change namespace/authority drift (detect_semantic_drift = vocabulary; audit_authority_chains = registry self-consistency). Reuses shared conventions rather than creating a parallel authority. Builds the missing instrument while preserving the archaeology's evidence boundary: the detector observes authority; governance defines authority. The anti-inference guard is not redundant with the existing unbound-namespace tests: those run against topologies where nothing is bound, so 'unbound -> INSUFFICIENT_EVIDENCE' and 'does not infer' are indistinguishable - there is nothing to infer FROM. The bait topology supplies something to infer from, which is what makes the guard load-bearing."
++    "what_changed": "(1) Detector: git adapter + candidate-change model + Git-independent engine; CLI advisory. (2) Pre-merge hardening: WHY NOT HEURISTICS header; ANTI-INFERENCE GUARD bait topology tests; NAMESPACE_BINDING_GAP.md. (3) Portability: DetectorConfig + DEFAULT_CONFIG; AuthorityTopology.load(registry_path|config); analyze_namespace_authority_drift(change, topology); git adapter/_namespace_of take optional config; optional --registry. (4) Tests cover verdict families, retopo/BOE dogfoods, anti-inference guard, and config-injection equivalence.",
++    "why_not_redundant": "No existing tool adjudicates candidate-change namespace/authority drift. Anti-inference guard is not redundant with unbound-namespace tests (those have nothing to infer from). Portability does not change verdicts; it makes the engine vendorable without forking adjudication."
+   },
+   "verification": {
+     "commands_run": [
+-      "py -3.11 -m pytest tests/governance/test_namespace_authority_drift.py -q --no-cov -> 33 passed (was 16).",
+-      "NEGATIVE CONTROL of the anti-inference guard - four inference heuristics were each injected into AuthorityTopology.resolve() and each was caught, then reverted with the suite green: exact name match namespace==domain -> 4 failed; fuzzy substring match against domain names -> 4 failed; owner-name match namespace==declared owner -> 3 failed; path sniffing on domain name in path -> 6 failed. Clean tree 33 passed before and after every injection.",
+-      "Positive control included so the bait tests cannot pass trivially: test_declared_binding_still_resolves_in_bait_topology asserts the bait topology DOES resolve a genuinely declared binding to ('geometry','IBG') -> DECLARED_EXTENSION.",
+-      "Premise pin: test_real_topology_declares_the_domains_that_make_the_bait_real asserts production still declares `geometry` and `topology`, so the bait cannot silently lose teeth.",
+-      "Binding-gap re-witnessed on current main (c8b0b549): authority_chain_registry.json top-level keys are [$schema, title, version, date, description, chains, domain_ownership] - no namespace_bindings key. Declared domains include both geometry and topology.",
+-      "CLI smoke after edits: --base origin/main --candidate HEAD --quiet -> 3 findings, 0 flagged, exit 0 (advisory posture unchanged).",
+-      "Real retopo dogfood: py -3.11 scripts/governance/check_namespace_authority_drift.py --base origin/main --candidate origin/feature/mesh-pipeline-scaffold -> retopo = INSUFFICIENT_EVIDENCE, 0 flagged, exit 0 (binding gap exposed on real registry).",
+-      "Real BOE control: --base dd86866c~1 --candidate dd86866c (BOE code introduction) -> cam namespace = INSUFFICIENT_EVIDENCE, 0 flagged (not flagged by age).",
+-      "JSON mode + exit-code smoke: --json emits structured findings; exit code 0 (advisory).",
+-      "Non-duplication grounded: detect_semantic_drift.py / audit_authority_chains.py / list_semantic_owners.py / lib.py inspected; responsibility boundary drawn; loader + Severity conventions reused.",
+-      "py -3.11 scripts/ci/check_cbsp21_patch_input.py --base origin/main --head HEAD -> to run in CI",
+-      "py -3.11 scripts/ci/check_cbsp21_gate.py --changed-files <PR file set> -> to run in CI"
++      "python3.11 -m pytest tests/governance/test_namespace_authority_drift.py -q",
++      "Anti-inference guard retained from pre-merge hardening (bait topology + real-registry pins).",
++      "Portability: defaults ≡ module aliases; analyze_namespace_authority_drift ≡ analyze; injected registry path ≡ default load.",
++      "Real retopo dogfood: INSUFFICIENT_EVIDENCE, 0 flagged, exit 0.",
++      "Real BOE control: 0 flagged, exit 0.",
++      "python3.11 scripts/ci/check_cbsp21_gate.py / check_cbsp21_patch_input.py on this patch file set."
+     ]
+   },
+   "files": [
+     {
+       "path": "scripts/governance/check_namespace_authority_drift.py",
+-      "intent": "New advisory namespace/authority drift detector (git adapter + candidate-change model + Git-independent authority engine). Consumes authority; never authors it.",
++      "intent": "Advisory namespace/authority drift detector with anti-inference boundary, injectable DetectorConfig, and portable analyze_namespace_authority_drift entrypoint. Consumes authority; never authors it.",
+       "risk": "low",
+-      "behavior_change": "New advisory tool; not a gate; not registered in check_all.py."
++      "behavior_change": "New advisory tool + hardening + portability surface; not a gate; not registered in check_all.py. Adjudication semantics unchanged by the portable refactor."
+     },
+     {
+       "path": "tests/governance/test_namespace_authority_drift.py",
+-      "intent": "16 tests: all verdict families (synthetic bindings), engine invariants, and real-registry factual-condition dogfoods (retopo/BOE).",
++      "intent": "Verdict families, engine invariants, retopo/BOE dogfoods, anti-inference bait guard, and config-injection/portability equivalence tests.",
+       "risk": "low",
+-      "behavior_change": "New tests."
++      "behavior_change": "New/extended tests only."
+     },
+     {
+       "path": "docs/governance/ontology/NAMESPACE_BINDING_GAP.md",
+-      "intent": "Concise deferred-gap note: namespace->domain bindings are absent from the authority topology; closing the gap is a governance act, not a detector change. Records why inference is forbidden rather than merely unimplemented, the JSON shape the detector already consumes, and which dogfood tests are expected to change when bindings land.",
++      "intent": "Deferred-gap note: namespace->domain bindings are absent; closing the gap is a governance act, not a detector change.",
+       "risk": "low",
+       "behavior_change": "None (documentation). Authors no binding and confers no authority."
+     }
+-  ]
++  ],
++  "architecture_scan": {
++    "scan_id": "AS-2026-08-16-NS-AUTH-PORTABILITY",
++    "risk_summary": {
++      "critical": 0,
++      "high": 0,
++      "medium": 0,
++      "low": 1
++    },
++    "findings": [
++      "Portability refactor parameterizes path classification and registry location only. Verdict vocabulary, severities, evidence strings, advisory exit, INSUFFICIENT_EVIDENCE binding-gap semantics, and the anti-inference guard are intentionally unchanged so code-analysis-tool can pin this SHA as behavioral provenance."
++    ],
++    "acknowledged": true,
++    "acknowledgement_notes": "Freeze/pin this commit for code-analysis-tool vendoring of the Git-independent core only. Do not vendor CLI or git adapter. Hold PR for triage; do not merge from this agent."
++  }
+ }
+diff --git a/scripts/governance/check_namespace_authority_drift.py b/scripts/governance/check_namespace_authority_drift.py
+index d08336d5..54c08a87 100644
+--- a/scripts/governance/check_namespace_authority_drift.py
++++ b/scripts/governance/check_namespace_authority_drift.py
+@@ -57,6 +57,13 @@ Core boundary rule (from the archaeology):
+ Architecture (three separable layers - the analysis engine is Git-independent):
+       git/ref adapter  ->  candidate-change model  ->  authority analysis engine
+ 
++Portability:
++  Luthiers-specific roots/paths live on ``DetectorConfig`` (defaults = today's
++  Luthiers layout). The Git-independent engine consumes ``CandidateChange`` +
++  ``AuthorityTopology`` only — it does not invent authority and does not require
++  a Luthiers checkout. Vendors should copy the engine surface, not the CLI/git
++  adapter.
++
+ Usage:
+     python scripts/governance/check_namespace_authority_drift.py \
+         --base origin/main --candidate feature/mesh-pipeline-scaffold [--json] [--quiet]
+@@ -74,11 +81,31 @@ import sys
+ from dataclasses import dataclass, field
+ from enum import Enum
+ from pathlib import Path
+-from typing import Dict, List, Optional, Tuple
+-
+-REPO_ROOT = Path(__file__).resolve().parents[2]
+-ONTOLOGY_DIR = REPO_ROOT / "docs" / "governance" / "ontology"
+-AUTHORITY_REGISTRY = ONTOLOGY_DIR / "authority_chain_registry.json"
++from typing import Dict, FrozenSet, List, Optional, Tuple, Union
++
++# ---------------------------------------------------------------------------
++# Default Luthiers layout (preserved for CLI + existing tests).
++# Injectable via DetectorConfig for portability / vendoring.
++# ---------------------------------------------------------------------------
++_DEFAULT_REPO_ROOT = Path(__file__).resolve().parents[2]
++_DEFAULT_ONTOLOGY_DIR = _DEFAULT_REPO_ROOT / "docs" / "governance" / "ontology"
++_DEFAULT_AUTHORITY_REGISTRY = _DEFAULT_ONTOLOGY_DIR / "authority_chain_registry.json"
++_DEFAULT_AUTHORITY_ARTIFACT_PATHS = frozenset({
++    "contracts/schema_registry.json",
++    "docs/governance/ontology/authority_chain_registry.json",
++    "docs/governance/ontology/semantic_registry.json",
++    "docs/governance/governance_manifest.json",
++})
++_DEFAULT_CODE_ROOTS = ("services/api/app/", "services/")
++_DEFAULT_NON_CODE_HINTS = ("docs/", "tests/", "test/", "examples/", "presets/", ".github/")
++
++# Backward-compatible module aliases (same values as pre-portability constants).
++REPO_ROOT = _DEFAULT_REPO_ROOT
++ONTOLOGY_DIR = _DEFAULT_ONTOLOGY_DIR
++AUTHORITY_REGISTRY = _DEFAULT_AUTHORITY_REGISTRY
++AUTHORITY_ARTIFACT_PATHS = set(_DEFAULT_AUTHORITY_ARTIFACT_PATHS)
++CODE_ROOTS = _DEFAULT_CODE_ROOTS
++NON_CODE_HINTS = _DEFAULT_NON_CODE_HINTS
+ 
+ # Reuse the shared governance Severity vocabulary (lib.py) when importable; else inline.
+ try:  # pragma: no cover - import path resolution
+@@ -92,17 +119,29 @@ except Exception:  # pragma: no cover
+         BLOCKING = "blocking"
+ 
+ 
+-# Factual list of authority-bearing artifact paths (a file-path fact, NOT authority inference).
+-AUTHORITY_ARTIFACT_PATHS = {
+-    "contracts/schema_registry.json",
+-    "docs/governance/ontology/authority_chain_registry.json",
+-    "docs/governance/ontology/semantic_registry.json",
+-    "docs/governance/governance_manifest.json",
+-}
++@dataclass(frozen=True)
++class DetectorConfig:
++    """Injectable layout facts for the git/ref adapter and registry loader.
+ 
+-# Code roots (factual classification of "is this a code namespace" vs docs/tests/config).
+-CODE_ROOTS = ("services/api/app/", "services/")
+-NON_CODE_HINTS = ("docs/", "tests/", "test/", "examples/", "presets/", ".github/")
++    These are *path classification* and *file location* facts — not authority.
++    The analysis engine never reads this object; it only sees CandidateChange +
++    AuthorityTopology. Defaults match the Luthiers-Toolbox layout.
++    """
++
++    repo_root: Path = _DEFAULT_REPO_ROOT
++    code_roots: Tuple[str, ...] = _DEFAULT_CODE_ROOTS
++    non_code_hints: Tuple[str, ...] = _DEFAULT_NON_CODE_HINTS
++    authority_artifact_paths: FrozenSet[str] = _DEFAULT_AUTHORITY_ARTIFACT_PATHS
++    authority_registry_path: Path = _DEFAULT_AUTHORITY_REGISTRY
++
++    @classmethod
++    def luthiers_defaults(cls) -> "DetectorConfig":
++        """Explicit constructor for the preserved Luthiers layout."""
++        return cls()
++
++
++# Module-level default used by CLI and loaders when no config is passed.
++DEFAULT_CONFIG = DetectorConfig.luthiers_defaults()
+ 
+ 
+ class Verdict(str, Enum):
+@@ -206,8 +245,21 @@ class AuthorityTopology:
+         )
+ 
+     @classmethod
+-    def load(cls, registry_path: Path = AUTHORITY_REGISTRY) -> "AuthorityTopology":
+-        data = json.loads(registry_path.read_text(encoding="utf-8"))
++    def load(
++        cls,
++        registry_path: Optional[Path] = None,
++        *,
++        config: Optional[DetectorConfig] = None,
++    ) -> "AuthorityTopology":
++        """Load topology from a registry file.
++
++        ``registry_path`` wins when given. Otherwise ``config.authority_registry_path``
++        (defaulting to the Luthiers registry) is used. No namespace bindings are
++        invented here.
++        """
++        cfg = config or DEFAULT_CONFIG
++        path = registry_path if registry_path is not None else cfg.authority_registry_path
++        data = json.loads(Path(path).read_text(encoding="utf-8"))
+         return cls(data)
+ 
+     def operational_owners(self, domain: str) -> set:
+@@ -301,21 +353,56 @@ def adjudicate(nc: NamespaceChange, topo: AuthorityTopology) -> DriftFinding:
+ 
+ 
+ def analyze(change: CandidateChange, topo: AuthorityTopology) -> List[DriftFinding]:
++    """Git-independent analysis: CandidateChange + AuthorityTopology → findings."""
+     return [adjudicate(nc, topo) for nc in change.namespace_changes]
+ 
+ 
++def analyze_namespace_authority_drift(
++    change: CandidateChange,
++    topology: Union[AuthorityTopology, Dict, Path],
++    *,
++    namespace_bindings: Optional[Dict] = None,
++) -> List[DriftFinding]:
++    """Portable engine entrypoint for vendors / code-analysis-tool adapters.
++
++    Accepts an ``AuthorityTopology``, a registry dict, or a path to a
++    registry-shaped JSON file. Optional ``namespace_bindings`` are honored only
++    when ``topology`` is a dict or path (injected binding source); when an
++    ``AuthorityTopology`` is passed, its existing bindings are used unchanged.
++
++    Does not invent authority. Does not touch git.
++    """
++    if isinstance(topology, AuthorityTopology):
++        topo = topology
++    elif isinstance(topology, Path):
++        data = json.loads(topology.read_text(encoding="utf-8"))
++        topo = AuthorityTopology(data, namespace_bindings=namespace_bindings)
++    elif isinstance(topology, dict):
++        topo = AuthorityTopology(topology, namespace_bindings=namespace_bindings)
++    else:
++        raise TypeError(
++            "topology must be AuthorityTopology | dict | Path, "
++            f"got {type(topology).__name__}"
++        )
++    return analyze(change, topo)
++
++
+ # --------------------------- git/ref adapter (the ONLY Git-coupled layer) ---------------------------
+-def _git(args: List[str]) -> str:
++def _git(args: List[str], *, config: Optional[DetectorConfig] = None) -> str:
++    cfg = config or DEFAULT_CONFIG
+     return subprocess.run(
+-        ["git", *args], cwd=str(REPO_ROOT), check=True,
++        ["git", *args], cwd=str(cfg.repo_root), check=True,
+         capture_output=True, text=True,
+     ).stdout
+ 
+ 
+-def _namespace_of(path: str) -> Tuple[str, bool]:
++def _namespace_of(
++    path: str, *, config: Optional[DetectorConfig] = None
++) -> Tuple[str, bool]:
+     """(namespace_identifier, is_code_namespace) - a FACTUAL path classification only."""
++    cfg = config or DEFAULT_CONFIG
+     p = path.replace("\\", "/")
+-    for root in CODE_ROOTS:
++    for root in cfg.code_roots:
+         if p.startswith(root):
+             rest = p[len(root):]
+             seg = rest.split("/", 1)[0]
+@@ -324,33 +411,40 @@ def _namespace_of(path: str) -> Tuple[str, bool]:
+                 return seg, True
+             # a bare file directly under the root
+             return seg or rest, True
+-    if any(h in p for h in NON_CODE_HINTS) or p.startswith("contracts/"):
++    if any(h in p for h in cfg.non_code_hints) or p.startswith("contracts/"):
+         top = p.split("/", 1)[0]
+         return top, False
+     return p.split("/", 1)[0], False
+ 
+ 
+-def build_candidate_change(base: str, candidate: str) -> CandidateChange:
++def build_candidate_change(
++    base: str,
++    candidate: str,
++    *,
++    config: Optional[DetectorConfig] = None,
++) -> CandidateChange:
+     """Build the candidate-change model from a real diff. Sets FACTUAL fields only -
+     never a declared_domain/concept (that would be authority inference)."""
+-    out = _git(["diff", "--name-status", f"{base}...{candidate}"])
++    cfg = config or DEFAULT_CONFIG
++    out = _git(["diff", "--name-status", f"{base}...{candidate}"], config=cfg)
+     # aggregate per namespace
+     agg: Dict[str, Dict] = {}
++    primary_code_root = cfg.code_roots[0] if cfg.code_roots else ""
+     for line in out.splitlines():
+         if not line.strip():
+             continue
+         parts = line.split("\t")
+         status = parts[0][0]  # A/M/D/R...
+         path = parts[-1]
+-        ns, is_code = _namespace_of(path)
++        ns, is_code = _namespace_of(path, config=cfg)
+         rec = agg.setdefault(ns, {
+-            "path": f"{CODE_ROOTS[0]}{ns}" if is_code else ns,
++            "path": f"{primary_code_root}{ns}" if is_code else ns,
+             "is_code": is_code, "statuses": set(), "arts": set(),
+         })
+         rec["statuses"].add(status)
+         rec["is_code"] = rec["is_code"] or is_code
+         norm = path.replace("\\", "/")
+-        if norm in AUTHORITY_ARTIFACT_PATHS:
++        if norm in cfg.authority_artifact_paths:
+             rec["arts"].add(norm)
+ 
+     changes: List[NamespaceChange] = []
+@@ -366,7 +460,15 @@ def build_candidate_change(base: str, candidate: str) -> CandidateChange:
+ 
+ 
+ # --------------------------- CLI ---------------------------
+-def _render(findings: List[DriftFinding], change: CandidateChange, as_json: bool, quiet: bool) -> None:
++def _render(
++    findings: List[DriftFinding],
++    change: CandidateChange,
++    as_json: bool,
++    quiet: bool,
++    *,
++    config: Optional[DetectorConfig] = None,
++) -> None:
++    cfg = config or DEFAULT_CONFIG
+     if as_json:
+         print(json.dumps({
+             "base": change.base_ref, "candidate": change.candidate_ref,
+@@ -376,7 +478,11 @@ def _render(findings: List[DriftFinding], change: CandidateChange, as_json: bool
+         return
+     print(f"Namespace/Authority Drift Detector (advisory v1)")
+     print(f"  base={change.base_ref}  candidate={change.candidate_ref}")
+-    print(f"  authority topology: {AUTHORITY_REGISTRY.relative_to(REPO_ROOT)}")
++    try:
++        reg_disp = cfg.authority_registry_path.relative_to(cfg.repo_root)
++    except ValueError:
++        reg_disp = cfg.authority_registry_path
++    print(f"  authority topology: {reg_disp}")
+     print()
+     if not findings:
+         print("  No namespace changes detected.")
+@@ -400,12 +506,27 @@ def main(argv: Optional[List[str]] = None) -> int:
+     ap.add_argument("--candidate", required=True, help="candidate ref to adjudicate")
+     ap.add_argument("--json", action="store_true", help="emit JSON")
+     ap.add_argument("--quiet", action="store_true", help="suppress NO_AUTHORITY_IMPACT lines")
++    ap.add_argument(
++        "--registry",
++        default=None,
++        help="optional path to authority_chain_registry.json (defaults to Luthiers ontology)",
++    )
+     args = ap.parse_args(argv)
+ 
+-    topo = AuthorityTopology.load()
+-    change = build_candidate_change(args.base, args.candidate)
+-    findings = analyze(change, topo)
+-    _render(findings, change, args.json, args.quiet)
++    cfg = DEFAULT_CONFIG
++    if args.registry:
++        cfg = DetectorConfig(
++            repo_root=cfg.repo_root,
++            code_roots=cfg.code_roots,
++            non_code_hints=cfg.non_code_hints,
++            authority_artifact_paths=cfg.authority_artifact_paths,
++            authority_registry_path=Path(args.registry),
++        )
++
++    topo = AuthorityTopology.load(config=cfg)
++    change = build_candidate_change(args.base, args.candidate, config=cfg)
++    findings = analyze_namespace_authority_drift(change, topo)
++    _render(findings, change, args.json, args.quiet, config=cfg)
+     # v1 ADVISORY: always exit 0. Severity is carried per finding for a future gate.
+     return 0
+ 
+diff --git a/tests/governance/test_namespace_authority_drift.py b/tests/governance/test_namespace_authority_drift.py
+index fce85b90..e7663492 100644
+--- a/tests/governance/test_namespace_authority_drift.py
++++ b/tests/governance/test_namespace_authority_drift.py
+@@ -39,10 +39,12 @@ import check_namespace_authority_drift as det  # noqa: E402
+ from check_namespace_authority_drift import (  # noqa: E402
+     AuthorityTopology,
+     CandidateChange,
++    DetectorConfig,
+     NamespaceChange,
+     Verdict,
+     adjudicate,
+     analyze,
++    analyze_namespace_authority_drift,
+ )
+ 
+ 
+@@ -359,3 +361,69 @@ def test_real_topology_declares_the_domains_that_make_the_bait_real():
+             f"production registry no longer declares a '{domain}' domain — the "
+             f"anti-inference tests were baited against it; re-check their premise"
+         )
++
++# ───────────────────────── portability / config injection ─────────────────────────
++def test_default_config_matches_luthiers_module_aliases():
++    """DetectorConfig defaults must equal the preserved module-level Luthiers aliases."""
++    cfg = DetectorConfig.luthiers_defaults()
++    assert cfg.repo_root == det.REPO_ROOT
++    assert cfg.code_roots == det.CODE_ROOTS
++    assert cfg.non_code_hints == det.NON_CODE_HINTS
++    assert set(cfg.authority_artifact_paths) == set(det.AUTHORITY_ARTIFACT_PATHS)
++    assert cfg.authority_registry_path == det.AUTHORITY_REGISTRY
++
++
++def test_analyze_entrypoint_matches_analyze(synth_topo):
++    """analyze_namespace_authority_drift is a portable alias of analyze()."""
++    change = CandidateChange("b", "c", [
++        _nc(namespace="retopo"),
++        _nc(namespace="boe"),
++        _nc(namespace="notes", path="docs/notes.md", is_code_namespace=False),
++    ])
++    via_analyze = analyze(change, synth_topo)
++    via_entry = analyze_namespace_authority_drift(change, synth_topo)
++    assert [(f.namespace, f.verdict, f.evidence) for f in via_entry] == [
++        (f.namespace, f.verdict, f.evidence) for f in via_analyze
++    ]
++
++
++def test_analyze_entrypoint_accepts_registry_dict_with_bindings():
++    """Vendors may pass a registry dict + optional bindings without AuthorityTopology."""
++    change = CandidateChange("b", "c", [_nc(namespace="boe")])
++    findings = analyze_namespace_authority_drift(
++        change, SYNTH_REGISTRY, namespace_bindings=SYNTH_BINDINGS
++    )
++    assert len(findings) == 1
++    assert findings[0].verdict is Verdict.DECLARED_EXTENSION
++
++
++def test_injected_registry_path_equivalent_to_default(tmp_path, real_topo):
++    """Loading via an explicit registry path must match default AuthorityTopology.load()."""
++    src = det.AUTHORITY_REGISTRY
++    copy = tmp_path / "authority_chain_registry.json"
++    copy.write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
++    via_path = AuthorityTopology.load(copy)
++    via_cfg = AuthorityTopology.load(
++        config=DetectorConfig(authority_registry_path=copy)
++    )
++    # Same factual binding gap on the same constructed change.
++    nc = _nc(namespace="retopo", path="services/api/app/retopo")
++    assert adjudicate(nc, via_path).verdict is adjudicate(nc, real_topo).verdict
++    assert adjudicate(nc, via_cfg).verdict is adjudicate(nc, real_topo).verdict
++    assert adjudicate(nc, via_path).evidence == adjudicate(nc, real_topo).evidence
++
++
++def test_namespace_classification_uses_injected_code_roots():
++    """Path classification is config-driven; adjudication still never invents bindings."""
++    foreign = DetectorConfig(
++        code_roots=("pkg/",),
++        non_code_hints=("docs/",),
++        authority_artifact_paths=frozenset(),
++    )
++    ns, is_code = det._namespace_of("pkg/retopo/mesh.py", config=foreign)
++    assert ns == "retopo" and is_code is True
++    # Same NamespaceChange still yields INSUFFICIENT_EVIDENCE under binding-less topo —
++    # config changes classification facts, not invented authority.
++    topo = AuthorityTopology({"domain_ownership": {}, "chains": {}})
++    v = adjudicate(_nc(namespace=ns, path="pkg/retopo", is_code_namespace=is_code), topo)
++    assert v.verdict is Verdict.INSUFFICIENT_EVIDENCE
+-- 
+2.43.0
+
