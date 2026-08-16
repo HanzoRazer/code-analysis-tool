@@ -1,0 +1,26 @@
+{
+  "domain_ownership": {
+    "geometry": {
+      "canonical_owner": "Geometry Layer",
+      "operational_owners": [
+        "IBG",
+        "Body Grid",
+        "BOE"
+      ],
+      "authority_tier": 2
+    },
+    "feasibility": {
+      "canonical_owner": "Feasibility Layer",
+      "operational_owners": [
+        "RMOS"
+      ],
+      "authority_tier": 2
+    },
+    "greenfield": {
+      "canonical_owner": null,
+      "operational_owners": [],
+      "authority_tier": 2
+    }
+  },
+  "chains": {}
+}

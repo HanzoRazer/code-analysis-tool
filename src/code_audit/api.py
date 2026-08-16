@@ -48,6 +48,10 @@ from code_audit.analyzers.maxfail_masking import MaxfailMaskingAnalyzer
 from code_audit.analyzers.cross_copy_drift import CrossCopyDriftAnalyzer
 from code_audit.analyzers.order_dependence import OrderDependenceAnalyzer
 from code_audit.analyzers.unpinned_toolchain import UnpinnedToolchainAnalyzer
+from code_audit.analyzers.namespace_authority_drift import (
+    NamespaceAuthorityContext,
+    NamespaceAuthorityDriftAnalyzer,
+)
 from code_audit.analyzers.pr_scope import PrScopeAnalyzer, ReviewContext
 from code_audit.core.discover import discover_py_files
 from code_audit.core.runner import run_scan
@@ -80,6 +84,7 @@ _DEFAULT_ANALYZERS = (
     OrderDependenceAnalyzer,
     UnpinnedToolchainAnalyzer,
     PrScopeAnalyzer,
+    NamespaceAuthorityDriftAnalyzer,
 )
 
 
@@ -103,6 +108,7 @@ def scan_project(
     analyzers: Optional[list[Any]] = None,
     enable_js_ts: bool = True,
     pr_scope_manifest: str | Path | None = None,
+    namespace_authority_context: NamespaceAuthorityContext | dict[str, Any] | None = None,
 ) -> tuple[RunResult, dict[str, Any]]:
     """Run the standard scan pipeline programmatically.
 
@@ -123,6 +129,11 @@ def scan_project(
         Optional path to a CBSP21 patch_input_v2 manifest. When set, the
         ``PrScopeAnalyzer`` runs in review context; when omitted, pr_scope
         stays silent (ordinary scan).
+    namespace_authority_context:
+        Optional review context for :class:`NamespaceAuthorityDriftAnalyzer`.
+        Accepts a :class:`NamespaceAuthorityContext` or an equivalent mapping.
+        The default suite instance stays silent unless this is provided
+        (or an analyzer instance is configured via ``analyzers=``).
 
     Returns
     -------
@@ -149,6 +160,17 @@ def scan_project(
             analyzer_instances.append(
                 PrScopeAnalyzer(
                     ReviewContext(manifest_path=_to_path(pr_scope_manifest))
+                )
+            )
+        if namespace_authority_context is not None:
+            analyzer_instances = [
+                a
+                for a in analyzer_instances
+                if getattr(a, "id", None) != "namespace_authority_drift"
+            ]
+            analyzer_instances.append(
+                NamespaceAuthorityDriftAnalyzer(
+                    review_context=namespace_authority_context,
                 )
             )
 
