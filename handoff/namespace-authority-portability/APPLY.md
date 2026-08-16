@@ -1,65 +1,65 @@
-# Apply portability freeze onto luthiers-toolbox
+# Apply portability follow-up onto luthiers-toolbox `main`
 
-**Do not integrate from `d796cf95`.** The suite freeze pin becomes authoritative only after commit `a368652f…` is visible on the Luthiers remote branch.
+## Status change (read first)
+
+PR **#271 MERGED** to `main` at `114cef1ac25007d4a7d1a062576c2fff574a0b0b` **without** the portability commit.
+
+- `a368652f…` was never pushed and is **obsolete** as a freeze pin (it was based on pre-merge branch tip `e25c7390`).
+- This handoff replaces it with a **portability-only** patch that applies cleanly onto current `main`.
 
 | | Value |
 |---|---|
-| Target branch | `feat/namespace-authority-drift-detector` |
-| Required base HEAD | `e25c73905e64440f4f92cee694ad7c6fb388df8a` |
-| Expected HEAD after `git am` | `a368652fb0fb0b6fe41117834c61c2bc2c9757e8` |
-| Patch file | `a368652f-portability-on-e25c7390.patch` |
-| Patch SHA256 | `7148a5828c49fed4e5d167e9a94776f2d849d9601419c2584675366a2b8cf07d` |
-| Luthiers PR | [#271](https://github.com/HanzoRazer/luthiers-toolbox/pull/271) — stays **DRAFT / HOLD / DO NOT MERGE** |
+| Required base HEAD | `114cef1ac25007d4a7d1a062576c2fff574a0b0b` (`main` after #271) |
+| Patch file | `0ce251fb-portability-on-main.patch` |
+| Patch SHA256 | `a1aa3765a7317b50bb82a86e71e6c6664e6b39c1c99d6378af7f32e272c957fc` |
+| Expected after apply | `DetectorConfig` + `analyze_namespace_authority_drift` present; **38** governance tests green; parent of new commit is `114cef1a…` |
+| Luthiers PR | Open a **new** draft PR for this follow-up (do not reopen #271). Hold / do not merge until triage. |
 
 ## Preferred fetch (immutable release asset)
 
-Prefer the GitHub Release asset — it survives handoff-branch cleanup:
+After this update is published, prefer:
 
-https://github.com/HanzoRazer/code-analysis-tool/releases/download/handoff-ns-auth-portability-a368652f/a368652f-portability-on-e25c7390.patch
+`https://github.com/HanzoRazer/code-analysis-tool/releases/download/handoff-ns-auth-portability-on-main/0ce251fb-portability-on-main.patch`
 
-Release page: https://github.com/HanzoRazer/code-analysis-tool/releases/tag/handoff-ns-auth-portability-a368652f
-
-Branch-hosted raw URL (fallback only; invalidated when this handoff branch is deleted):
-
-https://raw.githubusercontent.com/HanzoRazer/code-analysis-tool/cursor/ns-auth-portability-patch-handoff-6227/handoff/namespace-authority-portability/a368652f-portability-on-e25c7390.patch
+(Branch raw URL is fallback only.)
 
 ## Operator sequence
 
 ```bash
 cd /path/to/luthiers-toolbox
 git fetch origin
-git checkout feat/namespace-authority-drift-detector
-git pull --ff-only origin feat/namespace-authority-drift-detector
-test "$(git rev-parse HEAD)" = "e25c73905e64440f4f92cee694ad7c6fb388df8a"
+git checkout main
+git pull --ff-only origin main
+test "$(git rev-parse HEAD)" = "114cef1ac25007d4a7d1a062576c2fff574a0b0b"
 
-curl -fsSL -o /tmp/a368652f.portability.patch \
-  https://github.com/HanzoRazer/code-analysis-tool/releases/download/handoff-ns-auth-portability-a368652f/a368652f-portability-on-e25c7390.patch
+curl -fsSL -o /tmp/portability-on-main.patch \
+  https://github.com/HanzoRazer/code-analysis-tool/releases/download/handoff-ns-auth-portability-on-main/0ce251fb-portability-on-main.patch
+curl -fsSL -o /tmp/SHA256SUMS \
+  https://github.com/HanzoRazer/code-analysis-tool/releases/download/handoff-ns-auth-portability-on-main/SHA256SUMS
 
-# Verify you fetched the intended artifact (required)
-echo "7148a5828c49fed4e5d167e9a94776f2d849d9601419c2584675366a2b8cf07d  /tmp/a368652f.portability.patch" \
-  | sha256sum -c -
+cd /tmp && sha256sum -c SHA256SUMS
 
-git am /tmp/a368652f.portability.patch
-test "$(git rev-parse HEAD)" = "a368652fb0fb0b6fe41117834c61c2bc2c9757e8"
+cd /path/to/luthiers-toolbox
+git checkout -b feat/namespace-authority-drift-portability
+git am /tmp/portability-on-main.patch
+test "$(git rev-parse HEAD^)" = "114cef1ac25007d4a7d1a062576c2fff574a0b0b"
+rg -n 'class DetectorConfig|def analyze_namespace_authority_drift' scripts/governance/check_namespace_authority_drift.py
+python3 -m pytest tests/governance/test_namespace_authority_drift.py -q
 
-git push origin feat/namespace-authority-drift-detector
-
-# Confirm GitHub has the object (authoritative for suite pin)
-gh api repos/HanzoRazer/luthiers-toolbox/commits/a368652fb0fb0b6fe41117834c61c2bc2c9757e8 --jq .sha
+git push -u origin feat/namespace-authority-drift-portability
+# open DRAFT PR into main; report the pushed HEAD SHA — that becomes the suite freeze pin
 ```
 
-## Cleanup sequence (do this only after success)
+## Cleanup sequence
 
-Delete this handoff branch / PR **only after** all of the following are true:
+Delete this handoff branch/PR (#24) and related releases **only after**:
 
-1. GitHub returns commit `a368652fb0fb0b6fe41117834c61c2bc2c9757e8` (not 422).
-2. `feat/namespace-authority-drift-detector` tip equals that SHA (PR #271 `headRefOid` matches).
-3. The suite agent (or operator) has acknowledged the freeze pin is now authoritative.
+1. A Luthiers commit containing this portability change is **visible on GitHub** (API 200 for that SHA).
+2. That commit’s parent is `114cef1a…` (or a later main that still contains #271).
+3. The suite agent acknowledges the new freeze SHA.
 
-Then:
+Then close/delete #24, delete `cursor/ns-auth-portability-patch-handoff-6227`, and delete obsolete releases:
+- `handoff-ns-auth-portability-a368652f` (superseded)
+- `handoff-ns-auth-portability-on-main` (after Luthiers has the commit)
 
-1. Close / delete draft handoff PR [#24](https://github.com/HanzoRazer/code-analysis-tool/pull/24).
-2. Delete branch `cursor/ns-auth-portability-patch-handoff-6227`.
-3. Delete prerelease tag/release `handoff-ns-auth-portability-a368652f` (optional once Luthiers history holds the commit; keep longer if you want the checksummed artifact retained).
-
-Do **not** delete the handoff branch or release while operators may still need to re-fetch the patch, and do **not** treat `a368652f` as the suite freeze pin until it is visible on the Luthiers remote.
+Do **not** pin the suite to `a368652f`.

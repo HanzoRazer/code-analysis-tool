@@ -1,37 +1,24 @@
-# Namespace-authority detector portability freeze (rebased)
+# Portability freeze (rebased onto main after #271)
 
 | | Value |
 |---|---|
-| Luthiers branch | `feat/namespace-authority-drift-detector` |
-| Required base (remote tip before apply) | `e25c73905e64440f4f92cee694ad7c6fb388df8a` |
-| **Freeze SHA after apply** | `a368652fb0fb0b6fe41117834c61c2bc2c9757e8` |
-| Supersedes (unpushed) | `cf72ee4d` (rebase onto anti-inference + CBSP21 fixes) |
-| Patch file | `a368652f-portability-on-e25c7390.patch` |
-| **Patch SHA256** | `7148a5828c49fed4e5d167e9a94776f2d849d9601419c2584675366a2b8cf07d` |
+| Luthiers base | `main` @ `114cef1ac25007d4a7d1a062576c2fff574a0b0b` (#271 merged) |
+| Patch | `0ce251fb-portability-on-main.patch` |
+| **Patch SHA256** | `a1aa3765a7317b50bb82a86e71e6c6664e6b39c1c99d6378af7f32e272c957fc` |
+| Obsolete pin | `a368652f` — never pushed; do not use |
 
 ## Contained
 
-- `DetectorConfig` portability + `analyze_namespace_authority_drift`
-- Preserves anti-inference guard + `NAMESPACE_BINDING_GAP.md` from `8024c371` / `e25c7390`
-- 38 tests passed; retopo dogfood OK; CBSP21 PASS
+- `DetectorConfig` + `analyze_namespace_authority_drift`
+- Preserves #271 anti-inference guard / binding-gap semantics
+- 38 tests; CBSP21 portability manifest
 
-## Artifact locations
+## Authoritative suite pin
 
-1. **Preferred (immutable release asset):**  
-   https://github.com/HanzoRazer/code-analysis-tool/releases/download/handoff-ns-auth-portability-a368652f/a368652f-portability-on-e25c7390.patch
-2. Fallback (branch-hosted; invalidated by handoff cleanup): see `APPLY.md`
+**Not yet.** Suite pin = the SHA that appears on GitHub after a Luthiers-writable agent applies this patch and pushes. Report that SHA back.
 
-Verify after download:
+Verify download:
 
 ```bash
-echo "7148a5828c49fed4e5d167e9a94776f2d849d9601419c2584675366a2b8cf07d  /path/to/a368652f-portability-on-e25c7390.patch" \
-  | sha256sum -c -
+echo "a1aa3765a7317b50bb82a86e71e6c6664e6b39c1c99d6378af7f32e272c957fc  0ce251fb-portability-on-main.patch" | sha256sum -c -
 ```
-
-## Apply / cleanup
-
-Follow `APPLY.md` end-to-end. Summary:
-
-- Apply only onto `e25c7390`; expect `a368652f` after `git am` + push.
-- Suite pin is **not** authoritative until GitHub returns that SHA on the Luthiers branch.
-- **Delete this handoff branch/PR only after** the target branch visibly contains commit `a368652fb0fb0b6fe41117834c61c2bc2c9757e8` on GitHub.
