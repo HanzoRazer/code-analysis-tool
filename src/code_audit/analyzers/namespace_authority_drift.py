@@ -9,6 +9,7 @@ plus a registry-shaped topology (dict/path). The adapter never synthesizes
 namespace→domain bindings.
 
 Provenance pin: luthiers-toolbox@14c15afca6c1e9c029a221ef97d2c46613dfb717 (#273).
+NAD-PORT-001 COMPLETE — do not use d796cf95 / e25c7390 / a368652f.
 """
 from __future__ import annotations
 

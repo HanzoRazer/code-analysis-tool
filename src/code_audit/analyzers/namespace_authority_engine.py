@@ -3,13 +3,18 @@
 Ported from HanzoRazer/luthiers-toolbox@14c15afca6c1e9c029a221ef97d2c46613dfb717.
 Behavioral provenance pin only; this copy is maintained by code-analysis-tool.
 
+NAD-PORT-001 COMPLETE / VERIFIED ON main — canonical suite pin is that SHA
+(#273 squash merge; includes #272 adapter hardening). Do not use d796cf95,
+e25c7390, or a368652f as provenance.
+
 Vendors the candidate-change model + authority analysis engine only.
-Does **not** vendor the Luthiers git/ref adapter or CLI.
+Does **not** vendor the Luthiers git/ref adapter, CLI, repository-specific
+authority declarations, namespace bindings, or blocking policy.
 
 Core boundary:
   THE DETECTOR MAY CONSUME AUTHORITY. IT MAY NOT CREATE AUTHORITY.
   Missing namespace→domain bindings yield INSUFFICIENT_EVIDENCE — never a
-  guessed domain mapping.
+  guessed domain mapping (no inference from names, paths, or keywords).
 """
 from __future__ import annotations
 

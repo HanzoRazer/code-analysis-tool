@@ -45,8 +45,11 @@
     ]
   },
   "provenance": {
+    "nad_port": "NAD-PORT-001",
+    "nad_port_status": "COMPLETE / VERIFIED ON main",
     "source_repo": "HanzoRazer/luthiers-toolbox",
     "source_sha": "14c15afca6c1e9c029a221ef97d2c46613dfb717",
-    "source_prs": [272, 273]
+    "source_prs": [272, 273],
+    "do_not_use_shas": ["d796cf95", "e25c7390", "a368652f"]
   }
 }
