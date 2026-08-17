@@ -67,6 +67,12 @@
       "version": "2.0.0"
     },
     {
+      "class_name": "NamespaceAuthorityDriftAnalyzer",
+      "logic_hash": "sha256:b7dbc2eaae4c3165f516582e16aa074e2c58949864c0848b8d13aaaae403b87e",
+      "module": "code_audit.analyzers.namespace_authority_drift",
+      "version": "0.1.1"
+    },
+    {
       "class_name": "OrderDependenceAnalyzer",
       "logic_hash": "sha256:88f1ce044e1bb9933d9ae6210e43a1f5c717943f706c53de9c8a9ef1d1dd0a9d",
       "module": "code_audit.analyzers.order_dependence",

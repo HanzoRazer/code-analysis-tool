@@ -49,3 +49,4 @@ class AnalyzerType(str, Enum):
     ORDER_DEPENDENCE = "order_dependence"
     UNPINNED_TOOLCHAIN = "unpinned_toolchain"
     PR_SCOPE = "pr_scope"
+    NAMESPACE_AUTHORITY_DRIFT = "namespace_authority_drift"
