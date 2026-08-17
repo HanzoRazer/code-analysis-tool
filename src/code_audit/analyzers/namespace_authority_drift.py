@@ -95,10 +95,16 @@ def _normalize(drift: DriftFinding, *, source_registry: str, base_ref: str, cand
 
 
 class NamespaceAuthorityDriftAnalyzer:
-    """Advisory adapter: declared-authority drift only; silent without context."""
+    """Advisory adapter: declared-authority drift only; silent without context.
+
+    Lives in ``api._DEFAULT_ANALYZERS`` (registry-complete convention, same as
+    :class:`~code_audit.analyzers.pr_scope.PrScopeAnalyzer`) but emits nothing
+    until constructed with a :class:`NamespaceAuthorityContext` or activated via
+    ``scan_project(namespace_authority_context=...)``.
+    """
 
     id: str = "namespace_authority_drift"
-    version: str = "0.1.0"
+    version: str = "0.1.1"
 
     def __init__(
         self,
@@ -114,10 +120,39 @@ class NamespaceAuthorityDriftAnalyzer:
             return None
         if isinstance(review_context, NamespaceAuthorityContext):
             return review_context
+        if not isinstance(review_context, dict):
+            raise TypeError(
+                "review_context must be NamespaceAuthorityContext | dict | None, "
+                f"got {type(review_context).__name__}"
+            )
+        missing = [k for k in ("change", "topology") if k not in review_context]
+        if missing:
+            raise ValueError(
+                "namespace_authority review_context mapping missing required "
+                f"key(s): {', '.join(missing)}"
+            )
+        change = review_context["change"]
+        topology = review_context["topology"]
+        if not isinstance(change, CandidateChange):
+            raise TypeError(
+                "review_context['change'] must be CandidateChange, "
+                f"got {type(change).__name__}"
+            )
+        if not isinstance(topology, (AuthorityTopology, dict, Path)):
+            raise TypeError(
+                "review_context['topology'] must be AuthorityTopology | dict | Path, "
+                f"got {type(topology).__name__}"
+            )
+        bindings = review_context.get("namespace_bindings")
+        if bindings is not None and not isinstance(bindings, dict):
+            raise TypeError(
+                "review_context['namespace_bindings'] must be dict | None, "
+                f"got {type(bindings).__name__}"
+            )
         return NamespaceAuthorityContext(
-            change=review_context["change"],
-            topology=review_context["topology"],
-            namespace_bindings=review_context.get("namespace_bindings"),
+            change=change,
+            topology=topology,
+            namespace_bindings=bindings,
             source_registry=str(review_context.get("source_registry", "injected")),
         )
 

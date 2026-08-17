@@ -172,3 +172,109 @@ def test_adapter_maps_flagged_verdict_advisory_low(tmp_path: Path):
     assert findings[0].metadata["flagged"] is True
     assert findings[0].metadata["severity_native"] == "warning"
     assert findings[0].severity is Severity.LOW  # advisory posture
+
+
+def test_adapter_rejects_malformed_review_context_mapping():
+    import pytest
+
+    with pytest.raises(ValueError, match="missing required"):
+        NamespaceAuthorityDriftAnalyzer(review_context={"topology": {}})
+    with pytest.raises(TypeError, match="CandidateChange"):
+        NamespaceAuthorityDriftAnalyzer(
+            review_context={"change": "nope", "topology": _binding_less()}
+        )
+
+
+def test_declared_domain_is_trusted_pre_resolved_not_name_inference():
+    """Pin parity: declared_domain is a caller-supplied binding, not inference.
+
+    Without it (and without a topology binding), suggestive names stay
+    INSUFFICIENT_EVIDENCE. With an explicit declared_domain naming a real
+    domain, resolve honors that trusted claim — upstream must not invent it.
+    """
+    topo = AuthorityTopology(_binding_less(), namespace_bindings={})
+    unbound = analyze_namespace_authority_drift(
+        CandidateChange("b", "c", [_nc(namespace="retopo")]),
+        topo,
+    )[0]
+    assert unbound.verdict is Verdict.INSUFFICIENT_EVIDENCE
+
+    trusted = analyze_namespace_authority_drift(
+        CandidateChange(
+            "b",
+            "c",
+            [_nc(namespace="retopo", declared_domain="topology", declared_concept="Retopo")],
+        ),
+        topo,
+    )[0]
+    # topology domain owners are TopologyBuilder / ShellValidation —
+    # Retopo is not among them → DUPLICATE_AUTHORITY under pin semantics.
+    assert trusted.verdict is Verdict.DUPLICATE_AUTHORITY
+
+
+def test_bindings_kwarg_honored_when_topology_is_authority_topology():
+    registry = json.loads((FIXTURES / "synth_registry.json").read_text(encoding="utf-8"))
+    topo = AuthorityTopology(registry, namespace_bindings={})
+    change = CandidateChange("b", "c", [_nc(namespace="boe")])
+    assert (
+        analyze_namespace_authority_drift(change, topo)[0].verdict
+        is Verdict.INSUFFICIENT_EVIDENCE
+    )
+    bindings = json.loads((FIXTURES / "synth_bindings.json").read_text(encoding="utf-8"))
+    assert (
+        analyze_namespace_authority_drift(
+            change, topo, namespace_bindings=bindings,
+        )[0].verdict
+        is Verdict.DECLARED_EXTENSION
+    )
+
+
+def test_scan_project_wires_namespace_authority_context(tmp_path: Path):
+    from code_audit.api import scan_project
+
+    (tmp_path / "app.py").write_text("x = 1\n", encoding="utf-8")
+    change = CandidateChange(
+        "origin/main",
+        "feature/mesh-pipeline-scaffold",
+        [_nc(namespace="retopo", path="services/api/app/retopo")],
+    )
+    ctx = NamespaceAuthorityContext(
+        change=change,
+        topology=FIXTURES / "binding_less_registry.json",
+        source_registry="fixtures/binding_less_registry.json",
+    )
+    silent, _ = scan_project(tmp_path, ci_mode=True)
+    assert not any(
+        getattr(f, "type", None) is AnalyzerType.NAMESPACE_AUTHORITY_DRIFT
+        for f in silent.findings
+    )
+
+    active, result_dict = scan_project(
+        tmp_path,
+        ci_mode=True,
+        namespace_authority_context=ctx,
+    )
+    ns_findings = [
+        f for f in active.findings
+        if f.type is AnalyzerType.NAMESPACE_AUTHORITY_DRIFT
+    ]
+    assert len(ns_findings) == 1
+    assert ns_findings[0].metadata["verdict"] == "INSUFFICIENT_EVIDENCE"
+    assert ns_findings[0].metadata["posture"] == "advisory"
+    assert isinstance(result_dict, dict)
+
+    # Mapping form also works through the public API.
+    mapped, _ = scan_project(
+        tmp_path,
+        ci_mode=True,
+        namespace_authority_context={
+            "change": change,
+            "topology": _binding_less(),
+            "source_registry": "mapping",
+        },
+    )
+    assert any(
+        f.type is AnalyzerType.NAMESPACE_AUTHORITY_DRIFT
+        and f.metadata.get("source_registry") == "mapping"
+        for f in mapped.findings
+    )

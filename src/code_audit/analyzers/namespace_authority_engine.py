@@ -53,6 +53,12 @@ class DetectorConfig:
 
     Path-classification facts only — not authority. The analysis engine never
     invents namespace→domain bindings from these paths.
+
+    Portability note: ``repo_root``, ``code_roots``, ``non_code_hints``, and
+    ``authority_artifact_paths`` are retained for symmetry with the pinned
+    Luthiers ``DetectorConfig``. This module's runtime path currently uses
+    ``authority_registry_path`` (via ``AuthorityTopology.load``); path
+    classification for candidate construction lives upstream of this engine.
     """
 
     repo_root: Path = _DEFAULT_REPO_ROOT
@@ -108,7 +114,13 @@ _NATIVE_SEVERITY = {
 
 @dataclass
 class NamespaceChange:
-    """One namespace-level change. Authority-derived fields are binding-sourced only."""
+    """One namespace-level change.
+
+    Authority-derived fields are binding-sourced only. Upstream constructors
+    (fixtures, future git adapters) must never fill ``declared_domain`` /
+    behavioral flags from path, name, or keyword inference — that trust
+    boundary sits outside this engine.
+    """
 
     namespace: str
     path: str
@@ -181,9 +193,25 @@ class AuthorityTopology:
         return owners
 
     def resolve(self, nc: NamespaceChange) -> Optional[Tuple[str, str]]:
-        """Return (domain, concept) IFF a DECLARED binding exists; else None."""
+        """Return ``(domain, concept)`` iff a *declared* binding exists; else ``None``.
+
+        Checked in order (pin-parity with luthiers@14c15afc):
+
+        1. ``NamespaceChange.declared_domain`` — a **trusted pre-resolved**
+           binding supplied by the caller (fixture / binding adapter). Honored
+           only when that domain exists in ``domain_ownership``. This is not
+           name/path inference; the engine trusts that upstream did not invent
+           the domain claim. Callers that lack a real binding must leave this
+           unset so adjudication falls through to ``INSUFFICIENT_EVIDENCE``.
+        2. ``namespace_bindings[nc.namespace]`` — topology-declared map entry
+           whose ``domain`` exists in ``domain_ownership``.
+
+        No other sources are considered.
+        """
+        # 1) binding declared on the change itself (from a binding source / fixture)
         if nc.declared_domain and nc.declared_domain in self.domain_ownership:
             return (nc.declared_domain, nc.declared_concept or nc.namespace)
+        # 2) binding from the registry's namespace_bindings map
         b = self.namespace_bindings.get(nc.namespace)
         if isinstance(b, dict) and b.get("domain") in self.domain_ownership:
             return (b["domain"], b.get("concept", nc.namespace))
@@ -281,9 +309,18 @@ def analyze_namespace_authority_drift(
     *,
     namespace_bindings: Optional[Dict] = None,
 ) -> List[DriftFinding]:
-    """Portable engine entrypoint. Does not invent authority. Does not touch git."""
+    """Portable engine entrypoint. Does not invent authority. Does not touch git.
+
+    ``namespace_bindings`` overlays the topology when ``topology`` is a ``dict``
+    or ``Path``. When ``topology`` is already an :class:`AuthorityTopology`, a
+    non-``None`` ``namespace_bindings`` rebuilds the topology from its registry
+    with that overlay (so the kwarg is never silently ignored).
+    """
     if isinstance(topology, AuthorityTopology):
-        topo = topology
+        if namespace_bindings is not None:
+            topo = AuthorityTopology(topology.registry, namespace_bindings=namespace_bindings)
+        else:
+            topo = topology
     elif isinstance(topology, Path):
         data = json.loads(topology.read_text(encoding="utf-8"))
         topo = AuthorityTopology(data, namespace_bindings=namespace_bindings)

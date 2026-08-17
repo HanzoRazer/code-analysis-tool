@@ -64,6 +64,15 @@ from code_audit.strangler.debt_registry import DebtRegistry
 _DETERMINISTIC_TIMESTAMP = "2000-01-01T00:00:00+00:00"
 
 # Default analyzer set — matches what the CLI's `scan` command uses.
+#
+# Review-only / context-gated analyzers (PrScopeAnalyzer,
+# NamespaceAuthorityDriftAnalyzer) stay in this registry so
+# ``test_analyzer_registry_contract`` remains exhaustive: every concrete
+# ``*Analyzer`` under ``code_audit.analyzers`` must appear here. They are
+# inert in an ordinary sweep (no findings) until a review context is
+# injected via ``scan_project(pr_scope_manifest=...)`` or
+# ``scan_project(namespace_authority_context=...)`` (or a pre-built
+# instance is passed in ``analyzers=``).
 _DEFAULT_ANALYZERS = (
     ComplexityAnalyzer,
     DeadCodeAnalyzer,
@@ -131,9 +140,12 @@ def scan_project(
         stays silent (ordinary scan).
     namespace_authority_context:
         Optional review context for :class:`NamespaceAuthorityDriftAnalyzer`.
-        Accepts a :class:`NamespaceAuthorityContext` or an equivalent mapping.
-        The default suite instance stays silent unless this is provided
-        (or an analyzer instance is configured via ``analyzers=``).
+        Accepts a :class:`NamespaceAuthorityContext` or an equivalent mapping
+        with required keys ``change`` and ``topology`` (optional
+        ``namespace_bindings``, ``source_registry``). Malformed mappings raise
+        ``ValueError``. The default registry instance stays silent unless this
+        is provided (or an analyzer instance is configured via ``analyzers=``).
+        Same review-only lifecycle as ``pr_scope_manifest`` / ``PrScopeAnalyzer``.
 
     Returns
     -------
