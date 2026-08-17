@@ -22,12 +22,13 @@ a368652f
 
 ## Downstream (code-analysis-tool)
 
-Authorized extraction is in draft PR **#26** (`cursor/namespace-authority-drift-adapter-6227`):
+Suite integration landed on `main` via PR **#26** (merge `2671c294`):
 
 - Git-independent detector core
 - `DetectorConfig` / portable configuration boundary
 - topology / finding models required by the engine
 - existing adjudication semantics and evidence behavior
+- advisory adapter `namespace_authority_drift` (silent without review context; suite severity capped at LOW)
 
 Not vendored: Luthiers CLI, git/ref wrapper, repository-specific authority declarations, namespace bindings, or blocking policy.
 
@@ -35,6 +36,4 @@ Constitutional invariant preserved:
 
 `missing namespace→domain binding → INSUFFICIENT_EVIDENCE`
 
-Integration posture: **advisory only**.
-
-No further Luthiers mutation is required for this thread.
+No further Luthiers mutation is required for this thread. Later gating work (if any) must prove equivalence against pin `14c15afc` first.
