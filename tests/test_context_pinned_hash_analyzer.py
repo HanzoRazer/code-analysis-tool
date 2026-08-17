@@ -58,6 +58,224 @@ def test_byte_hash_with_lf_normalize_is_mitigated(tmp_path):
     assert f[0].severity is Severity.LOW
 
 
+def test_str_lf_normalize_is_mitigated(tmp_path):
+    # The str form of the same shape, not just the bytes one.
+    src = (
+        "import hashlib\n"
+        "from pathlib import Path\n"
+        "def h(p: Path):\n"
+        "    s = p.read_bytes().decode().replace('\\r\\n', '\\n')\n"
+        "    return hashlib.sha256(s.encode()).hexdigest()\n"
+    )
+    f = _run(tmp_path, src)
+    assert len(f) == 1
+    assert f[0].metadata["mitigation_kind"] == "input_lf_normalized"
+    assert f[0].severity is Severity.LOW
+
+
+# ── LF normalization: the replacement half must be checked too ──────
+
+
+def test_crlf_deleted_is_not_lf_normalization(tmp_path):
+    # ``replace(b'\r\n', b'')`` deletes the break rather than normalizing it:
+    # a CRLF file and an LF file still hash differently afterwards. Crediting
+    # it downgraded a live finding to LOW.
+    src = (
+        "import hashlib\n"
+        "from pathlib import Path\n"
+        "def h(p: Path):\n"
+        "    b = p.read_bytes().replace(b'\\r\\n', b'')\n"
+        "    return hashlib.sha256(b).hexdigest()\n"
+    )
+    f = _run(tmp_path, src)
+    assert len(f) == 1
+    assert f[0].metadata["context_axis"] == "line_ending"
+    assert f[0].metadata["mitigation_detected"] is False
+    assert f[0].metadata["mitigation_kind"] is None
+    assert f[0].severity is Severity.MEDIUM
+
+
+def test_single_arg_replace_is_not_lf_normalization(tmp_path):
+    src = (
+        "import hashlib\n"
+        "from pathlib import Path\n"
+        "def h(p: Path):\n"
+        "    b = p.read_bytes().replace(b'\\r\\n')\n"
+        "    return hashlib.sha256(b).hexdigest()\n"
+    )
+    f = _run(tmp_path, src)
+    assert len(f) == 1
+    assert f[0].metadata["mitigation_detected"] is False
+
+
+def test_mixed_type_replace_is_not_lf_normalization(tmp_path):
+    # ``bytes.replace(b'\r\n', '\n')`` is a TypeError at runtime — not this shape.
+    src = (
+        "import hashlib\n"
+        "from pathlib import Path\n"
+        "def h(p: Path):\n"
+        "    b = p.read_bytes().replace(b'\\r\\n', '\\n')\n"
+        "    return hashlib.sha256(b).hexdigest()\n"
+    )
+    f = _run(tmp_path, src)
+    assert len(f) == 1
+    assert f[0].metadata["mitigation_detected"] is False
+
+
+def test_non_constant_replacement_is_not_credited(tmp_path):
+    # The replacement is opaque, so the mitigation is not *visible*. Declining
+    # to credit it costs one severity step; crediting it wrongly hides the bug.
+    src = (
+        "import hashlib\n"
+        "from pathlib import Path\n"
+        "def h(p: Path, nl):\n"
+        "    b = p.read_bytes().replace(b'\\r\\n', nl)\n"
+        "    return hashlib.sha256(b).hexdigest()\n"
+    )
+    f = _run(tmp_path, src)
+    assert len(f) == 1
+    assert f[0].metadata["mitigation_detected"] is False
+
+
+# ── scope boundaries: one hash, one finding ─────────────────────────
+
+
+def test_nested_function_hash_reported_once(tmp_path):
+    # The hash belongs to ``inner``. Walking it again from ``outer`` reported
+    # the same defect twice, under two different function names.
+    src = (
+        "import hashlib\n"
+        "from pathlib import Path\n"
+        "def outer(p: Path):\n"
+        "    def inner():\n"
+        "        return hashlib.sha256(p.read_bytes()).hexdigest()\n"
+        "    return inner()\n"
+    )
+    f = _run(tmp_path, src)
+    assert len(f) == 1
+    assert f[0].metadata["context_axis"] == "line_ending"
+    assert "'inner'" in f[0].message
+
+
+def test_nested_function_float_hash_reported_once(tmp_path):
+    src = (
+        "import hashlib, json\n"
+        "def outer(c):\n"
+        "    def inner():\n"
+        "        return hashlib.sha256(json.dumps({'x': c / 2.0}).encode()).hexdigest()\n"
+        "    return inner()\n"
+    )
+    f = _run(tmp_path, src)
+    assert len(f) == 1
+    assert f[0].metadata["context_axis"] == "float_repr"
+    assert "'inner'" in f[0].message
+
+
+def test_method_in_class_still_detected(tmp_path):
+    # Guard against over-pruning: a class body is not a scope of its own here,
+    # so its methods must still be reached.
+    src = (
+        "import hashlib\n"
+        "from pathlib import Path\n"
+        "class C:\n"
+        "    def h(self, p: Path):\n"
+        "        return hashlib.sha256(p.read_bytes()).hexdigest()\n"
+    )
+    f = _run(tmp_path, src)
+    assert len(f) == 1
+    assert f[0].metadata["context_axis"] == "line_ending"
+
+
+def test_method_in_function_nested_class_still_detected(tmp_path):
+    src = (
+        "import hashlib\n"
+        "from pathlib import Path\n"
+        "def outer():\n"
+        "    class C:\n"
+        "        def h(self, p: Path):\n"
+        "            return hashlib.sha256(p.read_bytes()).hexdigest()\n"
+        "    return C\n"
+    )
+    f = _run(tmp_path, src)
+    assert len(f) == 1
+    assert "'h'" in f[0].message
+
+
+def test_lambda_body_still_analysed(tmp_path):
+    # ``_scan_module`` does not visit lambdas as scopes, so pruning them would
+    # drop their bodies entirely rather than reattribute them.
+    src = (
+        "import hashlib, json\n"
+        "def h(xs):\n"
+        "    f = lambda v: json.dumps({'x': v / 2.0})\n"
+        "    return hashlib.sha256(f(xs).encode()).hexdigest()\n"
+    )
+    f = _run(tmp_path, src)
+    assert [x.metadata["context_axis"] for x in f] == ["float_repr"]
+
+
+# ── name resolution is bounded ──────────────────────────────────────
+
+
+def test_pathlib_division_down_a_name_chain_is_not_float_evidence(tmp_path):
+    # Found by dogfooding on this repo. ``ROOT / meta['path']`` is pathlib
+    # division, not float division, and an unbounded name chase reached it four
+    # names away from the serialised payload (ids -> reg -> p -> ROOT / ...).
+    src = (
+        "import hashlib, json\n"
+        "from pathlib import Path\n"
+        "ROOT = Path('.')\n"
+        "def h(meta):\n"
+        "    p = ROOT / meta['path']\n"
+        "    reg = json.loads(p.read_text(encoding='utf-8'))\n"
+        "    ids = sorted(set(reg.get('ids', [])))\n"
+        "    return hashlib.sha256(json.dumps(ids).encode()).hexdigest()\n"
+    )
+    f = _run(tmp_path, src)
+    assert all(x.metadata["context_axis"] != "float_repr" for x in f)
+
+
+def test_float_evidence_one_binding_from_the_payload_is_followed(tmp_path):
+    # The shape the hop budget must keep: q -> payload -> dumps.
+    src = (
+        "import hashlib, json\n"
+        "def h(a):\n"
+        "    q = a / 2.0\n"
+        "    payload = {'x': q}\n"
+        "    return hashlib.sha256(json.dumps(payload).encode()).hexdigest()\n"
+    )
+    f = _run(tmp_path, src)
+    assert [x.metadata["context_axis"] for x in f] == ["float_repr"]
+
+
+def test_serialiser_two_bindings_from_the_hash_is_followed(tmp_path):
+    # Reaching the hash is a chain of rebindings: s -> b -> sha256(b).
+    src = (
+        "import hashlib, json\n"
+        "def h(a):\n"
+        "    s = json.dumps({'x': a / 2.0})\n"
+        "    b = s.encode()\n"
+        "    return hashlib.sha256(b).hexdigest()\n"
+    )
+    f = _run(tmp_path, src)
+    assert [x.metadata["context_axis"] for x in f] == ["float_repr"]
+
+
+def test_float_evidence_beyond_the_hop_budget_is_not_followed(tmp_path):
+    # Three bindings deep the value is no longer plausibly "in the payload".
+    src = (
+        "import hashlib, json\n"
+        "def h(a):\n"
+        "    one = a / 2.0\n"
+        "    two = {'v': one}\n"
+        "    three = {'w': two}\n"
+        "    payload = {'x': three}\n"
+        "    return hashlib.sha256(json.dumps(payload).encode()).hexdigest()\n"
+    )
+    f = _run(tmp_path, src)
+    assert f == []
+
+
 def test_binary_open_read_flagged(tmp_path):
     src = (
         "import hashlib\n"
