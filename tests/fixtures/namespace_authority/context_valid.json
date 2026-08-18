@@ -1,0 +1,25 @@
+{
+  "schema_version": "namespace_authority_context_v1",
+  "change": {
+    "base_ref": "origin/main",
+    "candidate_ref": "feature/mesh-pipeline-scaffold",
+    "namespace_changes": [
+      {
+        "namespace": "retopo",
+        "path": "services/api/app/retopo",
+        "change": "added"
+      }
+    ]
+  },
+  "topology": {
+    "domain_ownership": {
+      "topology": {
+        "canonical_owner": "CAD Topology Governance",
+        "operational_owners": ["TopologyBuilder", "ShellValidation"],
+        "authority_tier": 2
+      }
+    },
+    "chains": {}
+  },
+  "source_registry": "fixture:binding-less"
+}
