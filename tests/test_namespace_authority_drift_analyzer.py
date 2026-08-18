@@ -300,3 +300,171 @@ def test_scan_project_wires_namespace_authority_context(tmp_path: Path):
         and f.metadata.get("verdict") == "INSUFFICIENT_EVIDENCE"
         for f in via_path.findings
     )
+
+    # Path-as-string activation (str is a filesystem path, not a JSON blob).
+    via_str, _ = scan_project(
+        tmp_path,
+        ci_mode=True,
+        namespace_authority_context=str(FIXTURES / "context_valid.json"),
+    )
+    assert any(
+        f.type is AnalyzerType.NAMESPACE_AUTHORITY_DRIFT
+        and f.metadata.get("verdict") == "INSUFFICIENT_EVIDENCE"
+        for f in via_str.findings
+    )
+
+
+# ── serialized loader contract edges ────────────────────────────────
+
+
+def test_schema_dual_copy_byte_parity():
+    repo = Path(__file__).resolve().parents[1]
+    root_copy = repo / "schemas" / "namespace_authority_context.schema.json"
+    runtime_copy = (
+        repo
+        / "src"
+        / "code_audit"
+        / "data"
+        / "schemas"
+        / "namespace_authority_context.schema.json"
+    )
+    assert root_copy.is_file() and runtime_copy.is_file()
+    assert root_copy.read_bytes() == runtime_copy.read_bytes()
+
+
+def test_loader_accepts_mapping_path_and_path_string():
+    from types import MappingProxyType
+
+    from code_audit.contracts.namespace_authority_context import (
+        load_namespace_authority_context,
+    )
+
+    mapping = json.loads((FIXTURES / "context_valid.json").read_text(encoding="utf-8"))
+    via_mapping = load_namespace_authority_context(mapping)
+    via_proxy = load_namespace_authority_context(MappingProxyType(mapping))
+    via_path = load_namespace_authority_context(FIXTURES / "context_valid.json")
+    via_str = load_namespace_authority_context(str(FIXTURES / "context_valid.json"))
+
+    assert via_mapping.change.namespace_changes[0].namespace == "retopo"
+    assert via_proxy.source_registry == "fixture:binding-less"
+    assert via_path.change.candidate_ref == "feature/mesh-pipeline-scaffold"
+    assert via_str.source_registry == via_path.source_registry
+
+
+def test_loader_rejects_raw_json_string_payload():
+    import pytest
+
+    from code_audit.contracts.namespace_authority_context import (
+        load_namespace_authority_context,
+    )
+
+    raw = (FIXTURES / "context_valid.json").read_text(encoding="utf-8")
+    with pytest.raises(TypeError, match="filesystem path"):
+        load_namespace_authority_context(raw)
+
+
+def test_loader_rejects_nonexistent_and_malformed_json(tmp_path: Path):
+    import pytest
+
+    from code_audit.contracts.namespace_authority_context import (
+        load_namespace_authority_context,
+    )
+
+    missing = tmp_path / "missing-context.json"
+    with pytest.raises(FileNotFoundError, match="does not exist"):
+        load_namespace_authority_context(missing)
+    with pytest.raises(FileNotFoundError, match="does not exist"):
+        load_namespace_authority_context(str(missing))
+
+    bad = tmp_path / "bad.json"
+    bad.write_text("{not-json", encoding="utf-8")
+    with pytest.raises(ValueError, match="not valid JSON"):
+        load_namespace_authority_context(bad)
+
+
+def test_source_registry_is_metadata_only_never_dereferenced(tmp_path: Path):
+    """source_registry may look like a path/URI; it must never be opened."""
+    from code_audit.contracts.namespace_authority_context import (
+        load_namespace_authority_context,
+    )
+
+    mapping = json.loads((FIXTURES / "context_valid.json").read_text(encoding="utf-8"))
+    mapping["source_registry"] = "s3://fake-bucket/not-a-real-registry.json"
+    ctx = load_namespace_authority_context(mapping)
+    assert ctx.source_registry == "s3://fake-bucket/not-a-real-registry.json"
+
+    findings = NamespaceAuthorityDriftAnalyzer(review_context=ctx).run(tmp_path, [])
+    assert len(findings) == 1
+    assert findings[0].metadata["source_registry"] == (
+        "s3://fake-bucket/not-a-real-registry.json"
+    )
+
+
+def test_adapter_findings_are_deterministically_ordered(tmp_path: Path):
+    change = CandidateChange(
+        "b",
+        "c",
+        [
+            _nc(namespace="zeta", path="z/services/api/app/zeta"),
+            _nc(namespace="alpha", path="a/services/api/app/alpha"),
+            _nc(namespace="mu", path="m/services/api/app/mu"),
+        ],
+    )
+    findings = NamespaceAuthorityDriftAnalyzer(
+        review_context=NamespaceAuthorityContext(
+            change=change,
+            topology=_binding_less(),
+            source_registry="fixture:synthetic",
+        )
+    ).run(tmp_path, [])
+    keys = [
+        (f.location.path, f.location.line_start, f.metadata.get("namespace", ""), f.fingerprint)
+        for f in findings
+    ]
+    assert keys == sorted(keys)
+    assert [f.metadata["namespace"] for f in findings] == ["alpha", "mu", "zeta"]
+
+
+def test_cli_namespace_authority_advisory_exit_and_errors(tmp_path: Path, capsys):
+    from code_audit.__main__ import main
+    from code_audit.utils.exit_codes import ExitCode
+
+    (tmp_path / "app.py").write_text("x = 1\n", encoding="utf-8")
+    ctx = FIXTURES / "context_valid.json"
+    flagged = FIXTURES / "context_flagged.json"
+
+    rc = main([
+        "namespace-authority",
+        str(tmp_path),
+        "--context",
+        str(ctx),
+        "--json",
+    ])
+    out = json.loads(capsys.readouterr().out)
+    assert rc == ExitCode.SUCCESS
+    assert out["advisory"] is True
+    assert out["finding_count"] >= 1
+
+    # Flagged findings remain advisory (exit 0).
+    rc_flagged = main([
+        "namespace-authority",
+        str(tmp_path),
+        "--context",
+        str(flagged),
+        "--json",
+    ])
+    flagged_out = json.loads(capsys.readouterr().out)
+    assert rc_flagged == ExitCode.SUCCESS
+    assert flagged_out["finding_count"] >= 1
+    assert any(f.get("metadata", {}).get("flagged") for f in flagged_out["findings"])
+
+    missing = tmp_path / "nope.json"
+    rc_err = main([
+        "namespace-authority",
+        str(tmp_path),
+        "--context",
+        str(missing),
+        "--json",
+    ])
+    assert rc_err == ExitCode.ERROR
+    assert "ERROR:" in capsys.readouterr().err

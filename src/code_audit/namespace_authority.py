@@ -19,7 +19,9 @@ def check_namespace_authority(
     """Run only the advisory namespace-authority analyzer.
 
     Findings are advisory and therefore do not imply a failing process status.
-    Serialized mapping/path inputs pass through the analyzer's strict v1 loader.
+    Serialized mapping / path-string / ``Path`` inputs pass through the
+    analyzer's strict v1 loader. A ``str`` context is a filesystem path only
+    (raw JSON string payloads are rejected).
     """
     root_p = Path(root).resolve()
     if not root_p.is_dir():

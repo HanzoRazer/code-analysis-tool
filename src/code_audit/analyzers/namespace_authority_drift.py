@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 from code_audit.analyzers.namespace_authority_engine import (
     FLAGGED_VERDICTS,
@@ -89,17 +89,17 @@ class NamespaceAuthorityDriftAnalyzer:
     """Advisory adapter: declared-authority drift only; silent without context."""
 
     id: str = "namespace_authority_drift"
-    version: str = "0.2.0"
+    version: str = "0.2.1"
 
     def __init__(
         self,
-        review_context: NamespaceAuthorityContext | dict[str, Any] | str | Path | None = None,
+        review_context: NamespaceAuthorityContext | Mapping[str, Any] | str | Path | None = None,
     ) -> None:
         self._ctx = self._coerce_context(review_context)
 
     @staticmethod
     def _coerce_context(
-        review_context: NamespaceAuthorityContext | dict[str, Any] | str | Path | None,
+        review_context: NamespaceAuthorityContext | Mapping[str, Any] | str | Path | None,
     ) -> NamespaceAuthorityContext | None:
         if review_context is None:
             return None
@@ -109,14 +109,16 @@ class NamespaceAuthorityDriftAnalyzer:
         # Serialized inputs have exactly one trust boundary: the strict loader.
         # In particular, the legacy object-bearing dict form is intentionally
         # rejected by schema validation instead of bypassing the JSON contract.
-        if isinstance(review_context, (dict, str, Path)):
+        # ``str`` means a filesystem path string only (not a raw JSON payload).
+        if isinstance(review_context, (str, Path)) or isinstance(review_context, Mapping):
             from code_audit.contracts.namespace_authority_context import (
                 load_namespace_authority_context,
             )
             return load_namespace_authority_context(review_context)
 
         raise TypeError(
-            "review_context must be NamespaceAuthorityContext | mapping | JSON path | None, "
+            "review_context must be NamespaceAuthorityContext | mapping | "
+            "JSON path (str|Path) | None, "
             f"got {type(review_context).__name__}"
         )
 
