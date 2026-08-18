@@ -1,6 +1,6 @@
 {
   "created_at": "2000-01-01T00:00:00+00:00",
-  "debt_count": 253,
+  "debt_count": 255,
   "items": [
     {
       "debt_type": "god_function",
@@ -859,10 +859,10 @@
     {
       "debt_type": "god_function",
       "fingerprint": "sha256:e77374b28a2a35dbaa9e7f3e76e45c1bb48494f5272ab79f40223186846c3166",
-      "line_end": 905,
-      "line_start": 259,
+      "line_end": 931,
+      "line_start": 264,
       "metrics": {
-        "lines": 647
+        "lines": 668
       },
       "path": "src/code_audit/__main__.py",
       "strategy": "Extract Method / Decompose Conditional",
@@ -871,8 +871,8 @@
     {
       "debt_type": "god_function",
       "fingerprint": "sha256:363fc7f7ed8706e785e9b215591514dc7c49094fa1a613cc5436c54314093bb9",
-      "line_end": 1038,
-      "line_start": 960,
+      "line_end": 1064,
+      "line_start": 986,
       "metrics": {
         "lines": 79
       },
@@ -883,8 +883,8 @@
     {
       "debt_type": "god_function",
       "fingerprint": "sha256:5214b0a70e5a4a9b6f719d1ed66897e40dfc04fef8752f8975fb29da5081424d",
-      "line_end": 1620,
-      "line_start": 1393,
+      "line_end": 1646,
+      "line_start": 1419,
       "metrics": {
         "lines": 228
       },
@@ -895,10 +895,10 @@
     {
       "debt_type": "god_function",
       "fingerprint": "sha256:749465ca4225093fde661abe99eb135f35dcd80f43524e0d2b971d38178487b7",
-      "line_end": 1943,
-      "line_start": 1679,
+      "line_end": 1998,
+      "line_start": 1705,
       "metrics": {
-        "lines": 265
+        "lines": 294
       },
       "path": "src/code_audit/__main__.py",
       "strategy": "Extract Method / Decompose Conditional",
@@ -1675,7 +1675,7 @@
     {
       "debt_type": "long_parameter_list",
       "fingerprint": "sha256:7a896311007c7faea443c2fed919f8ca3a0c4679ea8926a37f1a5df0fa75c31c",
-      "line_end": 212,
+      "line_end": 214,
       "line_start": 113,
       "metrics": {
         "param_count": 8
@@ -1687,10 +1687,10 @@
     {
       "debt_type": "god_function",
       "fingerprint": "sha256:bc6d25f753b937805f5db1cc306d48949df95f82bd2f383996cf2c458933814d",
-      "line_end": 212,
+      "line_end": 214,
       "line_start": 113,
       "metrics": {
-        "lines": 100
+        "lines": 102
       },
       "path": "src/code_audit/api.py",
       "strategy": "Extract Method / Decompose Conditional",
@@ -1699,8 +1699,8 @@
     {
       "debt_type": "long_parameter_list",
       "fingerprint": "sha256:9d665435c6093ab1f84ad3275618e72d20e5e31bd2295cbf8699703e04227345",
-      "line_end": 247,
-      "line_start": 215,
+      "line_end": 249,
+      "line_start": 217,
       "metrics": {
         "param_count": 6
       },
@@ -1711,14 +1711,26 @@
     {
       "debt_type": "god_function",
       "fingerprint": "sha256:b55a7388da472cc666e079f94e5dd161619dfadd9160a194f89d6be1e3ceab80",
-      "line_end": 377,
-      "line_start": 306,
+      "line_end": 379,
+      "line_start": 308,
       "metrics": {
         "lines": 72
       },
       "path": "src/code_audit/api.py",
       "strategy": "Extract Method / Decompose Conditional",
       "symbol": "compare_debt"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:a44915dac6c1f7ac693eaf89f1c3304946d5bc885e5108005259eb929ed4c8a7",
+      "line_end": 102,
+      "line_start": 35,
+      "metrics": {
+        "lines": 68
+      },
+      "path": "src/code_audit/contracts/namespace_authority_context.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "load_namespace_authority_context"
     },
     {
       "debt_type": "god_function",
@@ -2760,6 +2772,18 @@
       "path": "tests/test_governance.py",
       "strategy": "Extract Class / Extract Interface",
       "symbol": "TestLegacyUsageAnalyzer"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:fda900ac7925e6f170236027d7b96fc8473b73f5eaccdb858aae4a7763eb1806",
+      "line_end": 314,
+      "line_start": 246,
+      "metrics": {
+        "lines": 69
+      },
+      "path": "tests/test_namespace_authority_drift_analyzer.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "test_scan_project_wires_namespace_authority_context"
     },
     {
       "debt_type": "god_function",

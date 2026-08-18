@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/HanzoRazer/code-analysis-tool/schemas/namespace_authority_context.schema.json",
+  "title": "Namespace Authority Review Context",
+  "description": "Strict serialized activation contract for the advisory namespace-authority analyzer.",
+  "type": "object",
+  "required": ["schema_version", "change", "topology"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "namespace_authority_context_v1"
+    },
+    "change": {
+      "type": "object",
+      "required": ["base_ref", "candidate_ref", "namespace_changes"],
+      "additionalProperties": false,
+      "properties": {
+        "base_ref": {"type": "string", "minLength": 1},
+        "candidate_ref": {"type": "string", "minLength": 1},
+        "namespace_changes": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/namespace_change"}
+        }
+      }
+    },
+    "topology": {
+      "type": "object"
+    },
+    "namespace_bindings": {
+      "type": "object"
+    },
+    "source_registry": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "$defs": {
+    "namespace_change": {
+      "type": "object",
+      "required": ["namespace", "path", "change"],
+      "additionalProperties": false,
+      "properties": {
+        "namespace": {"type": "string", "minLength": 1},
+        "path": {"type": "string", "minLength": 1},
+        "change": {"type": "string", "enum": ["added", "removed", "modified"]},
+        "is_code_namespace": {"type": "boolean"},
+        "touches_authority_artifacts": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1},
+          "uniqueItems": true
+        },
+        "declared_domain": {"type": ["string", "null"], "minLength": 1},
+        "declared_concept": {"type": ["string", "null"], "minLength": 1},
+        "introduces_parallel_registry": {"type": "boolean"},
+        "violates_invariant": {"type": ["string", "null"], "minLength": 1},
+        "restores_superseded": {"type": "boolean"}
+      }
+    }
+  }
+}
