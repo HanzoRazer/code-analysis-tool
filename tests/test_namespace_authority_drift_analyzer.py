@@ -176,12 +176,26 @@ def test_adapter_maps_flagged_verdict_advisory_low(tmp_path: Path):
 
 def test_adapter_rejects_malformed_review_context_mapping():
     import pytest
+    from jsonschema import ValidationError
 
-    with pytest.raises(ValueError, match="missing required"):
+    with pytest.raises(ValidationError):
         NamespaceAuthorityDriftAnalyzer(review_context={"topology": {}})
-    with pytest.raises(TypeError, match="CandidateChange"):
+    with pytest.raises(ValidationError):
         NamespaceAuthorityDriftAnalyzer(
-            review_context={"change": "nope", "topology": _binding_less()}
+            review_context={
+                "schema_version": "namespace_authority_context_v1",
+                "change": "nope",
+                "topology": {},
+            }
+        )
+    # Legacy object-bearing dicts are rejected (must be JSON-serializable v1).
+    with pytest.raises(ValidationError):
+        NamespaceAuthorityDriftAnalyzer(
+            review_context={
+                "schema_version": "namespace_authority_context_v1",
+                "change": CandidateChange("b", "c", [_nc(namespace="retopo")]),
+                "topology": {},
+            }
         )
 
 
@@ -263,18 +277,26 @@ def test_scan_project_wires_namespace_authority_context(tmp_path: Path):
     assert ns_findings[0].metadata["posture"] == "advisory"
     assert isinstance(result_dict, dict)
 
-    # Mapping form also works through the public API.
+    # Serialized v1 mapping / path activation (not object-bearing dicts).
+    mapping = json.loads((FIXTURES / "context_valid.json").read_text(encoding="utf-8"))
     mapped, _ = scan_project(
         tmp_path,
         ci_mode=True,
-        namespace_authority_context={
-            "change": change,
-            "topology": _binding_less(),
-            "source_registry": "mapping",
-        },
+        namespace_authority_context=mapping,
     )
     assert any(
         f.type is AnalyzerType.NAMESPACE_AUTHORITY_DRIFT
-        and f.metadata.get("source_registry") == "mapping"
+        and f.metadata.get("source_registry") == "fixture:binding-less"
         for f in mapped.findings
+    )
+
+    via_path, _ = scan_project(
+        tmp_path,
+        ci_mode=True,
+        namespace_authority_context=FIXTURES / "context_valid.json",
+    )
+    assert any(
+        f.type is AnalyzerType.NAMESPACE_AUTHORITY_DRIFT
+        and f.metadata.get("verdict") == "INSUFFICIENT_EVIDENCE"
+        for f in via_path.findings
     )

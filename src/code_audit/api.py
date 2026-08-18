@@ -117,7 +117,7 @@ def scan_project(
     analyzers: Optional[list[Any]] = None,
     enable_js_ts: bool = True,
     pr_scope_manifest: str | Path | None = None,
-    namespace_authority_context: NamespaceAuthorityContext | dict[str, Any] | None = None,
+    namespace_authority_context: NamespaceAuthorityContext | dict[str, Any] | str | Path | None = None,
 ) -> tuple[RunResult, dict[str, Any]]:
     """Run the standard scan pipeline programmatically.
 
@@ -140,11 +140,11 @@ def scan_project(
         stays silent (ordinary scan).
     namespace_authority_context:
         Optional review context for :class:`NamespaceAuthorityDriftAnalyzer`.
-        Accepts a :class:`NamespaceAuthorityContext` or an equivalent mapping
-        with required keys ``change`` and ``topology`` (optional
-        ``namespace_bindings``, ``source_registry``). Malformed mappings raise
-        ``ValueError``. The default registry instance stays silent unless this
-        is provided (or an analyzer instance is configured via ``analyzers=``).
+        Accepts a :class:`NamespaceAuthorityContext`, a JSON path, or a
+        JSON-serializable ``namespace_authority_context_v1`` mapping.
+        Object-bearing legacy dicts are rejected by schema validation.
+        The default registry instance stays silent unless this is provided
+        (or an analyzer instance is configured via ``analyzers=``).
         Same review-only lifecycle as ``pr_scope_manifest`` / ``PrScopeAnalyzer``.
 
     Returns
