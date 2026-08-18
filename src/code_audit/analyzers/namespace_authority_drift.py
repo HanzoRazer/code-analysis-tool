@@ -4,9 +4,8 @@ Wraps the vendored Git-independent engine (``namespace_authority_engine``) and
 normalizes ``DriftFinding`` values into suite ``Finding`` objects.
 
 Silent without review context — ordinary file sweeps do not invent a candidate
-change or authority topology. Callers supply a constructed ``CandidateChange``
-plus a registry-shaped topology (dict/path). The adapter never synthesizes
-namespace→domain bindings.
+change or authority topology. Direct ``NamespaceAuthorityContext`` objects are
+accepted; serialized mapping/path activation is parsed by the strict v1 loader.
 
 Provenance pin: luthiers-toolbox@14c15afca6c1e9c029a221ef97d2c46613dfb717 (#273).
 NAD-PORT-001 COMPLETE — do not use d796cf95 / e25c7390 / a368652f.
@@ -32,8 +31,6 @@ from code_audit.model.finding import Finding, Location, make_fingerprint
 _RULE_ID = "NAMESPACE_AUTHORITY_DRIFT_001"
 _PROVENANCE = "luthiers-toolbox@14c15afca6c1e9c029a221ef97d2c46613dfb717"
 
-# Advisory v1: never elevate suite severity above LOW so scan exit policy stays
-# non-blocking. Native detector severity is preserved in metadata.
 _SUITE_SEVERITY = {
     NativeSeverity.INFORMATIONAL: Severity.INFO,
     NativeSeverity.ADVISORY: Severity.LOW,
@@ -44,13 +41,7 @@ _SUITE_SEVERITY = {
 
 @dataclass(frozen=True, slots=True)
 class NamespaceAuthorityContext:
-    """Activates namespace-authority adjudication inside a scan.
-
-    The suite supplies topology; it does not invent authority. Prefer a registry
-    dict/path plus optional ``namespace_bindings``. Passing a pre-built
-    ``CandidateChange`` keeps tests Git-independent (PR/archaeology git mode is
-    a later slice).
-    """
+    """Activates namespace-authority adjudication inside a scan."""
 
     change: CandidateChange
     topology: AuthorityTopology | dict[str, Any] | Path
@@ -95,69 +86,42 @@ def _normalize(drift: DriftFinding, *, source_registry: str, base_ref: str, cand
 
 
 class NamespaceAuthorityDriftAnalyzer:
-    """Advisory adapter: declared-authority drift only; silent without context.
-
-    Lives in ``api._DEFAULT_ANALYZERS`` (registry-complete convention, same as
-    :class:`~code_audit.analyzers.pr_scope.PrScopeAnalyzer`) but emits nothing
-    until constructed with a :class:`NamespaceAuthorityContext` or activated via
-    ``scan_project(namespace_authority_context=...)``.
-    """
+    """Advisory adapter: declared-authority drift only; silent without context."""
 
     id: str = "namespace_authority_drift"
-    version: str = "0.1.1"
+    version: str = "0.2.0"
 
     def __init__(
         self,
-        review_context: NamespaceAuthorityContext | dict[str, Any] | None = None,
+        review_context: NamespaceAuthorityContext | dict[str, Any] | str | Path | None = None,
     ) -> None:
         self._ctx = self._coerce_context(review_context)
 
     @staticmethod
     def _coerce_context(
-        review_context: NamespaceAuthorityContext | dict[str, Any] | None,
+        review_context: NamespaceAuthorityContext | dict[str, Any] | str | Path | None,
     ) -> NamespaceAuthorityContext | None:
         if review_context is None:
             return None
         if isinstance(review_context, NamespaceAuthorityContext):
             return review_context
-        if not isinstance(review_context, dict):
-            raise TypeError(
-                "review_context must be NamespaceAuthorityContext | dict | None, "
-                f"got {type(review_context).__name__}"
+
+        # Serialized inputs have exactly one trust boundary: the strict loader.
+        # In particular, the legacy object-bearing dict form is intentionally
+        # rejected by schema validation instead of bypassing the JSON contract.
+        if isinstance(review_context, (dict, str, Path)):
+            from code_audit.contracts.namespace_authority_context import (
+                load_namespace_authority_context,
             )
-        missing = [k for k in ("change", "topology") if k not in review_context]
-        if missing:
-            raise ValueError(
-                "namespace_authority review_context mapping missing required "
-                f"key(s): {', '.join(missing)}"
-            )
-        change = review_context["change"]
-        topology = review_context["topology"]
-        if not isinstance(change, CandidateChange):
-            raise TypeError(
-                "review_context['change'] must be CandidateChange, "
-                f"got {type(change).__name__}"
-            )
-        if not isinstance(topology, (AuthorityTopology, dict, Path)):
-            raise TypeError(
-                "review_context['topology'] must be AuthorityTopology | dict | Path, "
-                f"got {type(topology).__name__}"
-            )
-        bindings = review_context.get("namespace_bindings")
-        if bindings is not None and not isinstance(bindings, dict):
-            raise TypeError(
-                "review_context['namespace_bindings'] must be dict | None, "
-                f"got {type(bindings).__name__}"
-            )
-        return NamespaceAuthorityContext(
-            change=change,
-            topology=topology,
-            namespace_bindings=bindings,
-            source_registry=str(review_context.get("source_registry", "injected")),
+            return load_namespace_authority_context(review_context)
+
+        raise TypeError(
+            "review_context must be NamespaceAuthorityContext | mapping | JSON path | None, "
+            f"got {type(review_context).__name__}"
         )
 
     def run(self, root: Path, files: list[Path]) -> list[Finding]:
-        del root, files  # activation is context-driven, not path-walk driven
+        del root, files
         ctx = self._ctx
         if ctx is None:
             return []
@@ -167,7 +131,7 @@ class NamespaceAuthorityDriftAnalyzer:
             ctx.topology,
             namespace_bindings=ctx.namespace_bindings,
         )
-        return [
+        findings = [
             _normalize(
                 d,
                 source_registry=ctx.source_registry,
@@ -176,3 +140,12 @@ class NamespaceAuthorityDriftAnalyzer:
             )
             for d in drifts
         ]
+        return sorted(
+            findings,
+            key=lambda f: (
+                f.location.path,
+                f.location.line_start,
+                f.metadata.get("namespace", ""),
+                f.fingerprint,
+            ),
+        )
