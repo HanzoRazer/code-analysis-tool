@@ -131,3 +131,191 @@ def test_acceptance_luthiers_fires_on_both_lanes(tmp_path):
     # tool), on two distinct lines — not just the type-check lane we already knew.
     assert tools == ["eslint", "vue-tsc"]
     assert len({x.location.line_start for x in f}) == 2
+
+
+# ── parser / heuristic regression coverage ──────────────────────────────
+
+
+def test_bare_dash_step_with_nested_run_and_continue_on_error_flagged(tmp_path):
+    _wf(
+        tmp_path,
+        "ci.yml",
+        "jobs:\n"
+        "  build:\n"
+        "    steps:\n"
+        "      -\n"
+        "        name: Type check\n"
+        "        run: npm run type-check\n"
+        "        continue-on-error: true\n",
+    )
+    f = _run(tmp_path)
+    assert len(f) == 1
+    assert f[0].metadata["guard_kind"] == "continue-on-error: true"
+    assert "type-check" in f[0].metadata["verification_tool"].lower() or "vue-tsc" in (
+        f[0].metadata["verification_tool"].lower()
+    ) or "npm run type-check" in f[0].metadata["verification_tool"].lower()
+
+
+def test_multiline_run_block_with_swallowed_exit_flagged(tmp_path):
+    _wf(
+        tmp_path,
+        "lint.yml",
+        "jobs:\n"
+        "  lint:\n"
+        "    steps:\n"
+        "      - name: Lint\n"
+        "        run: |\n"
+        "          set -e\n"
+        "          npm run lint || true\n",
+    )
+    f = _run(tmp_path)
+    assert len(f) == 1
+    assert "swallowed" in f[0].metadata["guard_kind"]
+    assert f[0].location.line_start == 7  # the shell line with || true
+
+
+def test_multiline_run_block_with_continue_on_error_flagged(tmp_path):
+    _wf(
+        tmp_path,
+        "typecheck.yml",
+        "jobs:\n"
+        "  check:\n"
+        "    steps:\n"
+        "      - name: Type check\n"
+        "        run: |\n"
+        "          npm run type-check\n"
+        "        continue-on-error: true\n",
+    )
+    f = _run(tmp_path)
+    assert len(f) == 1
+    assert f[0].metadata["guard_kind"] == "continue-on-error: true"
+
+
+def test_non_step_yaml_list_with_verification_text_not_flagged(tmp_path):
+    _wf(
+        tmp_path,
+        "matrix.yml",
+        "jobs:\n"
+        "  build:\n"
+        "    strategy:\n"
+        "      matrix:\n"
+        "        cmd:\n"
+        "          - pytest || true\n"
+        "          - eslint . || true\n"
+        "    steps:\n"
+        "      - run: echo ok\n",
+    )
+    assert _run(tmp_path) == []
+
+
+def test_nested_list_inside_step_does_not_break_detection(tmp_path):
+    _wf(
+        tmp_path,
+        "ci.yml",
+        "jobs:\n"
+        "  build:\n"
+        "    steps:\n"
+        "      - name: Type check\n"
+        "        run: npm run type-check\n"
+        "        env:\n"
+        "          EXTRA_ARGS:\n"
+        "            - --strict\n"
+        "            - --pretty\n"
+        "        continue-on-error: true\n",
+    )
+    f = _run(tmp_path)
+    assert len(f) == 1
+    assert f[0].metadata["guard_kind"] == "continue-on-error: true"
+
+
+def test_continue_on_error_yes_and_on_are_flagged(tmp_path):
+    _wf(
+        tmp_path,
+        "ci.yml",
+        "jobs:\n"
+        "  a:\n"
+        "    steps:\n"
+        "      - run: pytest -q\n"
+        "        continue-on-error: yes\n"
+        "  b:\n"
+        "    steps:\n"
+        "      - run: eslint .\n"
+        "        continue-on-error: on\n",
+    )
+    f = _run(tmp_path)
+    assert len(f) == 2
+    assert all(x.metadata["guard_kind"] == "continue-on-error: true" for x in f)
+
+
+def test_continue_on_error_false_not_flagged(tmp_path):
+    _wf(
+        tmp_path,
+        "ci.yml",
+        "jobs:\n"
+        "  build:\n"
+        "    steps:\n"
+        "      - run: pytest -q\n"
+        "        continue-on-error: false\n",
+    )
+    assert _run(tmp_path) == []
+
+
+def test_semicolon_true_swallow_flagged(tmp_path):
+    _wf(
+        tmp_path,
+        "lint.yml",
+        "jobs:\n"
+        "  lint:\n"
+        "    steps:\n"
+        "      - run: eslint . ; true\n",
+    )
+    f = _run(tmp_path)
+    assert len(f) == 1
+    assert "; true" in f[0].metadata["guard_kind"]
+
+
+def test_exit_zero_swallow_flagged(tmp_path):
+    _wf(
+        tmp_path,
+        "test.yml",
+        "jobs:\n"
+        "  t:\n"
+        "    steps:\n"
+        "      - run: pytest -q || exit 0\n",
+    )
+    f = _run(tmp_path)
+    assert len(f) == 1
+    assert "exit 0" in f[0].metadata["guard_kind"]
+
+
+def test_benign_true_on_separate_line_not_flagged(tmp_path):
+    """`; true` / bare true away from the verification command must not fire."""
+    _wf(
+        tmp_path,
+        "lint.yml",
+        "jobs:\n"
+        "  lint:\n"
+        "    steps:\n"
+        "      - name: Lint\n"
+        "        run: |\n"
+        "          npm run lint\n"
+        "          echo done\n"
+        "          true\n",
+    )
+    assert _run(tmp_path) == []
+
+
+def test_verification_looking_name_without_run_tool_not_enough_for_coe(tmp_path):
+    """Name-only tool mention still counts as verification field content (documented);
+    a step with continue-on-error and a non-tool run must not fire."""
+    _wf(
+        tmp_path,
+        "notify.yml",
+        "jobs:\n"
+        "  n:\n"
+        "    steps:\n"
+        "      - name: Notify about build status\n"
+        "        run: curl -X POST https://example.invalid/hook\n"
+        "        continue-on-error: true\n",
+    )
+    assert _run(tmp_path) == []

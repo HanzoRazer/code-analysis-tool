@@ -56,9 +56,9 @@
     },
     {
       "class_name": "HollowGuaranteeAnalyzer",
-      "logic_hash": "sha256:ba50c8509da3b1221e31837be91326357772ca8c3e2c8a2aba320ce852af74dc",
+      "logic_hash": "sha256:ad1e7e20aeef278a679addb244bf805e70382f86f31b724c06fa9296af44a7f3",
       "module": "code_audit.analyzers.hollow_guarantee",
-      "version": "1.0.0"
+      "version": "1.0.1"
     },
     {
       "class_name": "JsTsSecurityPreviewAnalyzer",

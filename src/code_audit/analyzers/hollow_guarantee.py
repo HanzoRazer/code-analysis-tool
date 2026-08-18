@@ -18,8 +18,8 @@ Signatures detected (v1, high-confidence):
      test``, ``go test``, ``cargo test|clippy`` …). A ``continue-on-error`` on a
      genuinely-optional step (upload/notify/deploy) is NOT flagged — the verification
      match is the discriminator.
-  2. A verification command with its exit swallowed inline: ``... || true``,
-     ``... || exit 0``, ``... ; true``.
+  2. A verification command with its exit swallowed on the **same shell line**:
+     ``... || true``, ``... || exit 0``, ``... ; true``.
 
 Emits: make the guard able to fail. If the failures are known debt, ratchet them
 (freeze a baseline count, fail on any increase) rather than suppressing the lane —
@@ -28,6 +28,9 @@ so the guard catches regressions while tolerating the existing debt.
 Universal: any repo with a GitHub Actions verification step under
 ``continue-on-error: true`` (or ``|| true``) has a lane whose green is not a
 guarantee.
+
+Scan scope: direct children of ``.github/workflows/*.{yml,yaml}`` only
+(non-recursive; matches normal GitHub Actions layout).
 """
 from __future__ import annotations
 
@@ -65,11 +68,22 @@ _CONTINUE_ON_ERROR_TRUE = re.compile(
     re.IGNORECASE,
 )
 
-# A step list item under `steps:` — `- name:` / `- uses:` / `- run:` / `- id:`.
-_STEP_MARKER = re.compile(r"^(\s*)-\s+\S")
+# Enter a `steps:` mapping key (job-level). Indent of the key is captured.
+_STEPS_KEY = re.compile(r"^(\s*)steps\s*:\s*(?:#.*)?$")
+
+# A step list item under `steps:`. Allow `- run: ...`, `- name: ...`, and bare
+# `-` followed by nested keys on subsequent lines (valid YAML).
+_STEP_MARKER = re.compile(r"^(\s*)-\s*(?:\S.*)?$")
 
 # Inline exit-swallow appended to a command: `|| true`, `|| exit 0`, `; true`.
 _SWALLOW = re.compile(r"(\|\|\s*(?:true|exit\s+0)\b|;\s*true\b)")
+
+# Step fields whose text may contain a verification tool / shell command.
+# Also match compact list items: `- run: pytest`.
+_STEP_FIELD = re.compile(
+    r"^(\s*)(?:-\s+)?(run|uses|name)\s*:\s*(.*)$",
+    re.IGNORECASE,
+)
 
 
 class _Step:
@@ -85,46 +99,126 @@ class _Step:
 
 
 def _iter_steps(text: str):
-    """Yield _Step blocks. A step is a `- ...` list item and every deeper-indented
-    line until the next list item at the same-or-shallower indent. Non-step content
-    (job keys, top-level) is ignored — we only care about step bodies."""
+    """Yield ``_Step`` blocks from under ``steps:`` mappings only.
+
+    A step is a ``- ...`` list item (including bare ``-``) and every deeper-
+    indented line until the next list item at the same-or-shallower indent.
+    Nested lists inside a step stay part of that step. YAML lists outside
+    ``steps:`` (matrix values, env arrays, etc.) are ignored.
+    """
     lines = text.splitlines()
     current: _Step | None = None
+    in_steps = False
+    steps_indent = -1
+
     for i, raw in enumerate(lines, start=1):
-        if not raw.strip() or raw.lstrip().startswith("#"):
+        stripped = raw.strip()
+        indent = len(raw) - len(raw.lstrip()) if stripped else 0
+
+        if not stripped or stripped.startswith("#"):
             if current is not None:
                 current.lines.append((i, raw))
             continue
+
+        steps_m = _STEPS_KEY.match(raw)
+        if steps_m:
+            if current is not None:
+                yield current
+                current = None
+            in_steps = True
+            steps_indent = len(steps_m.group(1))
+            continue
+
+        if in_steps and indent <= steps_indent:
+            if current is not None:
+                yield current
+                current = None
+            in_steps = False
+            # Fall through: this line may open another mapping key.
+
+        if not in_steps:
+            continue
+
         m = _STEP_MARKER.match(raw)
-        indent = len(raw) - len(raw.lstrip())
         if m:
-            # A new list item. Close the current step if this marker is at the
-            # same-or-shallower indent (sibling/ancestor), else it's a nested list.
-            if current is not None and indent <= current.indent:
-                yield current
-                current = None
-            if current is None:
-                current = _Step(i, indent)
-            current.lines.append((i, raw))
-        else:
-            if current is not None and indent > current.indent:
+            item_indent = len(m.group(1))
+            if item_indent <= steps_indent:
+                continue
+            # Nested list under the current step — keep collecting.
+            if current is not None and item_indent > current.indent:
                 current.lines.append((i, raw))
-            elif current is not None:
-                # dedent below the step — the step block has ended.
+                continue
+            if current is not None:
                 yield current
-                current = None
+            current = _Step(i, item_indent)
+            current.lines.append((i, raw))
+            continue
+
+        if current is not None and indent > current.indent:
+            current.lines.append((i, raw))
+        elif current is not None:
+            yield current
+            current = None
+
     if current is not None:
         yield current
 
 
-def _verification_command(step_text: str) -> str | None:
-    """Return the matched verification tool if the step runs one, else None.
-    Only `run:`/`uses:`/`name:` content is considered (not the whole step)."""
-    m = _VERIFICATION.search(step_text)
-    return m.group(0).strip() if m else None
+def _field_content_lines(step: _Step) -> list[tuple[int, str]]:
+    """Return (lineno, text) for ``run:`` / ``uses:`` / ``name:`` content.
+
+    Includes block-scalar body lines under ``run: |`` / ``run: >``.
+    """
+    out: list[tuple[int, str]] = []
+    collecting = False
+    field_indent = 0
+    for lineno, raw in step.lines:
+        if collecting:
+            if not raw.strip():
+                out.append((lineno, raw))
+                continue
+            indent = len(raw) - len(raw.lstrip())
+            if indent > field_indent:
+                out.append((lineno, raw))
+                continue
+            collecting = False
+            # Fall through — may be another field at this indent.
+
+        m = _STEP_FIELD.match(raw)
+        if not m:
+            continue
+        field_indent = len(m.group(1))
+        rest = m.group(3).rstrip()
+        # Block scalar indicator optionally followed by chomp/indent flags.
+        if re.match(r"[|>][+-]?\d*\s*(?:#.*)?$", rest):
+            collecting = True
+            continue
+        if rest:
+            out.append((lineno, rest))
+    return out
 
 
-def _line_of(step: _Step, pattern: re.Pattern) -> int:
+def _verification_command(step: _Step) -> str | None:
+    """Return the matched verification tool from run:/uses:/name: content, else None."""
+    for _, content in _field_content_lines(step):
+        m = _VERIFICATION.search(content)
+        if m:
+            return m.group(0).strip()
+    return None
+
+
+def _swallowed_exit(step: _Step) -> tuple[re.Match[str], int] | None:
+    """Find a swallow on the same shell/content line as a verification command."""
+    for lineno, content in _field_content_lines(step):
+        if not _VERIFICATION.search(content):
+            continue
+        swallow = _SWALLOW.search(content)
+        if swallow:
+            return swallow, lineno
+    return None
+
+
+def _line_of(step: _Step, pattern: re.Pattern[str]) -> int:
     for lineno, raw in step.lines:
         if pattern.match(raw) if pattern is _CONTINUE_ON_ERROR_TRUE else pattern.search(raw):
             return lineno
@@ -135,13 +229,15 @@ class HollowGuaranteeAnalyzer:
     """Detect CI verification steps that structurally cannot fail (Family III)."""
 
     id: str = "hollow_guarantee"
-    version: str = "1.0.0"
+    version: str = "1.0.1"
 
     def run(self, root: Path, files: list[Path]) -> list[Finding]:
         wf_dir = root / _WORKFLOW_DIR
         if not wf_dir.is_dir():
             return []
         findings: list[Finding] = []
+        # Non-recursive: GitHub Actions loads workflow files from this directory
+        # only (subdirectories are not workflow entry points).
         for wf in sorted(wf_dir.iterdir()):
             if wf.is_file() and wf.suffix.lower() in _WORKFLOW_EXTS:
                 findings.extend(self._scan(wf, root))
@@ -159,13 +255,12 @@ class HollowGuaranteeAnalyzer:
 
         out: list[Finding] = []
         for step in _iter_steps(text):
-            step_text = step.text()
-            tool = _verification_command(step_text)
+            tool = _verification_command(step)
             if tool is None:
                 continue
 
             has_coe = any(_CONTINUE_ON_ERROR_TRUE.match(l) for _, l in step.lines)
-            swallow = _SWALLOW.search(step_text)
+            swallow = _swallowed_exit(step)
 
             if has_coe:
                 line = _line_of(step, _CONTINUE_ON_ERROR_TRUE)
@@ -175,10 +270,10 @@ class HollowGuaranteeAnalyzer:
                     snippet=self._snippet(step, line),
                 ))
             elif swallow:
-                line = _line_of(step, _SWALLOW)
+                match, line = swallow
                 out.append(self._finding(
                     rel, line, tool,
-                    kind=f"exit swallowed ({swallow.group(1).strip()})",
+                    kind=f"exit swallowed ({match.group(1).strip()})",
                     snippet=self._snippet(step, line),
                     confidence=0.6,
                 ))
