@@ -5,6 +5,8 @@ Usage:
     python -m code_audit <path> --json
     python -m code_audit <path> --project-id MY_PROJECT
     python -m code_audit scan --root <dir> --out <dir> [--emit-signals signals_latest.json]
+    python -m code_audit pr-scope --root <dir> --manifest <file> [--json]
+    python -m code_audit namespace-authority <root> --context <context.json> [--json]
     python -m code_audit validate <instance.json> <schema_name>
     python -m code_audit fence check <path> [--patterns PAT ...] [--json]
     python -m code_audit fence list
@@ -88,6 +90,9 @@ from code_audit.api import (
     scan_project as _api_scan_project,
     snapshot_debt as _api_snapshot_debt,
     validate_instance as _api_validate_instance,
+)
+from code_audit.namespace_authority import (
+    check_namespace_authority as _api_check_namespace_authority,
 )
 
 
@@ -409,6 +414,27 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     scope_p.add_argument("--git-timeout", type=float, default=30.0)
     scope_p.add_argument("--json", dest="json_out", action="store_true", default=False)
+
+    # ── namespace-authority subcommand (advisory review-time check) ──
+    na_p = sub.add_parser(
+        "namespace-authority",
+        help=(
+            "Advisory namespace-authority drift check from a serialized "
+            "namespace_authority_context_v1 JSON file."
+        ),
+    )
+    na_p.add_argument(
+        "root",
+        type=Path,
+        help="Project root directory (not used for discovery; activation is context-driven).",
+    )
+    na_p.add_argument(
+        "--context",
+        type=Path,
+        required=True,
+        help="Path to a namespace_authority_context_v1 JSON file.",
+    )
+    na_p.add_argument("--json", dest="json_out", action="store_true", default=False)
 
     # ── validate subcommand ─────────────────────────────────────────
     val_p = sub.add_parser(
@@ -1686,6 +1712,7 @@ def main(argv: list[str] | None = None) -> int:
     known_commands = {
         "scan",
         "pr-scope",
+        "namespace-authority",
         "validate",
         "fence",
         "governance",
@@ -1736,6 +1763,34 @@ def main(argv: list[str] | None = None) -> int:
         else:
             print("PR scope verified.", file=sys.stderr)
         return ExitCode.VIOLATION if findings else ExitCode.SUCCESS
+
+    # ── namespace-authority subcommand (advisory; findings do not fail) ──
+    if args.command == "namespace-authority":
+        from jsonschema.exceptions import ValidationError
+
+        try:
+            findings = _api_check_namespace_authority(
+                args.root,
+                context=args.context,
+            )
+        except (FileNotFoundError, ValueError, TypeError, OSError, ValidationError) as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            return ExitCode.ERROR
+
+        payload = {
+            "advisory": True,
+            "finding_count": len(findings),
+            "findings": [finding.to_dict() for finding in findings],
+        }
+        if args.json_out:
+            stable_json_dump(payload, sys.stdout, ci_mode=True, indent=2)
+        elif findings:
+            for finding in findings:
+                print(f"[{finding.severity.value}] {finding.message}", file=sys.stderr)
+        else:
+            print("Namespace authority: no findings.", file=sys.stderr)
+        # Advisory posture: findings never force a non-zero exit.
+        return ExitCode.SUCCESS
 
     # ── validate subcommand ─────────────────────────────────────────
     if args.command == "validate":
