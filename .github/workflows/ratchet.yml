@@ -30,7 +30,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e ".[dev]"
 
-      - name: Fail-fast: baseline file must exist
+      - name: "Fail-fast: baseline file must exist"
         run: |
           if [ ! -f "baselines/main.json" ]; then
             echo "::error title=Missing baseline::baselines/main.json not found. Create it with: code-audit debt snapshot . --ci --out baselines/main.json"
