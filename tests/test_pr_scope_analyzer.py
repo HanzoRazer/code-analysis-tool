@@ -555,7 +555,11 @@ def test_acceptance_contract_file_lists_required_behaviors():
         "clean_scope_zero_findings",
         "ordinary_scan_silent",
         "fail_loud_on_uncheckable",
+        "undeclared_dependency_change_downgrade_high",
+        "declared_dependency_change_passes",
+        "dependency_check_fail_loud",
     } <= ids
+    assert "undeclared_dependency_change" in data["severity_policy"]
 
 
 @pytest.mark.parametrize("name", ["patch_input_v2.example.json", "patch_input_v2.template.json"])
@@ -567,3 +571,180 @@ def test_v2_artifacts_validate_against_schema(name):
     )
     instance = json.loads((_REPO / "cbsp21" / name).read_text(encoding="utf-8"))
     jsonschema.validate(instance, schema)
+
+
+# ── v2.1.0: sub-file dependency-direction check (born from PR #296) ──────
+#
+# PR #296 declared a supabase bump and rode an *undeclared* zod
+# `^4.4.3 → ^3.25.76` downgrade in the SAME package.json — silently reverting
+# PR #293's zod-4 landing. File-level scope saw a declared file and passed. The
+# rule below looks INSIDE a declared package.json at per-dependency direction.
+
+_PKG_PATH = "packages/client/package.json"
+
+
+def _pkgjson(deps: dict) -> str:
+    return json.dumps({"name": "client", "dependencies": deps}, indent=2) + "\n"
+
+
+def _write_dep_manifest(
+    root: Path, base: str, declared_files: list[str], *,
+    declared_deps: list | None = None, head: str = "HEAD",
+) -> Path:
+    """Manifest that can additionally declare `scope.dependency_changes` — the
+    knob `_write_manifest` does not expose."""
+    scope: dict = {"files_expected_to_change": declared_files}
+    if declared_deps is not None:
+        scope["dependency_changes"] = declared_deps
+    manifest = {
+        "schema_version": "cbsp21_patch_manifest_v2",
+        "scope": scope,
+        "diff_range": {"base": base, "head": head, "base_sha": base},
+    }
+    path = root / "patch.json"
+    path.write_text(json.dumps(manifest), encoding="utf-8")
+    return path
+
+
+@pytest.fixture
+def pkg_repo(tmp_path: Path) -> tuple[Path, str]:
+    """A repo whose merge-base carries a package.json (supabase + zod), then a
+    `feature` branch checked out to receive the change under test."""
+    _git(tmp_path, "init", "-q", "-b", "main")
+    _git(tmp_path, "config", "user.email", "scope@example.test")
+    _git(tmp_path, "config", "user.name", "Scope Test")
+    _commit_file(tmp_path, _PKG_PATH,
+                 _pkgjson({"@supabase/supabase-js": "^2.0.0", "zod": "^4.4.3"}))
+    base = _git(tmp_path, "rev-parse", "HEAD")
+    _git(tmp_path, "checkout", "-q", "-b", "feature")
+    return tmp_path, base
+
+
+def _dep_findings(findings):
+    return [f for f in findings
+            if f.metadata["rule_id"] == "pr_scope.undeclared_dependency_change"]
+
+
+def test_296_undeclared_downgrade_fires_high(pkg_repo):
+    """The decisive case: the legit supabase bump is declared, the zod downgrade
+    riding alongside it is NOT — it must fire HIGH with direction=downgrade."""
+    root, base = pkg_repo
+    _commit_file(root, _PKG_PATH,
+                 _pkgjson({"@supabase/supabase-js": "^2.1.0", "zod": "^3.25.76"}))
+    manifest = _write_dep_manifest(
+        root, base, [_PKG_PATH], declared_deps=["@supabase/supabase-js"])
+
+    findings = PrScopeAnalyzer(manifest=manifest, base=base).run(root, [])
+    dep = _dep_findings(findings)
+    assert len(dep) == 1, [f.metadata for f in findings]
+    f = dep[0]
+    assert f.severity is Severity.HIGH
+    assert f.type is AnalyzerType.PR_SCOPE
+    assert f.metadata["dependency"] == "zod"
+    assert f.metadata["direction"] == "downgrade"
+    assert f.metadata["base_version"] == "^4.4.3"
+    assert f.metadata["head_version"] == "^3.25.76"
+
+
+def test_296_legit_supabase_only_stays_silent(pkg_repo):
+    """The other half of the decisive assertion: a declared supabase-only bump,
+    zod untouched, must produce no dependency-direction finding."""
+    root, base = pkg_repo
+    _commit_file(root, _PKG_PATH,
+                 _pkgjson({"@supabase/supabase-js": "^2.1.0", "zod": "^4.4.3"}))
+    manifest = _write_dep_manifest(
+        root, base, [_PKG_PATH], declared_deps=["@supabase/supabase-js"])
+
+    findings = PrScopeAnalyzer(manifest=manifest, base=base).run(root, [])
+    assert "pr_scope.undeclared_dependency_change" not in _rules(findings)
+
+
+def test_declared_dependency_change_is_silent(pkg_repo):
+    """Declaring the zod change in `dependency_changes` legitimizes it."""
+    root, base = pkg_repo
+    _commit_file(root, _PKG_PATH,
+                 _pkgjson({"@supabase/supabase-js": "^2.1.0", "zod": "^3.25.76"}))
+    manifest = _write_dep_manifest(
+        root, base, [_PKG_PATH], declared_deps=["@supabase/supabase-js", "zod"])
+
+    findings = PrScopeAnalyzer(manifest=manifest, base=base).run(root, [])
+    assert "pr_scope.undeclared_dependency_change" not in _rules(findings)
+
+
+def test_undeclared_upgrade_is_medium(pkg_repo):
+    """An undeclared *upgrade* is scope drift too, but a milder signal than a
+    silent downgrade — MEDIUM, not HIGH."""
+    root, base = pkg_repo
+    _commit_file(root, _PKG_PATH,
+                 _pkgjson({"@supabase/supabase-js": "^2.0.0", "zod": "^5.0.0"}))
+    manifest = _write_dep_manifest(root, base, [_PKG_PATH], declared_deps=[])
+
+    dep = _dep_findings(PrScopeAnalyzer(manifest=manifest, base=base).run(root, []))
+    assert len(dep) == 1
+    assert dep[0].severity is Severity.MEDIUM
+    assert dep[0].metadata["direction"] == "upgrade"
+
+
+def test_undeclared_package_json_not_double_reported(pkg_repo):
+    """The sub-file rule applies only to DECLARED package.json — an undeclared
+    one is already covered by pr_scope.undeclared_file, so the dependency rule
+    must stay quiet and not double-count."""
+    root, base = pkg_repo
+    _commit_file(root, _PKG_PATH,
+                 _pkgjson({"@supabase/supabase-js": "^2.0.0", "zod": "^3.25.76"}))
+    # package.json is NOT declared; something else is.
+    manifest = _write_dep_manifest(root, base, ["docs/notes.md"], declared_deps=[])
+
+    findings = PrScopeAnalyzer(manifest=manifest, base=base).run(root, [])
+    rules = _rules(findings)
+    assert "pr_scope.undeclared_dependency_change" not in rules
+    assert "pr_scope.undeclared_file" in rules  # the file-level rule still fires
+
+
+def test_malformed_package_json_is_uncheckable_not_silent(pkg_repo):
+    """A package.json that will not parse must fail loud as CRITICAL uncheckable
+    — never a silent clean pass."""
+    root, base = pkg_repo
+    _commit_file(root, _PKG_PATH, "{ this is not valid json")
+    manifest = _write_dep_manifest(root, base, [_PKG_PATH], declared_deps=[])
+
+    findings = PrScopeAnalyzer(manifest=manifest, base=base).run(root, [])
+    unc = [f for f in findings
+           if f.metadata["rule_id"] == "pr_scope.dependency_check_uncheckable"]
+    assert len(unc) == 1
+    assert unc[0].severity is Severity.CRITICAL
+
+
+def test_reverts_base_landing_flag_is_set(tmp_path: Path):
+    """When the merge-base commit itself landed the dependency and the branch sets
+    it back to the parent value, `reverts_base_landing` is recorded True — the
+    exact #293→#296 shape when the landing is the merge-base."""
+    _git(tmp_path, "init", "-q", "-b", "main")
+    _git(tmp_path, "config", "user.email", "scope@example.test")
+    _git(tmp_path, "config", "user.name", "Scope Test")
+    # parent: zod 3
+    _commit_file(tmp_path, _PKG_PATH, _pkgjson({"zod": "^3.25.76"}))
+    # merge-base: zod 4 lands here
+    _commit_file(tmp_path, _PKG_PATH, _pkgjson({"zod": "^4.4.3"}))
+    base = _git(tmp_path, "rev-parse", "HEAD")
+    _git(tmp_path, "checkout", "-q", "-b", "feature")
+    # branch reverts zod back to the parent value, undeclared
+    _commit_file(tmp_path, _PKG_PATH, _pkgjson({"zod": "^3.25.76"}))
+    manifest = _write_dep_manifest(tmp_path, base, [_PKG_PATH], declared_deps=[])
+
+    dep = _dep_findings(PrScopeAnalyzer(manifest=manifest, base=base).run(tmp_path, []))
+    assert len(dep) == 1
+    assert dep[0].severity is Severity.HIGH
+    assert dep[0].metadata["reverts_base_landing"] is True
+
+
+def test_dependency_findings_validate_against_contract(pkg_repo):
+    """Every dependency-direction finding is a schema-valid Finding."""
+    root, base = pkg_repo
+    _commit_file(root, _PKG_PATH,
+                 _pkgjson({"@supabase/supabase-js": "^2.1.0", "zod": "^3.25.76"}))
+    manifest = _write_dep_manifest(
+        root, base, [_PKG_PATH], declared_deps=["@supabase/supabase-js"])
+
+    for f in PrScopeAnalyzer(manifest=manifest, base=base).run(root, []):
+        validate_finding(f.to_dict())

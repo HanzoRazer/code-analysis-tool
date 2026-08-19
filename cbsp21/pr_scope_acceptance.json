@@ -25,13 +25,15 @@
     "diff_range.head_sha",
     "changed_files_exact",
     "changed_files_count",
-    "file_context_coverage_percent"
+    "file_context_coverage_percent",
+    "scope.dependency_changes"
   ],
   "severity_policy": {
     "uncheckable": "CRITICAL — the review could not be performed at all",
     "drift_and_mismatch": "HIGH — base/head drift, observed-file or count mismatch",
     "contamination": "MEDIUM per undeclared file",
-    "coverage_summary": "HIGH when below threshold, otherwise MEDIUM"
+    "coverage_summary": "HIGH when below threshold, otherwise MEDIUM",
+    "undeclared_dependency_change": "HIGH when a downgrade or a revert-of-base-landing, otherwise MEDIUM — a per-dependency version change inside a declared package.json that the manifest does not declare"
   },
   "acceptance": [
     {
@@ -85,6 +87,22 @@
     {
       "id": "real_git_surface",
       "behavior": "Changed files and merge-base are read from real Git (-z parsing, --find-renames, UTF-8 decode). No caller may inject a synthetic diff, which would allow manufacturing a clean pass."
+    },
+    {
+      "id": "undeclared_dependency_change_downgrade_high",
+      "behavior": "A per-dependency version change inside a DECLARED package.json that the manifest does not declare (not in scope.dependency_changes, not named in diff_articulation) produces rule pr_scope.undeclared_dependency_change: HIGH when the change is a downgrade or reverts a version the merge-base itself landed, MEDIUM otherwise. Motivating case: PR #296 declared a supabase bump and rode an undeclared zod ^4.4.3 -> ^3.25.76 downgrade in the same file. Metadata carries dependency, base_version, head_version, direction, reverts_base_landing."
+    },
+    {
+      "id": "declared_dependency_change_passes",
+      "behavior": "A dependency change named in scope.dependency_changes (or in diff_articulation text) is legitimate and produces no pr_scope.undeclared_dependency_change finding. A declared supabase-only bump with zod untouched stays silent."
+    },
+    {
+      "id": "dependency_check_only_declared_files",
+      "behavior": "The sub-file dependency-direction check runs only on package.json files that ARE declared in scope. An undeclared package.json is already covered by pr_scope.undeclared_file and is not double-reported."
+    },
+    {
+      "id": "dependency_check_fail_loud",
+      "behavior": "A package.json that cannot be parsed at merge-base or head is pr_scope.dependency_check_uncheckable (CRITICAL); any exception inside the check is caught and reported as pr_scope.dependency_check_error (CRITICAL). The check reads the real git surface (git show <ref>:<path>) and never raises out of run() — an escaping exception would abort the scan, i.e. the silent pass this check exists to prevent."
     },
     {
       "id": "stable_finding_identity",

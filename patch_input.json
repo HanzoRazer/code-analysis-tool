@@ -1,55 +1,61 @@
 {
   "schema_version": "cbsp21_patch_manifest_v1",
-  "patch_id": "CAT-NS-AUTH-001",
-  "title": "Advisory namespace_authority_drift adapter (luthiers #273 freeze)",
-  "intent": "Vendor the Git-independent namespace-authority engine from luthiers-toolbox@14c15afca6c1e9c029a221ef97d2c46613dfb717 (#273) into code-analysis-tool and expose an advisory, context-gated suite analyzer that observes declared authority only.",
+  "patch_id": "CAT-PRSCOPE-DEPDIR-001",
+  "title": "pr_scope 2.1.0 — sub-file dependency-direction scope check",
+  "intent": "Close the gap that let PR #296 pass review: pr_scope compared divergence at FILE granularity, so a legitimately-declared package.json could carry an UNDECLARED dependency version change (a silent zod ^4.4.3 -> ^3.25.76 downgrade reverting PR #293). Add a per-dependency rule that looks INSIDE a declared package.json — declared file != declared change.",
   "change_type": "code",
   "behavior_change": "compatible",
   "risk_level": "low",
   "scope": {
     "paths_in_scope": [
       "src/code_audit/analyzers/",
-      "src/code_audit/api.py",
-      "src/code_audit/model/",
-      "tests/",
-      "CHANGELOG.md",
-      "patch_input.json"
+      "cbsp21/",
+      "tests/"
     ],
     "files_expected_to_change": [
-      "src/code_audit/analyzers/namespace_authority_engine.py",
-      "src/code_audit/analyzers/namespace_authority_drift.py",
-      "src/code_audit/api.py",
-      "src/code_audit/model/__init__.py",
-      "tests/test_namespace_authority_drift_analyzer.py",
-      "tests/fixtures/namespace_authority/",
-      "tests/contracts/logic_manifest.json",
-      "CHANGELOG.md",
-      "patch_input.json"
+      "src/code_audit/analyzers/pr_scope.py",
+      "tests/test_pr_scope_analyzer.py",
+      "cbsp21/pr_scope_acceptance.json"
     ],
-    "out_of_scope_notes": "Does not vendor Luthiers git adapter or CLI. Does not invent namespace→domain bindings. First integration is advisory (suite severity capped at LOW). No schema/exit-code/confidence contract axis changes."
+    "out_of_scope_notes": "Additive to pr_scope only. No new analyzer, no AnalyzerType enum change (reuses PR_SCOPE), no logic/golden/confidence manifest regen (AST hashes for those were re-verified green). Does not touch the ReviewContext no-injection guarantee — the new check reads the real git surface via `git show <ref>:<path>` and reuses the already-resolved merge_base."
   },
   "diff_range": {
     "base": "main",
-    "head": "cursor/namespace-authority-drift-adapter-6227"
+    "head": "feat/pr-scope-dependency-direction"
+  },
+  "changed_files_count": 4,
+  "changed_files_exact": [
+    "src/code_audit/analyzers/pr_scope.py",
+    "tests/test_pr_scope_analyzer.py",
+    "cbsp21/pr_scope_acceptance.json",
+    "patch_input.json"
+  ],
+  "diff_articulation": {
+    "what_changed": [
+      "Bumped PrScopeAnalyzer.version 2.0.0 -> 2.1.0.",
+      "Added module helpers: _is_package_json, _parse_version (strips v^~>=<, rejects ranges), _version_direction (downgrade/upgrade/same/unknown), _read_package_deps (git show <ref>:<path>, status ok/absent/malformed/git_error).",
+      "Added rule pr_scope.undeclared_dependency_change: for each dependency changed inside a DECLARED package.json but NOT declared in scope.dependency_changes / diff_articulation, emit HIGH on a downgrade or a revert-of-base-landing, MEDIUM otherwise; metadata carries dependency, base_version, head_version, direction, reverts_base_landing.",
+      "Added _reverts_base_landing enrichment (merge_base~1 vs merge_base best-effort).",
+      "Every failure mode is a Finding, never a raised exception: malformed package.json -> pr_scope.dependency_check_uncheckable (CRITICAL); any internal exception -> pr_scope.dependency_check_error (CRITICAL). An escaping exception would abort the scan — the silent pass this check exists to prevent.",
+      "Enumerated the new rule + severity policy in cbsp21/pr_scope_acceptance.json and added 8 tests reconstructing the #296 shape (HIGH downgrade fires; declared supabase-only stays silent; declared zod stays silent; undeclared upgrade = MEDIUM; undeclared package.json not double-reported; malformed = CRITICAL uncheckable; revert-of-base flag set; contract-valid findings)."
+    ],
+    "why_not_redundant": "Extends the existing pr_scope analyzer rather than adding a sibling. The file-level rule pr_scope.undeclared_file cannot see a change INSIDE a declared file; this is the strictly-additive sub-file granularity that #296 proved was missing."
   },
   "verification": {
-    "commands": [
-      "python -m pytest -q tests/test_namespace_authority_drift_analyzer.py tests/test_analyzer_registry_contract.py tests/test_version_bump_enforcement.py",
-      "python scripts/refresh_logic_manifest.py"
+    "commands_run": [
+      "py -3.11 -m pytest tests/test_pr_scope_analyzer.py -q",
+      "py -3.11 -m pytest tests/ -k \"logic_manifest or golden or confidence_policy or signal_logic\" -q"
     ],
-    "acceptance": [
-      "Engine verdict families match declared-authority adjudication including anti-inference → INSUFFICIENT_EVIDENCE",
-      "Adapter silent without NamespaceAuthorityContext",
-      "Flagged native verdicts map to suite Severity.LOW (advisory posture)",
-      "Analyzer registered in _DEFAULT_ANALYZERS and logic_manifest"
-    ]
+    "test_results": [
+      "tests/test_pr_scope_analyzer.py: 46 passed (38 pre-existing green + 8 new).",
+      "logic/golden/confidence/signal manifest tests: all passed — no AST-hash drift from the pr_scope.py edit."
+    ],
+    "notes": "Read-only against the real git surface; no synthetic-diff injection. Existing pr_scope behavior unchanged."
   },
-  "provenance": {
-    "nad_port": "NAD-PORT-001",
-    "nad_port_status": "COMPLETE / VERIFIED ON main",
-    "source_repo": "HanzoRazer/luthiers-toolbox",
-    "source_sha": "14c15afca6c1e9c029a221ef97d2c46613dfb717",
-    "source_prs": [272, 273],
-    "do_not_use_shas": ["d796cf95", "e25c7390", "a368652f"]
+  "file_context_coverage_percent": 100.0,
+  "metadata": {
+    "author": "HanzoRazer",
+    "created_at": "2026-08-19T00:00:00Z",
+    "reviewers": []
   }
 }
