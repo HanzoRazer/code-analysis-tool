@@ -1,55 +1,68 @@
 {
   "schema_version": "cbsp21_patch_manifest_v1",
-  "patch_id": "CAT-NS-AUTH-001",
-  "title": "Advisory namespace_authority_drift adapter (luthiers #273 freeze)",
-  "intent": "Vendor the Git-independent namespace-authority engine from luthiers-toolbox@14c15afca6c1e9c029a221ef97d2c46613dfb717 (#273) into code-analysis-tool and expose an advisory, context-gated suite analyzer that observes declared authority only.",
+  "patch_id": "CAT-WATCH-COV-001",
+  "title": "deployment watch_coverage validator — trigger/coverage set narrower than consumed",
+  "intent": "Family IV (instrument scope < measured target): the trigger/coverage set is narrower than what the build actually consumes, so a change to a consumed input does not trigger the build/redeploy that depends on it. Five instances this session (jumbo test, ENDPOINT_ROOTS regex, type-check continue-on-error, unbuilt Dockerfiles, Railway watchPatterns). Built as a validator plugin in deployment.py, not a new analyzer. Detector B of three from the MAINT-DEFER triage.",
   "change_type": "code",
   "behavior_change": "compatible",
   "risk_level": "low",
   "scope": {
     "paths_in_scope": [
-      "src/code_audit/analyzers/",
-      "src/code_audit/api.py",
-      "src/code_audit/model/",
+      "src/code_audit/analyzers/deployment.py",
       "tests/",
       "CHANGELOG.md",
       "patch_input.json"
     ],
     "files_expected_to_change": [
-      "src/code_audit/analyzers/namespace_authority_engine.py",
-      "src/code_audit/analyzers/namespace_authority_drift.py",
-      "src/code_audit/api.py",
-      "src/code_audit/model/__init__.py",
-      "tests/test_namespace_authority_drift_analyzer.py",
-      "tests/fixtures/namespace_authority/",
+      "src/code_audit/analyzers/deployment.py",
+      "tests/test_deployment_analyzer.py",
       "tests/contracts/logic_manifest.json",
       "CHANGELOG.md",
       "patch_input.json"
     ],
-    "out_of_scope_notes": "Does not vendor Luthiers git adapter or CLI. Does not invent namespace→domain bindings. First integration is advisory (suite severity capped at LOW). No schema/exit-code/confidence contract axis changes."
+    "out_of_scope_notes": "Validator plugin in the existing deployment.py architecture (register_validator / BaseValidator) — NOT a new analyzer, so no AnalyzerType, no confidence-manifest change. Findings reuse type=SECURITY (deployment-adjacent), matching sibling validators. Does NOT fix the real watch-coverage gap the validator found in this repo's own CI (copy-lint.yml runs scripts/locale_parity.py, which its path filter does not watch) — separate branch. baselines/main.json untouched: analyzer written to add zero structural debt (pure helpers at module scope, test class split; fingerprint set verified identical). cache-key completeness (the optional 3rd sub-check) is deferred. Detectors A (shipped) and C (pending) are separate branches."
   },
   "diff_range": {
     "base": "main",
-    "head": "cursor/namespace-authority-drift-adapter-6227"
+    "head": "feat/deployment-watch-coverage-validator"
+  },
+  "changed_files_count": 5,
+  "changed_files_exact": [
+    "src/code_audit/analyzers/deployment.py",
+    "tests/test_deployment_analyzer.py",
+    "tests/contracts/logic_manifest.json",
+    "CHANGELOG.md",
+    "patch_input.json"
+  ],
+  "diff_articulation": {
+    "what_changed": [
+      "New WatchCoverageValidator (id watch_coverage) registered in DeploymentAnalyzer._BUILTIN_VALIDATORS and enabled by default; DeploymentAnalyzer version 1.0.0 -> 1.1.0.",
+      "Check 1 (GitHub Actions): a workflow with an on.push/pull_request.paths filter whose jobs run a script (bash/python/node/./x) or read a manifest (npm ci -> package-lock.json/package.json; .nvmrc) not covered by any trigger glob -> rule WATCH-001 (watch_coverage_gap, github_actions), MEDIUM. paths-ignore workflows and no-filter workflows are skipped (they trigger broadly).",
+      "Check 1 (Railway): railway.json/.toml declaring watchPatterns whose startCommand/buildCommand runs a file not covered -> WATCH-001 (railway).",
+      "Check 2: any Dockerfile in the repo built by no CI job (docker build -f / positional context, docker/build-push-action file|context, docker-compose build) -> rule DOCKER-002 (unbuilt_dockerfile), MEDIUM.",
+      "GitHub path-glob semantics implemented (** across /, * within a segment) via _glob_to_regex/_path_covered; a consumed directory is covered if a watched path is nested inside it.",
+      "Every failure mode stays a Finding, never a raised exception: DeploymentAnalyzer.run already wraps each validator in try/except (emits an INFO error finding); malformed YAML/config parse to None and are skipped.",
+      "Pure helpers live at module scope and the test class is split into three, so the validator adds zero new structural debt (ratchet baseline untouched). 17 tests added incl. the born-from-the-bug copy-lint shape."
+    ],
+    "why_not_redundant": "Same failure family as hollow_guarantee (Family IV coverage) but the opposite mechanism: hollow_guarantee flags a guard that CANNOT fire; this flags a guard that CAN fire but whose INPUT set is too narrow to ever see the uncovered inputs. Slots into deployment.py's existing validator-plugin surface rather than adding a sibling analyzer."
   },
   "verification": {
-    "commands": [
-      "python -m pytest -q tests/test_namespace_authority_drift_analyzer.py tests/test_analyzer_registry_contract.py tests/test_version_bump_enforcement.py",
-      "python scripts/refresh_logic_manifest.py"
+    "commands_run": [
+      "py -3.11 -m pytest tests/test_deployment_analyzer.py -q",
+      "py -3.11 -m pytest tests/test_version_bump_enforcement.py tests/test_analyzer_registry_contract.py tests/test_rule_registry_requires_signal_logic_bump.py -q",
+      "self-scan: WatchCoverageValidator().validate(repo_root, DeploymentConfig(), [])"
     ],
-    "acceptance": [
-      "Engine verdict families match declared-authority adjudication including anti-inference → INSUFFICIENT_EVIDENCE",
-      "Adapter silent without NamespaceAuthorityContext",
-      "Flagged native verdicts map to suite Severity.LOW (advisory posture)",
-      "Analyzer registered in _DEFAULT_ANALYZERS and logic_manifest"
-    ]
+    "test_results": [
+      "deployment: 31 passed (14 pre-existing + 17 new).",
+      "logic/registry/version-bump contract tests: all passed after logic-manifest refresh.",
+      "Self-scan surfaced exactly one real watch-coverage gap (copy-lint.yml -> scripts/locale_parity.py); fix deferred, baseline unchanged (zero structural debt added)."
+    ],
+    "notes": "Reads the real tree, no synthetic injection. Detector B of three; A shipped and blessed, C pending; each its own branch, held for triage."
   },
-  "provenance": {
-    "nad_port": "NAD-PORT-001",
-    "nad_port_status": "COMPLETE / VERIFIED ON main",
-    "source_repo": "HanzoRazer/luthiers-toolbox",
-    "source_sha": "14c15afca6c1e9c029a221ef97d2c46613dfb717",
-    "source_prs": [272, 273],
-    "do_not_use_shas": ["d796cf95", "e25c7390", "a368652f"]
+  "file_context_coverage_percent": 100.0,
+  "metadata": {
+    "author": "HanzoRazer",
+    "created_at": "2026-08-19T00:00:00Z",
+    "reviewers": []
   }
 }

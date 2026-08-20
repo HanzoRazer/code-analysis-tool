@@ -26,9 +26,9 @@
     },
     {
       "class_name": "DeploymentAnalyzer",
-      "logic_hash": "sha256:3891af3c355fb653e9c7f9f3b54bfb7888439d6395ccc8ac84176af749684492",
+      "logic_hash": "sha256:96fafcab75bfc4f1692066c9785406b4062806e78e9c3d4fb67c7c798d47f1fd",
       "module": "code_audit.analyzers.deployment",
-      "version": "1.0.0"
+      "version": "1.1.0"
     },
     {
       "class_name": "DuplicationAnalyzer",

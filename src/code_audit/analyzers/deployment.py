@@ -95,6 +95,7 @@ class DeploymentConfig:
         "hardcoded_urls",
         "field_mapping",
         "env_vars",
+        "watch_coverage",
     ])
 
     @classmethod
@@ -620,6 +621,371 @@ class EnvVarValidator(BaseValidator):
 
 
 # =============================================================================
+# WATCH / TRIGGER COVERAGE DRIFT
+# =============================================================================
+#
+# Family IV (instrument scope < measured target): the trigger/coverage set is
+# narrower than what the build actually consumes, so a change to a consumed input
+# does not trigger the build/redeploy that depends on it. Distinct from the
+# hollow-guarantee detector — there the guard CANNOT fire; here the guard CAN
+# fire but its INPUT SET is too narrow to ever see the uncovered inputs.
+#
+# Motivating instances: GitHub Actions `on.push.paths` that omits a script the job
+# runs (or `package-lock.json`/`.nvmrc` a Node build reads); Railway
+# `watchPatterns` that omits `start.sh`/`scripts/**`; and Dockerfiles present in
+# the repo that no CI job builds. All the same shape — coverage narrower than what
+# is consumed.
+
+_WATCH_SKIP_DIRS = frozenset({
+    ".git", ".venv", "venv", "__pycache__", "node_modules",
+    "dist", "build", ".tox", ".mypy_cache", ".pytest_cache", ".ruff_cache",
+})
+
+# A script invoked by an interpreter/runner on a shell line. Group 1 is the file.
+_RUN_SCRIPT_RE = re.compile(
+    r"(?:^|[\s;&|(])(?:python[0-9.]*|py|bash|sh|node|npx|source|\.)\s+"
+    r"(\.{0,2}/?[\w./-]+\.(?:py|sh|bash|js|cjs|mjs|ts))\b"
+)
+# A bare ./path invocation.
+_RUN_DOTSLASH_RE = re.compile(r"(?:^|[\s;&|(])(\./[\w./-]+)\b")
+# `docker build ... -f <path>` and the trailing context.
+_DOCKER_BUILD_F_RE = re.compile(r"docker\s+build\b[^\n]*?-f\s+(\S+)")
+_DOCKER_BUILD_CTX_RE = re.compile(r"docker\s+build\b(?:(?!-f)[^\n])*?\s(\S+)\s*$")
+
+
+def _glob_to_regex(pattern: str) -> re.Pattern[str]:
+    """Compile a GitHub-Actions path glob to a full-match regex.
+
+    ``**`` matches across ``/``; ``*`` matches within a path segment; ``?`` one
+    non-separator char. A bare directory pattern (``dir/``) matches everything
+    beneath it.
+    """
+    pat = pattern.strip().rstrip("/")
+    out: list[str] = []
+    i = 0
+    while i < len(pat):
+        c = pat[i]
+        if c == "*":
+            if pat[i:i + 2] == "**":
+                out.append(".*")
+                i += 2
+                if pat[i:i + 1] == "/":
+                    i += 1
+                continue
+            out.append("[^/]*")
+        elif c == "?":
+            out.append("[^/]")
+        else:
+            out.append(re.escape(c))
+        i += 1
+    # A directory pattern also covers everything under it.
+    return re.compile(r"(?s)^" + "".join(out) + r"(?:/.*)?$")
+
+
+def _path_covered(path: str, patterns: list[str]) -> bool:
+    """True if a change to ``path`` would match at least one trigger pattern.
+
+    Covers three ways a file can be watched: a glob/literal that matches it, a
+    watched directory it lives under, or (for a consumed *directory*) a watched
+    path nested inside it.
+    """
+    p = path.strip().lstrip("./").rstrip("/")
+    for raw in patterns:
+        pat = raw.strip().lstrip("./").rstrip("/")
+        if not pat:
+            continue
+        if _glob_to_regex(pat).match(p):
+            return True
+        if "*" not in pat and "?" not in pat:
+            if p == pat or p.startswith(pat + "/") or pat.startswith(p + "/"):
+                return True
+    return False
+
+
+# Pure helpers are module-level functions (not methods) so the validator class
+# stays small and focused — the tool's own god-class metric applies to it too.
+
+def _load_yaml(path: Path) -> Any:
+    try:
+        import yaml
+    except ImportError:
+        return None
+    try:
+        return yaml.safe_load(path.read_text(encoding="utf-8", errors="replace"))
+    except Exception:  # noqa: BLE001 — a malformed workflow is not our concern
+        return None
+
+
+def _workflow_files(root: Path) -> list[Path]:
+    wf_dir = root / ".github" / "workflows"
+    if not wf_dir.is_dir():
+        return []
+    return sorted(p for p in wf_dir.iterdir()
+                  if p.is_file() and p.suffix.lower() in (".yml", ".yaml"))
+
+
+def _trigger_paths(on: Any) -> tuple[list[str], bool]:
+    """Return (path patterns, has_path_filter). ``paths-ignore`` sets
+    has_path_filter False (inverse semantics we don't model)."""
+    patterns: list[str] = []
+    has_filter = False
+    events = [on.get("push"), on.get("pull_request")] if isinstance(on, dict) else []
+    for ev in events:
+        if not isinstance(ev, dict):
+            continue
+        if "paths-ignore" in ev:
+            return [], False
+        p = ev.get("paths")
+        if isinstance(p, list):
+            patterns.extend(str(x) for x in p)
+            has_filter = True
+    return patterns, has_filter
+
+
+def _iter_run_strings(data: Any):
+    jobs = data.get("jobs") if isinstance(data, dict) else None
+    if not isinstance(jobs, dict):
+        return
+    for job in jobs.values():
+        steps = job.get("steps") if isinstance(job, dict) else None
+        for step in steps if isinstance(steps, list) else []:
+            if isinstance(step, dict) and isinstance(step.get("run"), str):
+                yield step["run"]
+
+
+def _consumed_inputs(root: Path, run: str) -> set[str]:
+    """Files a run block consumes: scripts it invokes, plus known manifests a Node
+    install reads (package-lock.json / package.json / .nvmrc). Only inputs that
+    actually exist in the repo are kept, so CLI args are not mistaken for files."""
+    consumed: set[str] = set()
+    for m in _RUN_SCRIPT_RE.finditer(run):
+        consumed.add(m.group(1).lstrip("./"))
+    for m in _RUN_DOTSLASH_RE.finditer(run):
+        consumed.add(m.group(1).lstrip("./"))
+    if re.search(r"\bnpm\s+(?:ci|install|run)\b", run):
+        consumed.update(("package-lock.json", "package.json"))
+    if ".nvmrc" in run:
+        consumed.add(".nvmrc")
+    return {c for c in consumed if (root / c).exists()}
+
+
+def _find_dockerfiles(root: Path) -> list[Path]:
+    out: list[Path] = []
+    for p in root.rglob("*"):
+        try:
+            if not p.is_file():
+                continue
+            if any(part in _WATCH_SKIP_DIRS for part in p.relative_to(root).parts):
+                continue
+            n = p.name
+            if n == "Dockerfile" or n.startswith("Dockerfile.") or n.endswith(".Dockerfile"):
+                out.append(p)
+        except OSError:
+            continue
+    return sorted(out)
+
+
+def _collect_docker_refs_text(text: str, built: set[str]) -> None:
+    for m in _DOCKER_BUILD_F_RE.finditer(text):
+        built.add(m.group(1).strip().lstrip("./"))
+    for m in _DOCKER_BUILD_CTX_RE.finditer(text):
+        ctx = m.group(1).strip().rstrip("/").lstrip("./")
+        if ctx and not ctx.startswith("-"):
+            built.add((ctx + "/Dockerfile").lstrip("/") if ctx != "." else "Dockerfile")
+
+
+def _action_built(data: Any, built: set[str]) -> None:
+    """docker/build-push-action steps → the Dockerfile they build."""
+    jobs = data.get("jobs") if isinstance(data, dict) else None
+    for job in jobs.values() if isinstance(jobs, dict) else []:
+        steps = job.get("steps") if isinstance(job, dict) else None
+        for step in steps if isinstance(steps, list) else []:
+            if not isinstance(step, dict):
+                continue
+            if "docker/build-push-action" not in str(step.get("uses", "")):
+                continue
+            with_ = step.get("with") if isinstance(step.get("with"), dict) else {}
+            f, ctx = with_.get("file"), with_.get("context")
+            if isinstance(f, str):
+                built.add(f.strip().lstrip("./"))
+            elif isinstance(ctx, str):
+                built.add((ctx.strip().rstrip("/").lstrip("./") + "/Dockerfile").lstrip("/"))
+
+
+def _compose_service_built(svc: Any, built: set[str]) -> None:
+    b = svc.get("build") if isinstance(svc, dict) else None
+    if isinstance(b, str):
+        built.add((b.rstrip("/").lstrip("./") + "/Dockerfile").lstrip("/"))
+    elif isinstance(b, dict):
+        ctx = str(b.get("context", ".")).rstrip("/").lstrip("./")
+        dfile = b.get("dockerfile")
+        if isinstance(dfile, str):
+            built.add((f"{ctx}/{dfile}" if ctx and ctx != "." else dfile).lstrip("/"))
+        else:
+            built.add((f"{ctx}/Dockerfile" if ctx and ctx != "." else "Dockerfile").lstrip("/"))
+
+
+def _compose_built(root: Path, built: set[str]) -> None:
+    for comp in list(root.rglob("docker-compose*.yml")) + list(root.rglob("compose*.yml")):
+        if any(part in _WATCH_SKIP_DIRS for part in comp.relative_to(root).parts):
+            continue
+        data = _load_yaml(comp)
+        services = (data.get("services") or {}) if isinstance(data, dict) else {}
+        for svc in services.values():
+            _compose_service_built(svc, built)
+
+
+def _built_dockerfiles(root: Path) -> set[str]:
+    """Dockerfile paths (repo-relative posix) that some CI job builds."""
+    built: set[str] = set()
+    for wf in _workflow_files(root):
+        data = _load_yaml(wf)
+        if not isinstance(data, dict):
+            _collect_docker_refs_text(wf.read_text(encoding="utf-8", errors="replace"), built)
+            continue
+        for run in _iter_run_strings(data):
+            _collect_docker_refs_text(run, built)
+        _action_built(data, built)
+    _compose_built(root, built)
+    return built
+
+
+def _parse_config(path: Path) -> Any:
+    text = path.read_text(encoding="utf-8", errors="replace")
+    if path.suffix.lower() == ".toml":
+        try:
+            import tomllib
+            return tomllib.loads(text)
+        except Exception:  # noqa: BLE001
+            return None
+    try:
+        import json as _json
+        return _json.loads(text)
+    except Exception:  # noqa: BLE001 — jsonc/malformed: best-effort only
+        return None
+
+
+def _find_all(data: Any, key: str) -> list[Any]:
+    """Recursively collect every value stored under ``key`` (lists flattened)."""
+    found: list[Any] = []
+
+    def walk(node: Any) -> None:
+        if isinstance(node, dict):
+            for k, v in node.items():
+                if k == key:
+                    found.extend(v) if isinstance(v, list) else found.append(v)
+                walk(v)
+        elif isinstance(node, list):
+            for item in node:
+                walk(item)
+
+    walk(data)
+    return found
+
+
+class WatchCoverageValidator(BaseValidator):
+    """Flag trigger/coverage sets narrower than what the build actually consumes."""
+
+    id = "watch_coverage"
+    severity_default = Severity.MEDIUM
+
+    def validate(
+        self, root: Path, config: DeploymentConfig, files: list[Path]
+    ) -> list[Finding]:
+        findings: list[Finding] = []
+        findings.extend(self._github_actions_gaps(root))
+        findings.extend(self._railway_gaps(root))
+        findings.extend(self._unbuilt_dockerfiles(root))
+        return findings
+
+    def _github_actions_gaps(self, root: Path) -> list[Finding]:
+        findings: list[Finding] = []
+        for wf in _workflow_files(root):
+            data = _load_yaml(wf)
+            if not isinstance(data, dict):
+                continue
+            patterns, has_filter = _trigger_paths(data.get("on") or data.get(True))
+            if not has_filter:
+                continue  # no path filter → triggers on everything → no gap possible
+            rel_wf = wf.relative_to(root).as_posix()
+            reported: set[str] = set()
+            for run in _iter_run_strings(data):
+                for consumed in sorted(_consumed_inputs(root, run)):
+                    if consumed in reported or _path_covered(consumed, patterns):
+                        continue
+                    reported.add(consumed)
+                    findings.append(self._make_finding(
+                        "WATCH-001",
+                        f"'{rel_wf}' has a path filter but runs/reads '{consumed}', "
+                        f"which no trigger path matches — a change to '{consumed}' "
+                        f"will not trigger this workflow, so the check silently "
+                        f"stops covering it.",
+                        rel_wf,
+                        severity=Severity.MEDIUM,
+                        hint=f"Add '{consumed}' (or a covering glob) to on.*.paths.",
+                        gap_kind="watch_coverage_gap",
+                        trigger_source="github_actions",
+                        consumed=consumed,
+                    ))
+        return findings
+
+    def _railway_gaps(self, root: Path) -> list[Finding]:
+        findings: list[Finding] = []
+        for name in ("railway.json", "railway.jsonc", "railway.toml"):
+            cfg = root / name
+            if not cfg.is_file():
+                continue
+            data = _parse_config(cfg)
+            patterns = _find_all(data, "watchPatterns") if isinstance(data, dict) else []
+            if not patterns:
+                continue  # no watchPatterns declared → nothing to under-cover
+            commands = _find_all(data, "startCommand") + _find_all(data, "buildCommand")
+            rel = cfg.relative_to(root).as_posix()
+            reported: set[str] = set()
+            for cmd in commands:
+                if not isinstance(cmd, str):
+                    continue
+                for consumed in sorted(_consumed_inputs(root, cmd)):
+                    if consumed in reported or _path_covered(consumed, patterns):
+                        continue
+                    reported.add(consumed)
+                    findings.append(self._make_finding(
+                        "WATCH-001",
+                        f"'{rel}' declares watchPatterns but its start/build command "
+                        f"runs '{consumed}', which no watchPattern matches — a change "
+                        f"to '{consumed}' will not trigger a redeploy.",
+                        rel,
+                        severity=Severity.MEDIUM,
+                        hint=f"Add '{consumed}' (or a covering glob) to watchPatterns.",
+                        gap_kind="watch_coverage_gap",
+                        trigger_source="railway",
+                        consumed=consumed,
+                    ))
+        return findings
+
+    def _unbuilt_dockerfiles(self, root: Path) -> list[Finding]:
+        dockerfiles = _find_dockerfiles(root)
+        if not dockerfiles:
+            return []
+        built = _built_dockerfiles(root)
+        findings: list[Finding] = []
+        for df in dockerfiles:
+            rel = df.relative_to(root).as_posix()
+            if rel in built:
+                continue
+            findings.append(self._make_finding(
+                "DOCKER-002",
+                f"Dockerfile '{rel}' exists but no CI job builds it — a break inside "
+                f"it is never caught, because nothing in CI exercises this image.",
+                rel,
+                severity=Severity.MEDIUM,
+                hint="Add a CI step that builds this Dockerfile, or remove it if dead.",
+                gap_kind="unbuilt_dockerfile",
+            ))
+        return findings
+
+
+# =============================================================================
 # MAIN ANALYZER
 # =============================================================================
 
@@ -630,7 +996,7 @@ class DeploymentAnalyzer:
     """
 
     id: str = "deployment"
-    version: str = "1.0.0"
+    version: str = "1.1.0"
 
     # Registry of built-in validators
     _BUILTIN_VALIDATORS: dict[str, type[BaseValidator]] = {
@@ -640,6 +1006,7 @@ class DeploymentAnalyzer:
         "hardcoded_urls": HardcodedUrlValidator,
         "field_mapping": FieldMappingValidator,
         "env_vars": EnvVarValidator,
+        "watch_coverage": WatchCoverageValidator,
     }
 
     def __init__(self, config: DeploymentConfig | None = None):
