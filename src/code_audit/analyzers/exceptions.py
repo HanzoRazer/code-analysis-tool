@@ -1,4 +1,15 @@
-"""Exceptions analyzer — detects error handling that hides bugs."""
+"""Exceptions analyzer — detects error handling that hides bugs.
+
+Bare/broad excepts and swallowed exceptions are **silencers** (Family V): a handler
+that catches and drops an error makes a failure look like success. When acting on a
+finding from this analyzer, remember the silencer protocol — **removing the silencer
+will likely expose a real failure it was hiding, so the fix is remove the silencer
+AND fix what surfaces, not just remove the silencer.** (The two dedicated silencer
+detectors, ``maxfail_masking`` and ``hollow_guarantee``, carry this note in their
+finding output; here it is documented at the source because this analyzer's swallow
+message is pinned by the signal_logic golden fixtures, and a cosmetic note is not a
+signal-logic change.)
+"""
 
 from __future__ import annotations
 

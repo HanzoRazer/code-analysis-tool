@@ -78,7 +78,7 @@ class MaxfailMaskingAnalyzer:
     """Detect fail-fast test/CI config that hides the true failure set."""
 
     id: str = "maxfail_masking"
-    version: str = "2.0.0"
+    version: str = "2.0.1"
 
     def run(self, root: Path, files: list[Path]) -> list[Finding]:
         # This analyzer inspects config surfaces, not the discovered .py files.
@@ -155,7 +155,9 @@ class MaxfailMaskingAnalyzer:
                 f"no --maxfail/-x/--exitfirst, and "
                 f'`-o addopts=""` if addopts inherits fail-fast) that enumerates '
                 f"the full failure set and groups by cause — diagnose the whole "
-                f"stack at once."
+                f"stack at once. Family V: removing this silencer will likely expose "
+                f"real failures it was hiding — the fix is remove the silencer AND "
+                f"fix what surfaces, not just remove the silencer."
             )
 
         fingerprint = make_fingerprint(_RULE_ID, rel, flag_names[0], snippet)

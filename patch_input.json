@@ -1,55 +1,71 @@
 {
   "schema_version": "cbsp21_patch_manifest_v1",
-  "patch_id": "CAT-NS-AUTH-001",
-  "title": "Advisory namespace_authority_drift adapter (luthiers #273 freeze)",
-  "intent": "Vendor the Git-independent namespace-authority engine from luthiers-toolbox@14c15afca6c1e9c029a221ef97d2c46613dfb717 (#273) into code-analysis-tool and expose an advisory, context-gated suite analyzer that observes declared authority only.",
+  "patch_id": "CAT-SILENCER-PROTOCOL-001",
+  "title": "silencer-protocol note — Family V remediation banked in the silencing detectors",
+  "intent": "The session meta-finding: removing a silencing mechanism exposes a real bug underneath it (bare-except->leggauss, broken-CI-path->deleted-retopo, trusted-diff->zod). Not a detector — a protocol. Bank the one-line Family V note in the fix-hint of the silencing detectors so the next person sees it: remove the silencer AND fix what surfaces, not just remove the silencer. The 4th and final item from the MAINT-DEFER triage.",
   "change_type": "code",
   "behavior_change": "compatible",
   "risk_level": "low",
   "scope": {
     "paths_in_scope": [
       "src/code_audit/analyzers/",
-      "src/code_audit/api.py",
-      "src/code_audit/model/",
       "tests/",
       "CHANGELOG.md",
       "patch_input.json"
     ],
     "files_expected_to_change": [
-      "src/code_audit/analyzers/namespace_authority_engine.py",
-      "src/code_audit/analyzers/namespace_authority_drift.py",
-      "src/code_audit/api.py",
-      "src/code_audit/model/__init__.py",
-      "tests/test_namespace_authority_drift_analyzer.py",
-      "tests/fixtures/namespace_authority/",
+      "src/code_audit/analyzers/hollow_guarantee.py",
+      "src/code_audit/analyzers/maxfail_masking.py",
+      "src/code_audit/analyzers/exceptions.py",
+      "tests/test_hollow_guarantee_analyzer.py",
+      "tests/test_maxfail_masking_analyzer.py",
       "tests/contracts/logic_manifest.json",
       "CHANGELOG.md",
       "patch_input.json"
     ],
-    "out_of_scope_notes": "Does not vendor Luthiers git adapter or CLI. Does not invent namespace→domain bindings. First integration is advisory (suite severity capped at LOW). No schema/exit-code/confidence contract axis changes."
+    "out_of_scope_notes": "No new analyzer, no detection-logic change — a remediation note appended to the fix-hint. hollow_guarantee (1.0.2) and maxfail_masking (2.0.1) carry it in finding OUTPUT (dedicated silencer detectors, not in the golden analyzer set, so no golden-fixture drift). exceptions carries it at its MODULE DOCSTRING, NOT in finding output: its swallow message is pinned by the signal_logic golden fixtures, and putting a cosmetic note there would force a signal_logic_version bump cascading to 19 fixtures + ~10 manifests — semantically wrong, since no signal-computation logic changed. The docstring is stripped from the AST logic-hash, so exceptions' logic_hash and version are unchanged and no fixture drifts. baselines/main.json untouched (zero structural debt)."
   },
   "diff_range": {
     "base": "main",
-    "head": "cursor/namespace-authority-drift-adapter-6227"
+    "head": "feat/silencer-protocol-note"
+  },
+  "changed_files_count": 8,
+  "changed_files_exact": [
+    "src/code_audit/analyzers/hollow_guarantee.py",
+    "src/code_audit/analyzers/maxfail_masking.py",
+    "src/code_audit/analyzers/exceptions.py",
+    "tests/test_hollow_guarantee_analyzer.py",
+    "tests/test_maxfail_masking_analyzer.py",
+    "tests/contracts/logic_manifest.json",
+    "CHANGELOG.md",
+    "patch_input.json"
+  ],
+  "diff_articulation": {
+    "what_changed": [
+      "hollow_guarantee 1.0.1 -> 1.0.2: appended the Family V silencer note to the finding message.",
+      "maxfail_masking 2.0.0 -> 2.0.1: appended the Family V silencer note to the LOW (no-collect-all-escape) finding message.",
+      "exceptions: added the Family V protocol to the module docstring (source-level banking). Message and version (1.1.0) unchanged, so no golden-fixture drift and no signal_logic_version bump — a cosmetic remediation note is not a signal-logic change.",
+      "Two regression tests assert the note is present in a hollow_guarantee and a maxfail_masking finding. Logic manifest refreshed (only hollow_guarantee + maxfail_masking logic_hash/version change)."
+    ],
+    "why_not_redundant": "The note is a protocol, not a detector; it belongs where a person acting on a silencer finding will read it. Placed to be visible without misrepresenting the signal-logic contract."
   },
   "verification": {
-    "commands": [
-      "python -m pytest -q tests/test_namespace_authority_drift_analyzer.py tests/test_analyzer_registry_contract.py tests/test_version_bump_enforcement.py",
-      "python scripts/refresh_logic_manifest.py"
+    "commands_run": [
+      "py -3.11 -m pytest tests/test_hollow_guarantee_analyzer.py tests/test_maxfail_masking_analyzer.py tests/test_exceptions_analyzer_pipeline.py -q",
+      "py -3.11 -m pytest tests/test_golden_fixtures.py tests/test_golden_manifest_requires_signal_logic_bump.py tests/test_semantic_surface_requires_signal_logic_bump.py -q",
+      "py -3.11 -m pytest tests/ -k \"logic_manifest or version_bump\" -q"
     ],
-    "acceptance": [
-      "Engine verdict families match declared-authority adjudication including anti-inference → INSUFFICIENT_EVIDENCE",
-      "Adapter silent without NamespaceAuthorityContext",
-      "Flagged native verdicts map to suite Severity.LOW (advisory posture)",
-      "Analyzer registered in _DEFAULT_ANALYZERS and logic_manifest"
-    ]
+    "test_results": [
+      "hollow_guarantee + maxfail_masking + exceptions: all passed (incl. 2 new note-assertion tests).",
+      "golden fixtures + signal-logic-bump gates: all passed — exceptions output unchanged, no golden drift, no signal_logic_version bump.",
+      "logic/version-bump contract tests: passed."
+    ],
+    "notes": "The 4th and final branch of the MAINT-DEFER triage. Detectors A/B/C shipped; each its own branch, held for triage."
   },
-  "provenance": {
-    "nad_port": "NAD-PORT-001",
-    "nad_port_status": "COMPLETE / VERIFIED ON main",
-    "source_repo": "HanzoRazer/luthiers-toolbox",
-    "source_sha": "14c15afca6c1e9c029a221ef97d2c46613dfb717",
-    "source_prs": [272, 273],
-    "do_not_use_shas": ["d796cf95", "e25c7390", "a368652f"]
+  "file_context_coverage_percent": 100.0,
+  "metadata": {
+    "author": "HanzoRazer",
+    "created_at": "2026-08-19T00:00:00Z",
+    "reviewers": []
   }
 }

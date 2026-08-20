@@ -319,3 +319,15 @@ def test_verification_looking_name_without_run_tool_not_enough_for_coe(tmp_path)
         "        continue-on-error: true\n",
     )
     assert _run(tmp_path) == []
+
+
+def test_silencer_protocol_note_in_message(tmp_path):
+    """Family V: the fix-hint tells the reader removing the silencer will expose a
+    real failure it was hiding, so fix what surfaces too."""
+    _wf(tmp_path, "ci.yml",
+        "jobs:\n  build:\n    steps:\n"
+        "      - run: npm run type-check\n"
+        "        continue-on-error: true\n")
+    f = _run(tmp_path)
+    assert len(f) == 1
+    assert "remove the silencer AND fix what surfaces" in f[0].message

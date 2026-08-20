@@ -274,3 +274,12 @@ def test_dogfood_this_repo_maxfail_without_collect_all_escape():
     assert py_hits[0].metadata["collect_all_escape_confirmed"] is False
     assert py_hits[0].severity is Severity.LOW
     assert "--maxfail" in py_hits[0].metadata["fail_fast_flags"]
+
+
+def test_silencer_protocol_note_in_low_finding(tmp_path):
+    """Family V: the LOW fail-fast finding's fix-hint carries the silencer protocol."""
+    (tmp_path / "pyproject.toml").write_text(
+        '[tool.pytest.ini_options]\naddopts = "--maxfail=1"\n', encoding="utf-8")
+    f = _run(tmp_path)
+    assert f and f[0].severity is Severity.LOW
+    assert "remove the silencer AND fix what surfaces" in f[0].message

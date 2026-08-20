@@ -229,7 +229,7 @@ class HollowGuaranteeAnalyzer:
     """Detect CI verification steps that structurally cannot fail (Family III)."""
 
     id: str = "hollow_guarantee"
-    version: str = "1.0.1"
+    version: str = "1.0.2"
 
     def run(self, root: Path, files: list[Path]) -> list[Finding]:
         wf_dir = root / _WORKFLOW_DIR
@@ -295,7 +295,10 @@ class HollowGuaranteeAnalyzer:
             f"cannot fail (Family III: a guard that mimics success). A real "
             f"regression on this lane is invisible. Fix: make the guard able to "
             f"fail — if the failures are known debt, ratchet them (freeze a baseline "
-            f"count and fail on any increase) rather than suppressing the lane."
+            f"count and fail on any increase) rather than suppressing the lane. "
+            f"Family V: removing this silencer will likely expose a real failure it "
+            f"was hiding — the fix is remove the silencer AND fix what surfaces, not "
+            f"just remove the silencer."
         )
         return Finding(
             finding_id=fingerprint,
