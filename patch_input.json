@@ -1,8 +1,8 @@
 {
   "schema_version": "cbsp21_patch_manifest_v1",
-  "patch_id": "CAT-NS-AUTH-001",
-  "title": "Advisory namespace_authority_drift adapter (luthiers #273 freeze)",
-  "intent": "Vendor the Git-independent namespace-authority engine from luthiers-toolbox@14c15afca6c1e9c029a221ef97d2c46613dfb717 (#273) into code-analysis-tool and expose an advisory, context-gated suite analyzer that observes declared authority only.",
+  "patch_id": "CAT-UNBACKED-CLAIM-001",
+  "title": "unbacked_claim analyzer — comment/docstring claims a dependency never imported",
+  "intent": "A comment or docstring says the code uses or falls back to a library, but that library is imported nowhere in the module, so the claimed path cannot exist. The purest failure-mimics-success shape: a capability claim in front of a same-shaped substitute. MAINT-DEFER-010: rayleigh_ritz.py carried '# Fallback to scipy if available' with no scipy imported; what ran was np.diag(K)/np.diag(M) with np.eye() mode shapes — a different calculation returning the same shape, silently. Detector C of three from the MAINT-DEFER triage.",
   "change_type": "code",
   "behavior_change": "compatible",
   "risk_level": "low",
@@ -16,40 +16,63 @@
       "patch_input.json"
     ],
     "files_expected_to_change": [
-      "src/code_audit/analyzers/namespace_authority_engine.py",
-      "src/code_audit/analyzers/namespace_authority_drift.py",
+      "src/code_audit/analyzers/unbacked_claim.py",
       "src/code_audit/api.py",
       "src/code_audit/model/__init__.py",
-      "tests/test_namespace_authority_drift_analyzer.py",
-      "tests/fixtures/namespace_authority/",
+      "tests/test_unbacked_claim_analyzer.py",
+      "tests/contracts/confidence_golden_manifest.json",
+      "tests/contracts/confidence_policy_manifest.json",
       "tests/contracts/logic_manifest.json",
       "CHANGELOG.md",
       "patch_input.json"
     ],
-    "out_of_scope_notes": "Does not vendor Luthiers git adapter or CLI. Does not invent namespace→domain bindings. First integration is advisory (suite severity capped at LOW). No schema/exit-code/confidence contract axis changes."
+    "out_of_scope_notes": "New analyzer only. Conceptually adjacent to name!=behavior but the mechanical signature is specific and cheap (a claim-shaped comment/docstring naming a known library whose import is absent). Symbol-level / return-shape dataflow is NOT attempted — HIGH-vs-MEDIUM keys on claim phrasing (fallback/if-available = HIGH silent-substitution; plain use = MEDIUM). baselines/main.json untouched: pure helpers at module scope, zero structural debt (fingerprint set verified identical). Detectors A and B shipped; the silencer-protocol note is a separate 4th branch."
   },
   "diff_range": {
     "base": "main",
-    "head": "cursor/namespace-authority-drift-adapter-6227"
+    "head": "feat/unbacked-claim-analyzer"
+  },
+  "changed_files_count": 9,
+  "changed_files_exact": [
+    "src/code_audit/analyzers/unbacked_claim.py",
+    "src/code_audit/api.py",
+    "src/code_audit/model/__init__.py",
+    "tests/test_unbacked_claim_analyzer.py",
+    "tests/contracts/confidence_golden_manifest.json",
+    "tests/contracts/confidence_policy_manifest.json",
+    "tests/contracts/logic_manifest.json",
+    "CHANGELOG.md",
+    "patch_input.json"
+  ],
+  "diff_articulation": {
+    "what_changed": [
+      "New UnbackedClaimAnalyzer (id unbacked_claim, version 1.0.0, rule UNBACKED_CLAIM_001): scans comments (tokenize) and docstrings (AST) for capability claims naming a known heavy/optional library, and fires when that library is imported nowhere in the module.",
+      "Severity: HIGH for fallback / if-available shapes (the silent-substitution case); MEDIUM for plain 'uses X' / 'X-based' claims. A mere prose mention ('faster than scipy') is not claim-shaped and stays silent.",
+      "Backed claims do not fire: imports are collected from the whole module AST (import / from-import, including try/except-guarded and function-local) plus importlib.import_module(\"lib\") string args.",
+      "Known-libs set is heavy/optional compute libraries only (scipy, numba, torch, jax, sklearn, cython, cupy, dask, ...); numpy/pandas/requests are deliberately excluded to keep the signal clean.",
+      "Every failure mode is a Finding, never a raised exception: any internal error becomes a LOW UNBACKED_CLAIM_ERROR finding; unparseable files are skipped.",
+      "AnalyzerType.UNBACKED_CLAIM added; registered in api._DEFAULT_ANALYZERS; confidence_golden/confidence_policy/logic manifests refreshed for the new enum member (no version-anchor bump; order_dependence/hollow_guarantee precedent). Pure helpers at module scope so the analyzer adds zero new structural debt.",
+      "16 tests including the born-from-the-bug MAINT-DEFER-010 rayleigh_ritz fixture."
+    ],
+    "why_not_redundant": "Distinct from exceptions (broad-except) and from the requirements/deployment analyzers (missing third-party install): this fires only on a first-person capability claim contradicted by the module's own imports. Adjacent to name!=behavior but a cheaper, precise mechanical signature."
   },
   "verification": {
-    "commands": [
-      "python -m pytest -q tests/test_namespace_authority_drift_analyzer.py tests/test_analyzer_registry_contract.py tests/test_version_bump_enforcement.py",
-      "python scripts/refresh_logic_manifest.py"
+    "commands_run": [
+      "py -3.11 -m pytest tests/test_unbacked_claim_analyzer.py -q",
+      "py -3.11 -m pytest tests/ -k \"logic_manifest or golden or confidence_policy or registry_contract or version_bump or public_rules\" -q",
+      "self-scan: UnbackedClaimAnalyzer().run(src_root, [])"
     ],
-    "acceptance": [
-      "Engine verdict families match declared-authority adjudication including anti-inference → INSUFFICIENT_EVIDENCE",
-      "Adapter silent without NamespaceAuthorityContext",
-      "Flagged native verdicts map to suite Severity.LOW (advisory posture)",
-      "Analyzer registered in _DEFAULT_ANALYZERS and logic_manifest"
-    ]
+    "test_results": [
+      "unbacked_claim: 16 passed.",
+      "manifest/registry/version-bump contract tests: all passed after refresh.",
+      "Self-scan on src/ surfaced 0 findings (no false positives in the tool's own code)."
+    ],
+    "notes": "Reads the real tree, no synthetic injection. Detector C of three; A and B shipped, each its own branch, held for triage."
   },
-  "provenance": {
-    "nad_port": "NAD-PORT-001",
-    "nad_port_status": "COMPLETE / VERIFIED ON main",
-    "source_repo": "HanzoRazer/luthiers-toolbox",
-    "source_sha": "14c15afca6c1e9c029a221ef97d2c46613dfb717",
-    "source_prs": [272, 273],
-    "do_not_use_shas": ["d796cf95", "e25c7390", "a368652f"]
+  "file_context_coverage_percent": 100.0,
+  "metadata": {
+    "author": "HanzoRazer",
+    "created_at": "2026-08-19T00:00:00Z",
+    "reviewers": []
   }
 }

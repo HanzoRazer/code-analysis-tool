@@ -109,6 +109,12 @@
       "version": "1.1.0"
     },
     {
+      "class_name": "UnbackedClaimAnalyzer",
+      "logic_hash": "sha256:6385fe1c58e397b9f6c7258dc38637a07b2606cc68897e8f1c040fb753e8f406",
+      "module": "code_audit.analyzers.unbacked_claim",
+      "version": "1.0.0"
+    },
+    {
       "class_name": "UnpinnedToolchainAnalyzer",
       "logic_hash": "sha256:c453a35da7f65893d39210a5e692401e2af150bc13f7a0ade08d989506755fb9",
       "module": "code_audit.analyzers.unpinned_toolchain",
