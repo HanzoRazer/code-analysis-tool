@@ -1,5 +1,5 @@
 {
-  "confidence_policy_hash": "ccb2aab9fe3767187b1b5bbae83de65659efcb80e3e023f5417157353a38d652",
+  "confidence_policy_hash": "f71489f9ea1c31b8d5573c0a24fe5782513cf8bd69399cd2a7389690cdabf608",
   "discovery": {
     "mode": "dependency_closure_internal_imports",
     "override_env": "CONFIDENCE_ENTRYPOINTS",

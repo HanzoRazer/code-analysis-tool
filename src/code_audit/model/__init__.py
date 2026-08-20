@@ -51,3 +51,4 @@ class AnalyzerType(str, Enum):
     PR_SCOPE = "pr_scope"
     NAMESPACE_AUTHORITY_DRIFT = "namespace_authority_drift"
     HOLLOW_GUARANTEE = "hollow_guarantee"
+    DANGLING_REFERENCE = "dangling_reference"

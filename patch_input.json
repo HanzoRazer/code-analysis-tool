@@ -1,8 +1,8 @@
 {
   "schema_version": "cbsp21_patch_manifest_v1",
-  "patch_id": "CAT-NS-AUTH-001",
-  "title": "Advisory namespace_authority_drift adapter (luthiers #273 freeze)",
-  "intent": "Vendor the Git-independent namespace-authority engine from luthiers-toolbox@14c15afca6c1e9c029a221ef97d2c46613dfb717 (#273) into code-analysis-tool and expose an advisory, context-gated suite analyzer that observes declared authority only.",
+  "patch_id": "CAT-DANGLING-REF-001",
+  "title": "dangling_reference analyzer — references to deleted first-party modules",
+  "intent": "The inverse of dead_code. Dead-code asks 'does X have consumers?' (run before deleting X); this asks 'do X's consumers still have X?' (run after). MAINT-DEFER-009 deleted app/retopo/ as unused while examples/retopo/run.sh still ran `python -m app.retopo.run` and a CI job invoked it — callee deleted, callers left, structurally unfixable. This detector is the after-deletion half nobody ran.",
   "change_type": "code",
   "behavior_change": "compatible",
   "risk_level": "low",
@@ -16,40 +16,62 @@
       "patch_input.json"
     ],
     "files_expected_to_change": [
-      "src/code_audit/analyzers/namespace_authority_engine.py",
-      "src/code_audit/analyzers/namespace_authority_drift.py",
+      "src/code_audit/analyzers/dangling_reference.py",
       "src/code_audit/api.py",
       "src/code_audit/model/__init__.py",
-      "tests/test_namespace_authority_drift_analyzer.py",
-      "tests/fixtures/namespace_authority/",
+      "tests/test_dangling_reference_analyzer.py",
+      "tests/contracts/confidence_golden_manifest.json",
+      "tests/contracts/confidence_policy_manifest.json",
       "tests/contracts/logic_manifest.json",
       "CHANGELOG.md",
       "patch_input.json"
     ],
-    "out_of_scope_notes": "Does not vendor Luthiers git adapter or CLI. Does not invent namespace→domain bindings. First integration is advisory (suite severity capped at LOW). No schema/exit-code/confidence contract axis changes."
+    "out_of_scope_notes": "New analyzer only. Does NOT fix the real dangling reference the detector found in this repo (runner.py:24 `from code_audit.analyzers.base import Analyzer` under TYPE_CHECKING — analyzers/base.py does not exist; Analyzer lives in analyzers/__init__.py). That is a separate, unrelated fix, deliberately not bundled. The debt-ratchet baseline (baselines/main.json) is UNCHANGED: the debt snapshot tracks structural debt (god-functions, long parameter lists), not analyzer findings, and the analyzer was written to add zero new structural debt (fingerprint set identical to baseline). Symbol-level resolution deferred. Detectors B and C from the same handoff are separate PRs, not built here."
   },
   "diff_range": {
     "base": "main",
-    "head": "cursor/namespace-authority-drift-adapter-6227"
+    "head": "feat/dangling-reference-analyzer"
+  },
+  "changed_files_count": 9,
+  "changed_files_exact": [
+    "src/code_audit/analyzers/dangling_reference.py",
+    "src/code_audit/api.py",
+    "src/code_audit/model/__init__.py",
+    "tests/test_dangling_reference_analyzer.py",
+    "tests/contracts/confidence_golden_manifest.json",
+    "tests/contracts/confidence_policy_manifest.json",
+    "tests/contracts/logic_manifest.json",
+    "CHANGELOG.md",
+    "patch_input.json"
+  ],
+  "diff_articulation": {
+    "what_changed": [
+      "New DanglingReferenceAnalyzer (id dangling_reference, version 1.0.0, rule DANGLING_REF_001): flags references to first-party modules absent from the tree.",
+      "Portable first-party discriminator: fire only when a reference's TOP-LEVEL package resolves in the tree but its FULL dotted path does not — naturally excludes missing third-party imports (their top-level resolves nowhere).",
+      "Module-granularity resolution across Python (import / from-import, AST) and unambiguous config contexts (python -m, inline import/from, TOML/cfg entry-points) in .sh/.yml/.yaml/.toml/.cfg/.ini/Makefile. Walks root directly (keeps .github, where CI-invoked deleted-module calls hide); ignores the Python-only `files` param so it is self-contained.",
+      "Every failure mode is a Finding, never a raised exception: any internal error becomes a LOW DANGLING_REF_ERROR finding; unparseable referencing files are skipped.",
+      "AnalyzerType.DANGLING_REFERENCE added; registered in api._DEFAULT_ANALYZERS; confidence_golden/confidence_policy/logic manifests refreshed for the new enum member (no version-anchor bump — no confidence-scoring change; order_dependence/hollow_guarantee precedent).",
+      "16 tests including the born-from-the-bug MAINT-DEFER-009 acceptance fixture. On self-scan the detector found one real dangling reference (runner.py:24 -> code_audit.analyzers.base); that fix is out of scope and deliberately not bundled. baselines/main.json is unchanged — the analyzer adds zero structural debt (debt-snapshot fingerprint set verified identical)."
+    ],
+    "why_not_redundant": "dead_code is explicitly single-file with cross-file analysis deferred; this is that cross-file sibling and the inverse question (do consumers still have the callee?). Distinct from the requirements/deployment analyzer, which owns missing third-party imports — this fires only on first-party paths."
   },
   "verification": {
-    "commands": [
-      "python -m pytest -q tests/test_namespace_authority_drift_analyzer.py tests/test_analyzer_registry_contract.py tests/test_version_bump_enforcement.py",
-      "python scripts/refresh_logic_manifest.py"
+    "commands_run": [
+      "py -3.11 -m pytest tests/test_dangling_reference_analyzer.py -q",
+      "py -3.11 -m pytest tests/ -k \"logic_manifest or golden or confidence_policy or signal_logic or registry_contract or public_rules or version_bump\" -q",
+      "self-scan: DanglingReferenceAnalyzer().run(repo_root, [])"
     ],
-    "acceptance": [
-      "Engine verdict families match declared-authority adjudication including anti-inference → INSUFFICIENT_EVIDENCE",
-      "Adapter silent without NamespaceAuthorityContext",
-      "Flagged native verdicts map to suite Severity.LOW (advisory posture)",
-      "Analyzer registered in _DEFAULT_ANALYZERS and logic_manifest"
-    ]
+    "test_results": [
+      "dangling_reference: 16 passed.",
+      "manifest/registry/version-bump contract tests: all passed after refresh.",
+      "Self-scan surfaced exactly one real dangling reference (runner.py:24 -> code_audit.analyzers.base); fix deferred, baseline unchanged (zero structural debt added)."
+    ],
+    "notes": "Read-only detection; walks the real tree, no synthetic injection. Detector A of three; built alone and held for triage before B and C replicate the pattern."
   },
-  "provenance": {
-    "nad_port": "NAD-PORT-001",
-    "nad_port_status": "COMPLETE / VERIFIED ON main",
-    "source_repo": "HanzoRazer/luthiers-toolbox",
-    "source_sha": "14c15afca6c1e9c029a221ef97d2c46613dfb717",
-    "source_prs": [272, 273],
-    "do_not_use_shas": ["d796cf95", "e25c7390", "a368652f"]
+  "file_context_coverage_percent": 100.0,
+  "metadata": {
+    "author": "HanzoRazer",
+    "created_at": "2026-08-19T00:00:00Z",
+    "reviewers": []
   }
 }

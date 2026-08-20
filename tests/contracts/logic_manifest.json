@@ -19,6 +19,12 @@
       "version": "1.0.0"
     },
     {
+      "class_name": "DanglingReferenceAnalyzer",
+      "logic_hash": "sha256:8a4d1d52a4f336e88931c9860aa7fd53156fc33692b5cd3f8f91278989a6aaff",
+      "module": "code_audit.analyzers.dangling_reference",
+      "version": "1.0.0"
+    },
+    {
       "class_name": "DeadCodeAnalyzer",
       "logic_hash": "sha256:72a83b4b5f0e0f89c3308293e7f63c9140e4a84b193d381a3cfc75588a3ae2e9",
       "module": "code_audit.analyzers.dead_code",
