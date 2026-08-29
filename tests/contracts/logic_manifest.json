@@ -1,6 +1,12 @@
 {
   "analyzers": [
     {
+      "class_name": "CanonicalPillAnalyzer",
+      "logic_hash": "sha256:c4505ead36fdef4cc6c1bac5f3d13a7911cbf8c304ed4070be3cfff41c18ce5f",
+      "module": "code_audit.analyzers.canonical_pill",
+      "version": "1.0.0"
+    },
+    {
       "class_name": "ComplexityAnalyzer",
       "logic_hash": "sha256:1c1e96c86a127da61023ab25bd4a39fb6df549a4aaa134a1f478da8f9ba316ff",
       "module": "code_audit.analyzers.complexity",

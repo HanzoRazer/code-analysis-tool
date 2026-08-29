@@ -1,56 +1,84 @@
 {
   "schema_version": "cbsp21_patch_manifest_v1",
-  "patch_id": "CAT-0023",
-  "title": "Fix pytest BOM manifest gate on Python 3.11",
-  "intent": "Restore the failing pytest BOM manifest gate by making BOM manifest paths platform-stable and regenerating the recorded AST hashes with the same Python 3.11 runtime used in GitHub Actions.",
+  "patch_id": "CANON-PILL-001",
+  "title": "canonical_pill — unsourced-imperative canonicalization detector",
+  "intent": "Surface unsourced imperative prohibitions in canonical governance/spec Markdown — permanent-sounding rules (NEVER, MUST NOT, LOCKED) with no citation anywhere in their section. The failure mode is a descriptive observation frozen into permanent law, locking out a still-developmental capability. The detector surfaces candidates for human triage; it does not rule on them.",
   "change_type": "code",
   "behavior_change": "compatible",
   "risk_level": "low",
   "scope": {
     "paths_in_scope": [
-      "scripts/",
-      "tests/contracts/"
+      "src/code_audit/analyzers/",
+      "src/code_audit/model/",
+      "src/code_audit/api.py",
+      "tests/",
+      "cbsp21/",
+      "CHANGELOG.md"
     ],
     "files_expected_to_change": [
-      "scripts/refresh_bom_manifest.py",
-      "tests/contracts/bom_manifest.json"
+      "src/code_audit/analyzers/canonical_pill.py",
+      "src/code_audit/model/__init__.py",
+      "src/code_audit/api.py",
+      "tests/test_canonical_pill_analyzer.py",
+      "tests/contracts/confidence_golden_manifest.json",
+      "tests/contracts/confidence_policy_manifest.json",
+      "tests/contracts/logic_manifest.json",
+      "CHANGELOG.md",
+      "cbsp21/patch_input.json"
     ],
-    "out_of_scope_notes": "No analyzer, schema, or workflow logic changes. The fix is limited to the BOM refresh utility and the generated BOM manifest artifact it owns."
+    "out_of_scope_notes": "No existing analyzer logic or golden fixture is touched, and no governance document in this repo is edited (the detector reads docs, it does not write them). baselines/main.json is deliberately unchanged — the patch adds zero structural debt. The CODE form of over-strict canonicalization (extra=\"forbid\" schemas, frozen invariants) is the same class but a separate, deliberately unbuilt detector."
   },
   "diff_range": {
-    "base": "79f9947",
+    "base": "9e1d2fc",
     "head": "working-tree"
   },
-  "changed_files_count": 2,
+  "changed_files_count": 9,
   "changed_files_exact": [
-    "scripts/refresh_bom_manifest.py",
-    "tests/contracts/bom_manifest.json"
+    "CHANGELOG.md",
+    "cbsp21/patch_input.json",
+    "src/code_audit/analyzers/canonical_pill.py",
+    "src/code_audit/api.py",
+    "src/code_audit/model/__init__.py",
+    "tests/contracts/confidence_golden_manifest.json",
+    "tests/contracts/confidence_policy_manifest.json",
+    "tests/contracts/logic_manifest.json",
+    "tests/test_canonical_pill_analyzer.py"
   ],
   "diff_articulation": {
     "what_changed": [
-      "Normalized refresh_bom_manifest.py relative-path serialization to POSIX form with as_posix(), preventing Windows-only backslashes from being written into the shared manifest",
-      "Kept the refresh utility lint-clean while preserving behavior by modernizing a few local type hints and using importlib for the existing dynamic helper import",
-      "Regenerated tests/contracts/bom_manifest.json under Python 3.11 so the recorded script AST hashes match the GitHub Actions runtime and the manifest uses stable forward-slash paths"
+      "New CanonicalPillAnalyzer (rule CANON_PILL_001) scanning **/*.md and .mdx via its own pruned walk, with three tells: PRIMARY unsourced imperative (uppercase prohibition token in a section carrying no citation), SECONDARY present-indicative-as-law (absence/negation declarative in a prescriptive section), TERTIARY intra-doc contradiction (opposing permission token) attached as contradiction_refs metadata only",
+      "Citation adjacency is SECTION-scoped: a citation anywhere between the enclosing heading and the next heading of equal-or-higher level covers every prohibition in that section",
+      "Prohibition tokens match case-sensitively on the uppercase form, so casual lowercase prose ('we never got around to X') is silent with no section logic",
+      "PRIMARY additionally requires canonical register — a prescriptive heading or a doc-level governance status marker — so ordinary README prose does not become noise",
+      "Registered AnalyzerType.CANONICAL_PILL and CanonicalPillAnalyzer in api._DEFAULT_ANALYZERS; refreshed confidence golden/policy and logic manifests (enum-closure only, no version-anchor bump)"
     ],
-    "why_not_redundant": "Refreshing the manifest alone would fix this checkout today but would allow a future Windows refresh to break Linux CI again. Normalizing the stored paths removes that portability trap while the regenerated Python 3.11 hashes address the current pytest failure."
+    "why_not_redundant": "This is the third observed instance of the over-strict-canonicalization class (RMOS extra=\"forbid\", the CBSP21 freeze-gate, the IBG NEVERs) and the first mechanical surfacing of it. No existing analyzer reads Markdown at all — the runner's `files` list is Python-only — so the governance-prose surface was entirely unexamined. The detector encodes the one mechanical test the IBG audit applied by hand: does the prohibition cite an authority, or is it an unsourced imperative?"
   },
   "verification": {
     "commands_run": [
-      "python3.11 scripts/refresh_bom_manifest.py",
-      "python3.11 -m ruff check scripts/refresh_bom_manifest.py",
-      "python3.11 -m pytest tests/test_bom_manifest_gate.py tests/test_bom_js_ts_surface.py tests/test_release_bom_contract.py::test_release_bom_is_buildable_and_self_consistent -q"
+      "py -3.11 -m pytest tests/test_canonical_pill_analyzer.py -q -p no:randomly",
+      "py -3.11 -m ruff check src/code_audit/analyzers/canonical_pill.py tests/test_canonical_pill_analyzer.py",
+      "CI=true PYTHONPATH=<clone>/src py -3.11 -m code_audit debt snapshot . --ci --out <tmp>/current.json",
+      "PYTHONPATH=<clone>/src py -3.11 scripts/refresh_confidence_golden_manifest.py",
+      "PYTHONPATH=<clone>/src py -3.11 scripts/refresh_confidence_policy_manifest.py",
+      "PYTHONPATH=<clone>/src py -3.11 scripts/refresh_logic_manifest.py",
+      "py -3.11 -m pytest -q -p no:randomly --maxfail=0 --ignore=tests/test_api_cli_parity_ci.py"
     ],
     "test_results": [
-      "BOM manifest refreshed successfully under Python 3.11",
-      "Ruff passed for scripts/refresh_bom_manifest.py",
-      "10 targeted BOM and release-contract pytest checks passed"
+      "25 canonical_pill tests pass",
+      "Ruff clean on both new files",
+      "Structural debt snapshot is fingerprint-identical to baselines/main.json (255 items, 0 new, 0 resolved) — an 8-parameter _finding() was refactored to a _Candidate parameter object rather than banking the debt",
+      "Manifest refresh is enum-closure only: confidence_logic_version and signal_logic_version both unchanged",
+      "Acceptance, FIRES arm (real IBG_ROLE_DEFINITION.md): all four unsourced NEVER rows, the 'No feedback loop exists upstream' declarative, and the footer restatement all fire — 11 candidates total",
+      "Acceptance, SILENT arm (the calibration that matters most): 'IBG math is LOCKED' stays silent because its section cites Sevy and Mottola and a ±0.01in tolerance; the tolerance row stays silent; lowercase prose 'never' stays silent; an ordinary README MUST NOT stays silent",
+      "Full suite (py-3.11, Windows): 2 failures, both in tests/test_cli_api_parity_js_ts_flagged.py, PROVEN PRE-EXISTING by re-running that module on clean main with this work stashed — identical 'TypeError: the JSON object must be str, bytes or bytearray, not NoneType' at json.loads(r1.stdout). These CLI-parity tests shell out to the editable install (code-analysis-tool-fresh), whose human summary prints an em-dash that fails cp1252 stdout decoding, leaving proc.stdout None. Not a findings-parity mismatch and not caused by adding an analyzer to the default set. tests/test_api_cli_parity_ci.py fails the same way on clean main and was excluded from the run."
     ],
-    "notes": "I also inspected the failing GitHub Actions job logs for job 89640614655 before changing code. The original CI failure was an AST hash mismatch in tests/test_bom_manifest_gate.py for scripts/check_release_bom_consistency.py; local reproduction under Python 3.11 additionally exposed the manifest path separator portability problem that this patch closes. In this sandbox, the Python 3.11 commands were executed via a temporary local py311 environment."
+    "notes": "Two interface anchors were verified against the live tree before coding, and one differed materially from the order. (1) `files` is Python-only — core/runner.py:58 is `files = files_by_lang['py']` — so no .md ever reaches an analyzer through it; this analyzer collects its own inputs via a pruned os.walk, following the cross_copy_drift._candidates precedent. (2) Finding/Location/make_fingerprint match the order, but `context_confirmed` is NOT a model field — it is a metadata key, following the single precedent at analyzers/context_pinned_hash.py:287. DEVIATION FROM ORDER, flagged for owner ruling: the order specifies a MEDIUM/HIGH severity ladder, but Severity.HIGH maps to exit code 3 (fail) under the default exit-code policy, which would make a CANDIDATE lead fail a build and contradicts the order's own leads-not-verdicts requirement. Suite severity is therefore capped at LOW (the hollow_guarantee 1.0.0 advisory precedent) and the MEDIUM/HIGH ladder is carried by `confidence` (0.5/0.7) and `metadata.candidate_strength`. This is a one-constant revert if the owner wants literal severities. SECOND DEVIATION: the order lists bare `is`/`exists` as SECONDARY tells; implemented as absence/negation declaratives only, because firing on every `is` in a governance doc floods the output and defeats the register gate. SELF-SCAN (stop condition): 2 candidates in this repo's own docs — .github/copilot-instructions.md:532 and DEVELOPER_HANDOFF.md:517 — both weak SECONDARY hits on 'does/do not <verb>', neither a real poison pill. Recorded, NOT fixed, per the order's no-inline-bundling rule. DOGFOOD FINDING that changed the code: scanning the real luthiers-toolbox docs/governance corpus (88 docs, 107 candidates) showed BLUEPRINT_READER_PROTECTION_RULES.md's Protected Systems table firing, though the order places it in the KEEP arm — its rows cite pinned commit SHAs rather than prose refs. A pinned commit is the strongest form of the 'version pin' citation the order names, so SHA recognition was added (requires both a digit and a hex letter, so 'deadbeef' and '12345678' do not qualify); that table went silent and the IBG arms were unaffected."
   },
   "file_context_coverage_percent": 100.0,
   "metadata": {
-    "author": "GitHub Copilot",
-    "created_at": "2026-07-25T04:45:25Z",
+    "author": "Claude Opus 5",
+    "created_at": "2026-08-29T00:00:00Z",
     "reviewers": []
   }
 }
