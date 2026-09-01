@@ -1704,6 +1704,15 @@ def _build_default_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     """Entry-point — returns an exit code (0 = green, 1 = yellow, 2 = red)."""
+    # Emit UTF-8 regardless of the host console/pipe codepage. On Windows a
+    # redirected or piped stdout defaults to the locale encoding (cp1252), so
+    # non-ASCII report glyphs are written as bytes a UTF-8 reader cannot decode.
+    for _stream in (sys.stdout, sys.stderr):
+        try:
+            _stream.reconfigure(encoding="utf-8")
+        except Exception:
+            pass
+
     effective_argv = list(argv) if argv is not None else sys.argv[1:]
 
     # Determine whether this is default positional mode or a subcommand.

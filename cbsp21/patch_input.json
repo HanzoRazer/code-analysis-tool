@@ -1,56 +1,52 @@
 {
   "schema_version": "cbsp21_patch_manifest_v1",
-  "patch_id": "CAT-0023",
-  "title": "Fix pytest BOM manifest gate on Python 3.11",
-  "intent": "Restore the failing pytest BOM manifest gate by making BOM manifest paths platform-stable and regenerating the recorded AST hashes with the same Python 3.11 runtime used in GitHub Actions.",
+  "patch_id": "CP1252-UTF8-001",
+  "title": "Force UTF-8 CLI output so piped stdout is decodable on Windows",
+  "intent": "Make the code_audit CLI write UTF-8 on stdout/stderr regardless of the host locale codepage, so piped or redirected output is decodable by a UTF-8 reader. This fixes the pre-existing Windows failure of the CLI/API parity tests, whose subprocess reads the child's pipe as UTF-8.",
   "change_type": "code",
   "behavior_change": "compatible",
   "risk_level": "low",
   "scope": {
     "paths_in_scope": [
-      "scripts/",
-      "tests/contracts/"
+      "src/code_audit/__main__.py"
     ],
     "files_expected_to_change": [
-      "scripts/refresh_bom_manifest.py",
-      "tests/contracts/bom_manifest.json"
+      "src/code_audit/__main__.py"
     ],
-    "out_of_scope_notes": "No analyzer, schema, or workflow logic changes. The fix is limited to the BOM refresh utility and the generated BOM manifest artifact it owns."
+    "out_of_scope_notes": "Message content is unchanged; no non-ASCII characters were added, removed, or banned. File-write encoding is deliberately NOT addressed here: 8 open() calls in src/ and one Path.write_text() in tests/test_sql_ecosystem_analyzer.py:744 share the same root cause on a different stream, and are recorded as follow-up CP1252-FILEWRITES-002. PYTHONIOENCODING is deliberately NOT set in the parity test harness -- see why_not_redundant."
   },
   "diff_range": {
-    "base": "79f9947",
+    "base": "9e1d2fc",
     "head": "working-tree"
   },
-  "changed_files_count": 2,
+  "changed_files_count": 1,
   "changed_files_exact": [
-    "scripts/refresh_bom_manifest.py",
-    "tests/contracts/bom_manifest.json"
+    "src/code_audit/__main__.py"
   ],
   "diff_articulation": {
     "what_changed": [
-      "Normalized refresh_bom_manifest.py relative-path serialization to POSIX form with as_posix(), preventing Windows-only backslashes from being written into the shared manifest",
-      "Kept the refresh utility lint-clean while preserving behavior by modernizing a few local type hints and using importlib for the existing dynamic helper import",
-      "Regenerated tests/contracts/bom_manifest.json under Python 3.11 so the recorded script AST hashes match the GitHub Actions runtime and the manifest uses stable forward-slash paths"
+      "Added a guarded sys.stdout/sys.stderr reconfigure(encoding='utf-8') at the top of main() in src/code_audit/__main__.py, before any output is produced, wrapped in try/except so a already-wrapped or redirected stream cannot break the entry point",
+      "Covered stderr as well as stdout, because the reproduction showed the undecodable cp1252 byte on both streams"
     ],
-    "why_not_redundant": "Refreshing the manifest alone would fix this checkout today but would allow a future Windows refresh to break Linux CI again. Normalizing the stored paths removes that portability trap while the regenerated Python 3.11 hashes address the current pytest failure."
+    "why_not_redundant": "The observed failure is a decode error in the PARENT process, not an encode crash in the child: the child exits 2 normally and writes its em-dash as cp1252 byte 0x97, then subprocess.run's UTF-8 reader thread raises UnicodeDecodeError, dies, and leaves proc.stdout as None -- producing the json.loads(None) TypeError. Setting PYTHONIOENCODING=utf-8 in the test harness also turns the test green, but it was rejected: it would make the parity test pass even if this production fix were later removed, destroying the only regression witness for it. Fixing the child's write encoding at the entry point fixes the parity tests and the real redirect path (code-audit <path> --json > out.json on Windows) with the same change."
   },
   "verification": {
     "commands_run": [
-      "python3.11 scripts/refresh_bom_manifest.py",
-      "python3.11 -m ruff check scripts/refresh_bom_manifest.py",
-      "python3.11 -m pytest tests/test_bom_manifest_gate.py tests/test_bom_js_ts_surface.py tests/test_release_bom_contract.py::test_release_bom_is_buildable_and_self_consistent -q"
+      "PYTHONPATH=<worktree>/src py -3.11 -m pytest tests/test_api_cli_parity_ci.py tests/test_cli_api_parity_debt_ci.py tests/test_cli_api_parity_scan_ci.py -q",
+      "PYTHONPATH=<worktree>/src py -3.11 -m pytest -q",
+      "PYTHONPATH=<worktree>/src py -3.11 -m pytest --collect-only -q"
     ],
     "test_results": [
-      "BOM manifest refreshed successfully under Python 3.11",
-      "Ruff passed for scripts/refresh_bom_manifest.py",
-      "10 targeted BOM and release-contract pytest checks passed"
+      "Pre-fix reproduction: test_api_cli_parity_ci_default_scan_sample_repo_exceptions FAILED with TypeError: the JSON object must be str, bytes or bytearray, not NoneType, and UnicodeDecodeError: 'utf-8' codec can't decode byte 0x97 raised inside subprocess.py _readerthread",
+      "Post-fix targeted: 9 passed across the three CLI/API parity test files, with no PYTHONIOENCODING set",
+      "Post-fix full suite: 1223 tests collected across 123 files, 0 failed, 9 skipped, run reached 100% (addopts carries --maxfail=1, so completion is itself evidence of zero failures)"
     ],
-    "notes": "I also inspected the failing GitHub Actions job logs for job 89640614655 before changing code. The original CI failure was an AST hash mismatch in tests/test_bom_manifest_gate.py for scripts/check_release_bom_consistency.py; local reproduction under Python 3.11 additionally exposed the manifest path separator portability problem that this patch closes. In this sandbox, the Python 3.11 commands were executed via a temporary local py311 environment."
+    "notes": "All runs pin PYTHONPATH to this worktree's src. Without that pin, 'python -m code_audit' on this machine resolves to C:/Users/thepr/Downloads/code-analysis-tool-fresh, which is checked out on feat/gate-wrong-artifact-detector at an incomplete WIP commit with a dirty tree that includes a modified __main__.py; any unpinned reproduction would be testing that tree instead of main. The 9 skips are pre-existing and unchanged by this patch; one of them (tests/test_sql_ecosystem_analyzer.py:744) is a Windows skipif for the same root cause on the file-write stream and remains correctly skipped under this fix."
   },
   "file_context_coverage_percent": 100.0,
   "metadata": {
-    "author": "GitHub Copilot",
-    "created_at": "2026-07-25T04:45:25Z",
+    "author": "Claude Opus 5",
+    "created_at": "2026-09-01T00:00:00Z",
     "reviewers": []
   }
 }
