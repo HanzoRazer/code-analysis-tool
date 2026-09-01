@@ -13,7 +13,7 @@
     "files_expected_to_change": [
       "src/code_audit/__main__.py"
     ],
-    "out_of_scope_notes": "Message content is unchanged; no non-ASCII characters were added, removed, or banned. File-write encoding is deliberately NOT addressed here: 8 open() calls in src/ and one Path.write_text() in tests/test_sql_ecosystem_analyzer.py:744 share the same root cause on a different stream, and are recorded as follow-up CP1252-FILEWRITES-002. PYTHONIOENCODING is deliberately NOT set in the parity test harness -- see why_not_redundant."
+    "out_of_scope_notes": "Message content is unchanged; no non-ASCII characters were added, removed, or banned. File-write encoding is deliberately NOT addressed here and is recorded as follow-up CP1252-FILEWRITES-002: four text-mode open() calls in src/ lack an explicit encoding -- three reads (analyzers/deployment.py:108 YAML config, analyzers/routers.py:447 JSON analytics, analyzers/sql_ecosystem.py:87 YAML config) and one write (analyzers/routers.py:499 router_analysis.json) -- plus one Path.write_text() in tests/test_sql_ecosystem_analyzer.py:744. Same root cause (implicit locale encoding on Windows), different stream. The three reads are the more dangerous half: a UTF-8 config read as cp1252 either raises or silently mojibakes. PYTHONIOENCODING is deliberately NOT set in the parity test harness -- see why_not_redundant."
   },
   "diff_range": {
     "base": "9e1d2fc",
