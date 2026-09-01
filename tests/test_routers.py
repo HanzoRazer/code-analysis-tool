@@ -214,7 +214,7 @@ class TestRoutersAnalyzer:
     def test_protocol_fields(self):
         a = RoutersAnalyzer()
         assert a.id == "routers"
-        assert a.version == "1.0.0"
+        assert a.version == "1.0.1"
 
     def test_run_returns_findings(self, router_tree: Path):
         a = RoutersAnalyzer(endpoints_warn=2, endpoints_high=10)

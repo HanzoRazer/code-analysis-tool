@@ -287,7 +287,7 @@ class RoutersAnalyzer:
     """
 
     id: str = "routers"
-    version: str = "1.0.0"
+    version: str = "1.0.1"
 
     def __init__(
         self,
@@ -444,7 +444,7 @@ def generate_router_report(
     """
     analytics: dict[str, Any] = {}
     if analytics_file and analytics_file.exists():
-        with open(analytics_file) as f:
+        with open(analytics_file, encoding="utf-8") as f:
             analytics = json.load(f)
 
     # Discover router files
@@ -496,7 +496,7 @@ def generate_router_report(
 
     if output_dir:
         output_dir.mkdir(parents=True, exist_ok=True)
-        with open(output_dir / "router_analysis.json", "w") as f:
+        with open(output_dir / "router_analysis.json", "w", encoding="utf-8") as f:
             json.dump(report, f, indent=2, default=str)
 
     return report
