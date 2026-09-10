@@ -1,56 +1,80 @@
 {
   "schema_version": "cbsp21_patch_manifest_v1",
-  "patch_id": "CAT-0023",
-  "title": "Fix pytest BOM manifest gate on Python 3.11",
-  "intent": "Restore the failing pytest BOM manifest gate by making BOM manifest paths platform-stable and regenerating the recorded AST hashes with the same Python 3.11 runtime used in GitHub Actions.",
+  "patch_id": "DETECT-PROMOTE-001A",
+  "title": "Add the unguarded stdout-encoding detector (the cp1252 class)",
+  "intent": "Promote the cp1252 defect class to a detector: flag CLI entry modules that write non-ASCII to stdout/stderr with no UTF-8 guard, which fails on Windows when the stream is piped, redirected or captured. Three witnessed instances motivated it (CAM-Assist-Blueprint arrow, code-audit's own __main__.py, the AGENTS.md scaffolder --dry-run of MAINT-DEFER-015).",
   "change_type": "code",
   "behavior_change": "compatible",
   "risk_level": "low",
   "scope": {
     "paths_in_scope": [
-      "scripts/",
-      "tests/contracts/"
+      "src/code_audit/analyzers/",
+      "src/code_audit/api.py",
+      "src/code_audit/model/",
+      "tests/",
+      "cbsp21/",
+      "CHANGELOG.md"
     ],
     "files_expected_to_change": [
-      "scripts/refresh_bom_manifest.py",
-      "tests/contracts/bom_manifest.json"
+      "CHANGELOG.md",
+      "cbsp21/patch_input.json",
+      "src/code_audit/analyzers/unguarded_stdout_encoding.py",
+      "src/code_audit/api.py",
+      "src/code_audit/model/__init__.py",
+      "tests/contracts/confidence_golden_manifest.json",
+      "tests/contracts/confidence_policy_manifest.json",
+      "tests/contracts/logic_manifest.json",
+      "tests/test_unguarded_stdout_encoding_analyzer.py"
     ],
-    "out_of_scope_notes": "No analyzer, schema, or workflow logic changes. The fix is limited to the BOM refresh utility and the generated BOM manifest artifact it owns."
+    "out_of_scope_notes": "The instance fixes are not in this patch: code-audit's own __main__.py guard is fix/utf8-stdout-cp1252 (unmerged), and the scaffolder guard (MAINT-DEFER-015) belongs to the scaffolder's repo. The 11 high-tier findings this detector raises on this repo's scripts/ are left as findings, not fixed here. Detector B (hollow_guarantee) is already merged as PR #29 and Detector C (coverage drift) is a separate branch after triage."
   },
   "diff_range": {
-    "base": "79f9947",
-    "head": "working-tree"
+    "base": "9e1d2fc",
+    "head": "feat/unguarded-stdout-encoding-detector"
   },
-  "changed_files_count": 2,
+  "changed_files_count": 9,
   "changed_files_exact": [
-    "scripts/refresh_bom_manifest.py",
-    "tests/contracts/bom_manifest.json"
+    "CHANGELOG.md",
+    "cbsp21/patch_input.json",
+    "src/code_audit/analyzers/unguarded_stdout_encoding.py",
+    "src/code_audit/api.py",
+    "src/code_audit/model/__init__.py",
+    "tests/contracts/confidence_golden_manifest.json",
+    "tests/contracts/confidence_policy_manifest.json",
+    "tests/contracts/logic_manifest.json",
+    "tests/test_unguarded_stdout_encoding_analyzer.py"
   ],
   "diff_articulation": {
     "what_changed": [
-      "Normalized refresh_bom_manifest.py relative-path serialization to POSIX form with as_posix(), preventing Windows-only backslashes from being written into the shared manifest",
-      "Kept the refresh utility lint-clean while preserving behavior by modernizing a few local type hints and using importlib for the existing dynamic helper import",
-      "Regenerated tests/contracts/bom_manifest.json under Python 3.11 so the recorded script AST hashes match the GitHub Actions runtime and the manifest uses stable forward-slash paths"
+      "New analyzer analyzers/unguarded_stdout_encoding.py (1.0.0, advisory, severity LOW): one finding per CLI entry module whose unguarded stdout/stderr receives non-ASCII text; high tier when a literal reaches the sink within two local bindings, low tier when an untraceable value is printed and the module holds non-ASCII constants",
+      "Each finding records its failure modes, verified on Windows before being encoded: encode_crash (stdout, character outside cp1252), escaped_output (stderr, backslashreplace), undecodable_bytes (cp1252-encodable character such as an em-dash, unreadable to a UTF-8 reader)",
+      "Registered AnalyzerType.UNGUARDED_STDOUT_ENCODING and the analyzer in api._DEFAULT_ANALYZERS; refreshed logic, confidence_policy and confidence_golden manifests on Python 3.11 (closure-only change, no scoring change, no version bump)",
+      "30 tests: born-from acceptance for all three instances each paired with a guarded twin that must stay silent, plus controls, guard forms, entry detection, trace bounds and the two false-positive classes found while dogfooding"
     ],
-    "why_not_redundant": "Refreshing the manifest alone would fix this checkout today but would allow a future Windows refresh to break Linux CI again. Normalizing the stored paths removes that portability trap while the regenerated Python 3.11 hashes address the current pytest failure."
+    "why_not_redundant": "No existing analyzer looks at stream encoding. context_pinned_hash models implicit-context axes, but each axis is scoped to a value reaching a hash, and stdout is not a hash sink, so adding this there would have broken that analyzer's scoping (rail 7). The instance fixes each close one occurrence; this detector finds the class, including 11 latent occurrences in this repo's own scripts."
   },
   "verification": {
     "commands_run": [
-      "python3.11 scripts/refresh_bom_manifest.py",
-      "python3.11 -m ruff check scripts/refresh_bom_manifest.py",
-      "python3.11 -m pytest tests/test_bom_manifest_gate.py tests/test_bom_js_ts_surface.py tests/test_release_bom_contract.py::test_release_bom_is_buildable_and_self_consistent -q"
+      "py -3.11 -m pytest -o addopts=\"\" -q tests/test_unguarded_stdout_encoding_analyzer.py",
+      "py -3.11 -m pytest -o addopts=\"\" -q (full suite, collect-all, CI=true, PYTHONPATH pinned to the worktree)",
+      "py -3.11 scripts/refresh_logic_manifest.py && py -3.11 scripts/refresh_confidence_policy_manifest.py && py -3.11 scripts/refresh_confidence_golden_manifest.py",
+      "mutation check: detector disabled / guard recognition disabled / low tier disabled, each run against the test file",
+      "dogfood: analyzer over this repo, tests/fixtures/repos/*, luthiers-toolbox scripts+services, the canonical scaffolder, and the fix/utf8-stdout-cp1252 __main__.py",
+      "Windows subprocess reproduction of each failure mode with PYTHONIOENCODING/PYTHONUTF8 unset"
     ],
     "test_results": [
-      "BOM manifest refreshed successfully under Python 3.11",
-      "Ruff passed for scripts/refresh_bom_manifest.py",
-      "10 targeted BOM and release-contract pytest checks passed"
+      "New test file: 30 passed",
+      "Full suite (collect-all, CI=true, CONFIDENCE_ENTRYPOINTS as in pytest.yml): 1246 passed, 7 skipped, 0 failed; the first run omitted CONFIDENCE_ENTRYPOINTS and its 3 env-contract failures pass once it is set",
+      "Clean origin/main baseline for comparison: 1214 passed, 9 skipped, 0 failed (+30 = the new tests; 2 fewer skips = CI-only gates that run under CI=true)",
+      "Mutation check: disabling the detector fails 16 tests, disabling guard recognition fails the 5 guard tests, disabling the low tier fails the 5 low-tier tests",
+      "Manifests refreshed on Python 3.11 after the last source edit; version-bump and analyzer-registry contracts pass"
     ],
-    "notes": "I also inspected the failing GitHub Actions job logs for job 89640614655 before changing code. The original CI failure was an AST hash mismatch in tests/test_bom_manifest_gate.py for scripts/check_release_bom_consistency.py; local reproduction under Python 3.11 additionally exposed the manifest path separator portability problem that this patch closes. In this sandbox, the Python 3.11 commands were executed via a temporary local py311 environment."
+    "notes": "Dogfood: fires high on code-audit's own main-branch __main__.py and is silent on the fix-branch version (loop-form reconfigure guard); fires high on the canonical scaffolder with U+2500 reported as an untraced encode-crash character; 0 findings on all 16 fixture repos (goldens stable). Two false-positive classes were found dogfooding and fixed with regression tests: a module docstring counted because the module read obj.__doc__ (deployment.py), and print(json.dumps(...)) whose default ensure_ascii=True output is pure ASCII. CI collection: tests/test_unguarded_stdout_encoding_analyzer.py is collected by the Pytest workflow's plain `python -m pytest -q` over testpaths=[\"tests\"]; no pin needed."
   },
   "file_context_coverage_percent": 100.0,
   "metadata": {
-    "author": "GitHub Copilot",
-    "created_at": "2026-07-25T04:45:25Z",
+    "author": "Claude Opus 5",
+    "created_at": "2026-09-10T00:00:00Z",
     "reviewers": []
   }
 }

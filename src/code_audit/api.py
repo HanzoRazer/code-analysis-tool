@@ -49,6 +49,9 @@ from code_audit.analyzers.cross_copy_drift import CrossCopyDriftAnalyzer
 from code_audit.analyzers.order_dependence import OrderDependenceAnalyzer
 from code_audit.analyzers.unpinned_toolchain import UnpinnedToolchainAnalyzer
 from code_audit.analyzers.hollow_guarantee import HollowGuaranteeAnalyzer
+from code_audit.analyzers.unguarded_stdout_encoding import (
+    UnguardedStdoutEncodingAnalyzer,
+)
 from code_audit.analyzers.namespace_authority_drift import (
     NamespaceAuthorityContext,
     NamespaceAuthorityDriftAnalyzer,
@@ -94,6 +97,7 @@ _DEFAULT_ANALYZERS = (
     OrderDependenceAnalyzer,
     UnpinnedToolchainAnalyzer,
     HollowGuaranteeAnalyzer,
+    UnguardedStdoutEncodingAnalyzer,
     PrScopeAnalyzer,
     NamespaceAuthorityDriftAnalyzer,
 )
