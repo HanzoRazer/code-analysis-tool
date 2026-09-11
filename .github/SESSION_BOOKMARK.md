@@ -12,25 +12,28 @@
 | **Session** | `5b1d4628-2b05-4e39-92ee-6b0cfb1e23a9` (last active 2026-09-11 08:09 UTC) |
 | **Reopen** | `claude --resume 5b1d4628-2b05-4e39-92ee-6b0cfb1e23a9`, or `/resume` and pick it |
 | **Cut off during** | a check of a luthiers-toolbox script's CRLF handling (re-run and finished in session `778e3df9`) |
-| **main** | `3a4717e` (#31), CI green on both required checks |
+| **main** | `9e34a1c` (#33), after `2757993` (#32); CI green on both required checks |
 
 It had two threads open: the CRLF endpoint-scan question and the merge train.
 
 ---
 
-## 1. CRLF endpoint-scan fix — NOT RESOLVED
+## 1. CRLF endpoint-scan fix — RESOLVED (Option 1A, from evidence)
 
-The chat claimed the instance fix (strip `\r` in the endpoint scan) was "already done". No repo shows it:
+The chat's "CRLF endpoint-scan false zero, instance fix already done" merged **two separate, real defects**. Both live in `HanzoRazer/luthiers-toolbox-consolidation-lab` (Investigation 035, Lab PR #19). That repo isn't cloned on this machine, which is why the local search found nothing.
 
-- The script found is luthiers-toolbox `services/api/scripts/build_endpoint_consumer_map.py` (defines `ENDPOINT_ROOTS`). It hasn't changed since #204 (`a2d24bed`, 2026-07-07), and there's no uncommitted edit to it.
-- It also can't have the bug. Every file read goes through `read_text()`, which turns `\r\n` into `\n`. Its one subprocess read (`git rev-parse HEAD`) is `.strip()`ped.
-- No commit in luthiers-toolbox, CNC-Production-Shop, tap_tone_pi or code-analysis-tool mentions CRLF, `\r`, line endings or an endpoint scan.
+| Chat said | What happened | Mechanism | Status |
+|---|---|---|---|
+| "endpoint scan false zero" | A naive enumeration of the Toolbox FastAPI app reports **10 routes out of 1155**. `include_router` makes lazy `_IncludedRouter` wrappers with `path = None` (`post-fix-verification/EVIDENCE_INDEX.md`, "Instrument observation") | enumeration, **not CRLF** | Recorded as an instrument caveat: "route absence reported by a naive enumerator is not evidence of anything". Every route claim in 035 was checked against a live HTTP request. Route truth belongs to `LW-F11` / Investigation 033 |
+| "CRLF ... fix already done" | Custody guard `test_ev02` hashed **on-disk bytes**, and a Windows CRLF checkout of an unchanged blob false-failed (`0d6e6e9c…` on disk vs `6343b183…` LF) | line endings reaching a **hash** | **Fixed in Lab PR #22** (`c6b4a39e`, 2026-09-07) with an LF-normalized digest. `test_ev02b` guards the guard |
 
-So either the fix only existed in the chat's sandbox, or the scan that hit the false zero is a different script.
+**No decision rests on corrupt data.** The one related production change, luthiers-toolbox `f0b7d95f` (Investigation 035 repairs), judged consumers by reading code, not from a scan, and it **renamed** the N17 route rather than deleting it.
 
-**Open question for the owner:** which repo and script does that endpoint scan live in?
+The earlier local findings still stand: luthiers-toolbox's `build_endpoint_consumer_map.py` and `scan_stub_endpoints.py` both read through `read_text()`, which normalizes `\r\n`, so neither can have this bug. The near miss `65587919` (git quoting of non-ASCII paths, fixed with `-z` and `core.quotepath=false`) is the same family but different bytes.
 
-**Detector follow-up (filed, not built):** a "CRLF in a data file breaks a comparison without normalizing line endings" detector waits until the train drains. It gets grounded against **merged** A (after car 9). It could be a rule on A, an axis on `context_pinned_hash` (which already normalizes line endings to LF, but only for values that reach a hash), or a standalone detector.
+**Detector: no new one needed.** `context_pinned_hash` already catches the real Lab instance. On the pre-#22 `test_custody.py` it reports `CTX_PINNED_HASH_BYTES_001` at MEDIUM, confidence 0.7, `context_axis=line_ending`. On the fixed version it reports LOW, 0.5, `mitigation_detected=input_lf_normalized`, so it recognizes the fix and downgrades rather than going silent. That's its first real-world born-from instance outside this repo. The route-enumeration under-report is a different class (reading framework structures naively). It belongs to LW-F11, is below the recurrence bar, and is **parked, not filed**.
+
+**Optional check with the chat:** "Was the 'endpoint-scan false zero' Investigation 035's 10-of-1155 route under-report, and the CRLF fix Lab #22's custody digest? Did anything else run on the scan's zero?"
 
 ---
 
@@ -40,14 +43,14 @@ So either the fix only existed in the chat's sandbox, or the scan that hit the f
 |-----|--------|----|-------|
 | 1 | `fix/utf8-stdout-cp1252` | #30 | merged `38c4ca4`, main CI green |
 | 2 | `fix/utf8-file-encoding` | #31 | merged `3a4717e` 2026-09-11 08:13 UTC, main CI green |
-| 3 | `feat/pr-scope-dependency-direction` | — | **next**: one commit `78e1f82` on `9e1d2fc`, no PR yet |
+| 3 | `feat/pr-scope-dependency-direction` | #34 | **in review revision.** First CI run green. Train fixes: a stale logic manifest (pr_scope 2.1.0 was recorded as 2.0.0, which the version-bump gate can't see) and 4 debt-ratchet items. Review response: a stricter version parser, prose no longer declares a change, and the v2 schema now accepts `scope.dependency_changes`. Owner presses merge |
 | 4 | `feat/silencer-protocol-note` | — | queued |
 | 5 | `feat/deployment-watch-coverage-validator` (C) | — | queued. Only conflicting line vs car 2 is `DeploymentAnalyzer.version`, which resolves to `"1.1.0"`. Regenerate its logic-manifest entry on py3.11 |
 | 6 | `feat/dangling-reference-analyzer` | — | queued (enum clique) |
 | 7 | `feat/unbacked-claim-analyzer` | — | queued (enum clique) |
 | 8 | `feat/canonical-pill-analyzer` | — | queued (enum clique) |
 | 9 | `feat/unguarded-stdout-encoding-detector` (A) | — | queued; must land after car 1 |
-| 10 | `feat/gate-wrong-artifact-detector` (#5) | #32 | **pulled ahead of 3–9 by the owner.** Main merged in (`api.py`/`model` union-resolved), manifests refreshed on py3.11, full suite 1229 passed / 0 failed, dogfood 0 FP. Owner presses merge |
+| 10 | `feat/gate-wrong-artifact-detector` (#5) | #32 | **merged `2757993`**, pulled ahead of 3–9 by the owner, main CI green. Debt-ratchet items fixed in code before the merge |
 | — | `feat/silent-fallback-rule-sf-001` | #1 closed | branch deleted 2026-09-10; content at `refs/pull/1/head` (`ad561ab`) |
 | — | `held/maxfail-ci-surfaces-matrix-fail-fast` | none (held) | `274198b` on `3802ccf`. Snapshot of uncommitted maxfail 1.1.0 arms (matrix `fail-fast`, Makefile, GitLab/CircleCI) that existed on no branch. Rebuild onto main's 2.0.0 after the drain; don't merge as-is |
 
@@ -64,11 +67,13 @@ So either the fix only existed in the chat's sandbox, or the scan that hit the f
 
 ## Next step
 
-1. Merge #32 (car 10) once it's green. The owner presses the button.
-2. Run the car 3 loop and open its PR. Cars 6–9 will each re-resolve the enum clique against car 10 once it lands.
-3. Still pending: the CRLF question above.
+1. Merge #34 (car 3) once the review revision is green. The owner presses the button.
+2. Decide who merges cars 4–8. First-contact CI has been green 3 out of 3 (cars 2, 10, 3). Car 5 has the first real code conflict, the `deployment.py` version line.
+3. Cars 6–9 each re-resolve the enum clique against car 10, which is now on main.
 
-**Main checkout cleanup (not done):** the working tree on `feat/gate-wrong-artifact-detector` still has uncommitted copies that are superseded: `pr_scope.py` and its test (by #20), `patch_input_v2.*` drafts and the pr-scope edits in `__main__.py`/`api.py`/`__init__.py` (on main), plus maxfail 1.1.0 (now on the held branch). Once the checkout is pulled up to date after #32 merges, they can be discarded.
+**Lesson now on the rails:** run the debt-ratchet locally (`code-audit debt snapshot/compare` with `CI=true PYTHONHASHSEED=0 CODE_AUDIT_DETERMINISTIC=1`) and always diff a manifest refresh, even when a branch claims none is needed. Neither is covered by the pytest suite.
+
+**Main checkout cleanup: DONE** (2026-09-11, owner-approved). The superseded copies were verified against main, the held branch and #33, then deleted. The checkout is still on `feat/gate-wrong-artifact-detector` at `873ce27`; switch it to `main` and pull.
 
 ---
 
