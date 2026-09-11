@@ -18,14 +18,18 @@ companion run with no fail-fast flag, i.e. a full-suite pass that enumerates
 everything) is **confirmed** — ``False`` in v1. A v2 pass enriches this by looking
 for that companion job, and downgrades when one exists.
 
+**v1.1** adds matrix-cancellation detection plus Makefile, GitLab, CircleCI,
+and repository ``ci/`` discovery while retaining the hardened pytest flag
+parser from v1.
+
 Emits: keep fail-fast for CI speed if you like, but add a **collect-all pass**
 that enumerates the full failure set and groups by cause — don't diagnose a stack
 one layer at a time.
 """
 from __future__ import annotations
 
-import re
 from pathlib import Path
+import re
 
 from code_audit.model import AnalyzerType, Severity
 from code_audit.model.finding import Finding, Location, make_fingerprint
@@ -34,8 +38,16 @@ _RULE_ID = "MAXFAIL_MASKING_001"
 
 # Config surfaces that can carry a pytest fail-fast setting, relative to root.
 _ROOT_CONFIGS = ("pyproject.toml", "pytest.ini", "tox.ini", "setup.cfg")
+_MAKEFILES = ("Makefile", "makefile", "GNUmakefile")
 _WORKFLOW_DIR = ".github/workflows"
 _WORKFLOW_EXTS = frozenset({".yml", ".yaml"})   # matched case-insensitively
+_CI_FILES = (
+    ".gitlab-ci.yml",
+    ".gitlab-ci.yaml",
+    ".circleci/config.yml",
+    ".circleci/config.yaml",
+)
+_CI_DIR = "ci"
 
 # ``--maxfail`` / ``--maxfail=N`` / ``--maxfail N`` — but NOT ``--maxfail=0``
 # (0 means "no limit" = not fail-fast).
@@ -51,26 +63,72 @@ _RE_SHORT_X = re.compile(r"(?<![\w-])-[a-zA-Z]*x[a-zA-Z]*(?![\w-])")
 # not a later chained command (e.g. ``pytest && ssh -x host``).
 _RE_CMD_SPLIT = re.compile(r"&&|\|\||;|\|")
 _RE_PYTEST = re.compile(r"\b(?:pytest|py\.test)\b")
+_RE_STRATEGY = re.compile(r"^strategy\s*:\s*$", re.IGNORECASE)
+_RE_MATRIX = re.compile(r"^matrix\s*:", re.IGNORECASE)
+_RE_MATRIX_FAIL_FAST = re.compile(r"^fail-fast\s*:\s*true\s*$", re.IGNORECASE)
+
+
+def _iter_config_paths(root: Path):
+    """Yield supported config surfaces deterministically without source discovery."""
+    candidates = [root / name for name in (*_ROOT_CONFIGS, *_MAKEFILES, *_CI_FILES)]
+
+    workflow_dir = root / _WORKFLOW_DIR
+    if workflow_dir.is_dir():
+        candidates.extend(
+            path
+            for path in workflow_dir.rglob("*")
+            if path.is_file() and path.suffix.lower() in _WORKFLOW_EXTS
+        )
+
+    ci_dir = root / _CI_DIR
+    if ci_dir.is_dir():
+        candidates.extend(
+            path
+            for path in ci_dir.rglob("*")
+            if path.is_file() and path.suffix.lower() in _WORKFLOW_EXTS
+        )
+
+    unique: dict[str, Path] = {}
+    for path in candidates:
+        if path.is_file():
+            unique[str(path.resolve()).casefold()] = path
+    yield from sorted(unique.values(), key=lambda path: path.as_posix().casefold())
+
+
+def _is_ci_yaml(path: Path, root: Path) -> bool:
+    if path.suffix.lower() not in _WORKFLOW_EXTS:
+        return False
+    try:
+        rel = path.resolve().relative_to(root.resolve()).as_posix()
+    except ValueError:
+        return False
+    return (
+        rel in _CI_FILES
+        or rel.startswith(f"{_WORKFLOW_DIR}/")
+        or rel.startswith(f"{_CI_DIR}/")
+    )
+
+
+def _surface_for_path(path: Path, root: Path) -> str:
+    if path.name in _MAKEFILES:
+        return "makefile"
+    if _is_ci_yaml(path, root):
+        return "ci_pytest"
+    return "pytest_config"
 
 
 class MaxfailMaskingAnalyzer:
     """Detect fail-fast test/CI config that hides the true failure set."""
 
     id: str = "maxfail_masking"
-    version: str = "1.0.0"
+    version: str = "1.1.0"
 
     def run(self, root: Path, files: list[Path]) -> list[Finding]:
-        # This analyzer inspects config surfaces, not the discovered .py files.
+        # This analyzer discovers config surfaces from root; the runner's
+        # ``files`` argument contains source files only.
         findings: list[Finding] = []
-        for name in _ROOT_CONFIGS:
-            findings.extend(self._scan_config(root / name, root))
-        wf_dir = root / _WORKFLOW_DIR
-        if wf_dir.is_dir():
-            # Case-insensitive .yml/.yaml (GitHub only recognises lowercase, but
-            # be robust on case-sensitive filesystems regardless).
-            for wf in sorted(wf_dir.iterdir()):
-                if wf.is_file() and wf.suffix.lower() in _WORKFLOW_EXTS:
-                    findings.extend(self._scan_config(wf, root))
+        for path in _iter_config_paths(root):
+            findings.extend(self._scan_config(path, root))
         return findings
 
     # ── per-config scan ─────────────────────────────────────────────
@@ -84,7 +142,10 @@ class MaxfailMaskingAnalyzer:
             return []
 
         hits = _detect_fail_fast(text)
-        if not hits:
+        matrix_hits = (
+            _detect_matrix_fail_fast(text) if _is_ci_yaml(path, root) else []
+        )
+        if not hits and not matrix_hits:
             return []
 
         try:
@@ -92,8 +153,48 @@ class MaxfailMaskingAnalyzer:
         except ValueError:
             rel = path.name
 
-        line = hits[0].line
         src_lines = text.splitlines()
+        findings: list[Finding] = []
+
+        for matrix_hit in matrix_hits:
+            line = matrix_hit.line
+            snippet = (
+                src_lines[line - 1].strip()
+                if 0 < line <= len(src_lines)
+                else ""
+            )
+            fingerprint = make_fingerprint(
+                _RULE_ID, rel, "ci_matrix_fail_fast", snippet
+            )
+            findings.append(
+                Finding(
+                    finding_id=fingerprint,
+                    type=AnalyzerType.MAXFAIL_MASKING,
+                    severity=Severity.LOW,
+                    confidence=0.75,
+                    message=(
+                        f"'{rel}' enables matrix fail-fast cancellation. The first "
+                        "failing matrix leg cancels siblings and hides failures in "
+                        "other environments. Fix: set fail-fast: false on the "
+                        "authoritative matrix so every leg reports."
+                    ),
+                    location=Location(path=rel, line_start=line, line_end=line),
+                    fingerprint=fingerprint,
+                    snippet=snippet,
+                    metadata={
+                        "rule_id": _RULE_ID,
+                        "surface": "ci_matrix",
+                        "fail_fast_flags": ["fail-fast: true"],
+                        "maxfail_value": None,
+                        "collect_all_escape_confirmed": False,
+                    },
+                )
+            )
+
+        if not hits:
+            return findings
+
+        line = hits[0].line
         snippet = src_lines[line - 1].strip() if 0 < line <= len(src_lines) else ""
         flag_names = sorted({h.flag for h in hits})
         # Smallest positive maxfail bound found (how aggressively it truncates —
@@ -116,7 +217,7 @@ class MaxfailMaskingAnalyzer:
             f"whole stack at once."
         )
         fingerprint = make_fingerprint(_RULE_ID, rel, flag_names[0], snippet)
-        return [
+        findings.append(
             Finding(
                 finding_id=fingerprint,
                 type=AnalyzerType.MAXFAIL_MASKING,
@@ -128,14 +229,16 @@ class MaxfailMaskingAnalyzer:
                 snippet=snippet,
                 metadata={
                     "rule_id": _RULE_ID,
+                    "surface": _surface_for_path(path, root),
                     "fail_fast_flags": flag_names,
                     "maxfail_value": maxfail_value,
-                    # v1 cannot confirm whether a companion collect-all run exists;
+                    # v1.1 cannot confirm whether a companion collect-all run exists;
                     # the v2 pass looks for one and downgrades/clears if present.
                     "collect_all_escape_confirmed": False,
                 },
             )
-        ]
+        )
+        return findings
 
 
 # ── detection ───────────────────────────────────────────────────────
@@ -148,6 +251,49 @@ class _Hit:
         self.flag = flag
         self.line = line
         self.value = value
+
+
+def _detect_matrix_fail_fast(text: str) -> list[_Hit]:
+    """Find ``strategy.fail-fast: true`` only when the strategy has a matrix."""
+    hits: list[_Hit] = []
+    strategy_indent: int | None = None
+    strategy_hits: list[_Hit] = []
+    has_matrix = False
+
+    def finish_strategy() -> None:
+        nonlocal strategy_hits, has_matrix
+        if has_matrix:
+            hits.extend(strategy_hits)
+        strategy_hits = []
+        has_matrix = False
+
+    for line_number, raw in enumerate(text.splitlines(), start=1):
+        line = _strip_comment(raw).rstrip()
+        if not line.strip():
+            continue
+        stripped = line.lstrip(" ")
+        indent = len(line) - len(stripped)
+
+        if strategy_indent is not None and indent <= strategy_indent:
+            finish_strategy()
+            strategy_indent = None
+
+        if _RE_STRATEGY.fullmatch(stripped):
+            strategy_indent = indent
+            strategy_hits = []
+            has_matrix = False
+            continue
+
+        if strategy_indent is None or indent <= strategy_indent:
+            continue
+        if _RE_MATRIX.match(stripped):
+            has_matrix = True
+        if _RE_MATRIX_FAIL_FAST.fullmatch(stripped):
+            strategy_hits.append(_Hit("fail-fast: true", line_number))
+
+    if strategy_indent is not None:
+        finish_strategy()
+    return hits
 
 
 def _detect_fail_fast(text: str) -> list[_Hit]:

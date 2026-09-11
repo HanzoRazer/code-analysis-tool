@@ -9,6 +9,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from code_audit.analyzers.maxfail_masking import MaxfailMaskingAnalyzer
+from code_audit.api import scan_project
+from code_audit.contracts.validate import validate_finding
 from code_audit.model import AnalyzerType, Severity
 
 
@@ -182,3 +184,146 @@ def test_uppercase_workflow_extension_scanned(tmp_path):
     f = _run(tmp_path)
     assert len(f) == 1
     assert "--maxfail" in f[0].metadata["fail_fast_flags"]
+
+
+# ── v1.1 expansion: matrix cancellation + authoritative Makefile surfaces ──
+
+
+def test_matrix_fail_fast_true_flagged_in_strategy(tmp_path):
+    wf = tmp_path / ".github" / "workflows"
+    wf.mkdir(parents=True)
+    (wf / "ci.yml").write_text(
+        "jobs:\n"
+        "  test:\n"
+        "    strategy:\n"
+        "      fail-fast: true\n"
+        "      matrix:\n"
+        "        python: ['3.11', '3.12']\n",
+        encoding="utf-8",
+    )
+
+    findings = _run(tmp_path)
+
+    assert len(findings) == 1
+    assert findings[0].metadata["surface"] == "ci_matrix"
+    assert findings[0].metadata["rule_id"] == "MAXFAIL_MASKING_001"
+    assert findings[0].location.line_start == 4
+
+
+def test_matrix_fail_fast_false_not_flagged(tmp_path):
+    wf = tmp_path / ".github" / "workflows"
+    wf.mkdir(parents=True)
+    (wf / "ci.yml").write_text(
+        "jobs:\n  test:\n    strategy:\n      fail-fast: false\n",
+        encoding="utf-8",
+    )
+    assert _run(tmp_path) == []
+
+
+def test_commented_matrix_fail_fast_not_flagged(tmp_path):
+    wf = tmp_path / ".github" / "workflows"
+    wf.mkdir(parents=True)
+    (wf / "ci.yml").write_text(
+        "jobs:\n  test:\n    strategy:\n      # fail-fast: true\n",
+        encoding="utf-8",
+    )
+    assert _run(tmp_path) == []
+
+
+def test_fail_fast_true_outside_strategy_not_flagged(tmp_path):
+    wf = tmp_path / ".github" / "workflows"
+    wf.mkdir(parents=True)
+    (wf / "ci.yml").write_text(
+        "metadata:\n  fail-fast: true\n",
+        encoding="utf-8",
+    )
+    assert _run(tmp_path) == []
+
+
+def test_makefile_pytest_dash_x_flagged(tmp_path):
+    (tmp_path / "Makefile").write_text(
+        "test:\n\tpytest -x tests/\n",
+        encoding="utf-8",
+    )
+
+    findings = _run(tmp_path)
+
+    assert len(findings) == 1
+    assert findings[0].metadata["surface"] == "makefile"
+    assert findings[0].location.path == "Makefile"
+    assert "-x" in findings[0].metadata["fail_fast_flags"]
+
+
+def test_makefile_maxfail_zero_not_flagged(tmp_path):
+    (tmp_path / "makefile").write_text(
+        "test:\n\tpytest --maxfail=0 tests/\n",
+        encoding="utf-8",
+    )
+    assert _run(tmp_path) == []
+
+
+def test_makefile_unrelated_dash_x_not_flagged(tmp_path):
+    (tmp_path / "GNUmakefile").write_text(
+        "proxy:\n\tcurl -x proxy https://example.test\n",
+        encoding="utf-8",
+    )
+    assert _run(tmp_path) == []
+
+
+def test_gitlab_ci_pytest_fail_fast_flagged(tmp_path):
+    (tmp_path / ".gitlab-ci.yml").write_text(
+        "test:\n  script: pytest --maxfail=2\n",
+        encoding="utf-8",
+    )
+    findings = _run(tmp_path)
+    assert len(findings) == 1
+    assert findings[0].metadata["surface"] == "ci_pytest"
+    assert findings[0].location.path == ".gitlab-ci.yml"
+
+
+def test_circleci_pytest_fail_fast_flagged(tmp_path):
+    circle = tmp_path / ".circleci"
+    circle.mkdir()
+    (circle / "config.yml").write_text(
+        "jobs:\n  test:\n    steps:\n      - run: pytest --exitfirst\n",
+        encoding="utf-8",
+    )
+    findings = _run(tmp_path)
+    assert len(findings) == 1
+    assert findings[0].metadata["surface"] == "ci_pytest"
+    assert findings[0].location.path == ".circleci/config.yml"
+
+
+def test_ci_directory_yaml_is_scanned_recursively(tmp_path):
+    ci = tmp_path / "ci" / "nested"
+    ci.mkdir(parents=True)
+    (ci / "tests.yaml").write_text(
+        "steps:\n  - run: pytest -x\n",
+        encoding="utf-8",
+    )
+    findings = _run(tmp_path)
+    assert len(findings) == 1
+    assert findings[0].location.path == "ci/nested/tests.yaml"
+
+
+def test_new_findings_validate_against_contract(tmp_path):
+    (tmp_path / "Makefile").write_text("test:\n\tpytest -x\n", encoding="utf-8")
+    finding = _run(tmp_path)[0]
+
+    validate_finding(finding.to_dict())
+    assert finding.metadata["collect_all_escape_confirmed"] is False
+    assert finding.metadata["surface"] == "makefile"
+
+
+def test_default_scan_pipeline_discovers_makefile_without_source_files(tmp_path):
+    (tmp_path / "Makefile").write_text("test:\n\tpytest -x\n", encoding="utf-8")
+
+    result, _ = scan_project(tmp_path, ci_mode=True)
+    findings = [
+        finding
+        for finding in result.findings
+        if finding.type is AnalyzerType.MAXFAIL_MASKING
+    ]
+
+    assert len(findings) == 1
+    assert findings[0].metadata["surface"] == "makefile"
