@@ -50,7 +50,7 @@
     },
     {
       "class_name": "GateWrongArtifactAnalyzer",
-      "logic_hash": "sha256:e934d50d6fb05183beeebb2d0444edff6f1da99d139048bdec51a86c8e4f5b66",
+      "logic_hash": "sha256:04ffce3762d50ffa403e4d1bdfaa2bf5af4ecb56dcfd28d6ae7dc7615ac6a1f3",
       "module": "code_audit.analyzers.gate_wrong_artifact",
       "version": "1.0.0"
     },

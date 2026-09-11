@@ -41,7 +41,8 @@
       "Added src/code_audit/analyzers/gate_wrong_artifact.py (GateWrongArtifactAnalyzer 1.0.0) with two rules: GATE_WRONG_ARTIFACT_MODIFIED_001 (validated, then reassigned or mutated, then returned) and GATE_WRONG_ARTIFACT_ABANDONED_001 (validated local build unused after the check while a different local build is returned). Per-function AST facts, no descent into nested scopes. finding_id is the make_fingerprint value, never empty.",
       "Added AnalyzerType.GATE_WRONG_ARTIFACT and registered the analyzer in api._DEFAULT_ANALYZERS (the registry contract test requires the exact set).",
       "Refreshed confidence_policy, confidence_golden and logic manifests on Python 3.11. The enum value sits in the confidence closure, so the two confidence hashes move; this is a benign closure change, signal_logic_version stays signals_v5.",
-      "Merged current main (3a4717e) into the branch, which was cut from 3802ccf. api.py and model/__init__.py conflicted additively (main added four analyzers since); resolved as a union, main's entries first."
+      "Merged current main (3a4717e) into the branch, which was cut from 3802ccf. api.py and model/__init__.py conflicted additively (main added four analyzers since); resolved as a union, main's entries first.",
+      "Cleared three debt-ratchet items in the new analyzer without touching the baseline: removed a dead snippet computation and the src_lines parameter that only fed it (long_parameter_list on _emit_abandoned), made _finding take a Location (long_parameter_list), and split _visit into _visit_assign/_record_mutations with a flat if-dispatch instead of an elif chain, which nests in the AST (deep_nesting). Behavior-preserving: the 12 analyzer tests pass unchanged and old/new produce identical findings over the repo's 337 .py files."
     ],
     "why_not_redundant": "No existing analyzer relates a validation call to the value that leaves the function. The shape is the scale-validation defect class from the roadmap: every check passes while the shipped artifact was never checked, so no test or gate observes it."
   },
@@ -49,13 +50,14 @@
     "commands_run": [
       "py -3.11 scripts/refresh_confidence_policy_manifest.py; ... refresh_confidence_golden_manifest.py; ... refresh_logic_manifest.py",
       "PYTHONPATH=<worktree>/src py -3.11 <dogfood: GateWrongArtifactAnalyzer over src/, scripts/, tests/fixtures/repos/*>",
-      "CI=true CONFIDENCE_ENTRYPOINTS=src/code_audit/insights/confidence.py PYTHONPATH=<worktree>/src;<worktree> py -3.11 -m pytest -o addopts=\"\" -q -p no:cacheprovider"
+      "CI=true CONFIDENCE_ENTRYPOINTS=src/code_audit/insights/confidence.py PYTHONPATH=<worktree>/src;<worktree> py -3.11 -m pytest -o addopts=\"\" -q -p no:cacheprovider",
+      "CI=true PYTHONHASHSEED=0 CODE_AUDIT_DETERMINISTIC=1 code-audit debt snapshot . --ci --out artifacts/current.json && code-audit debt compare . --baseline baselines/main.json --current artifacts/current.json --ci --json  (0 new)"
     ],
     "test_results": [
       "tests/test_gate_wrong_artifact_analyzer.py: 12 tests covering both bug shapes and the non-flagged validate(input); return transform(input) pattern",
       "Dogfood: 0 findings over 54 validation-named calls in src/ (17) and scripts/ (37) of the merged tree",
       "Fixture repos: 0 findings across tests/fixtures/repos/*, so scan goldens are unchanged",
-      "Full suite: see PR"
+      "Full suite, after the ratchet refactor: 1229 passed, 6 skipped, 0 failed"
     ],
     "notes": "Collect-all run (addopts cleared), not maxfail-masked. PYTHONPATH pinned to the worktree so the installed checkout is not imported."
   },

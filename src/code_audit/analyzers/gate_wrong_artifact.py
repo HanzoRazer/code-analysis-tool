@@ -64,18 +64,15 @@ class GateWrongArtifactAnalyzer:
                 rel = path.resolve().relative_to(root.resolve()).as_posix()
             except ValueError:
                 rel = path.name
-            src_lines = src.splitlines()
             for fn in ast.walk(tree):
                 if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                    findings.extend(self._analyze_fn(fn, rel, src_lines))
+                    findings.extend(self._analyze_fn(fn, rel))
         findings.sort(key=lambda f: (f.location.path, f.location.line_start))
         return findings
 
     # ── per-function analysis ───────────────────────────────────────
 
-    def _analyze_fn(
-        self, fn: ast.AST, rel: str, src_lines: list[str]
-    ) -> list[Finding]:
+    def _analyze_fn(self, fn: ast.AST, rel: str) -> list[Finding]:
         info = _FnInfo(fn)
         findings: list[Finding] = []
 
@@ -88,7 +85,7 @@ class GateWrongArtifactAnalyzer:
             ]
             if ret_after_mod:
                 findings.append(self._emit_modified(
-                    var, vline, min(mod_lines), rel, src_lines))
+                    var, vline, min(mod_lines), rel))
                 continue
 
             # Signal 2: validated local artifact, abandoned; a different local
@@ -104,15 +101,13 @@ class GateWrongArtifactAnalyzer:
             ]
             if other_returns:
                 rv, rl = other_returns[0]
-                findings.append(self._emit_abandoned(
-                    var, vline, rv, rl, rel, src_lines))
+                findings.append(self._emit_abandoned(var, vline, rv, rl, rel))
 
         return findings
 
     # ── finding construction ────────────────────────────────────────
 
-    def _emit_modified(self, var, vline, mline, rel, src_lines) -> Finding:
-        snippet = src_lines[vline - 1].strip() if 0 < vline <= len(src_lines) else ""
+    def _emit_modified(self, var, vline, mline, rel) -> Finding:
         message = (
             f"'{var}' is validated (line {vline}) but then modified (line {mline}) "
             f"before being returned — the shipped value is the post-validation form, "
@@ -120,12 +115,11 @@ class GateWrongArtifactAnalyzer:
             f"Fix: validate '{var}' after its last modification, on the value you ship."
         )
         fp = make_fingerprint(_RULE_MODIFIED, rel, var, f"{vline}:{mline}")
-        return self._finding(_RULE_MODIFIED, fp, message, rel, vline,
+        return self._finding(_RULE_MODIFIED, fp, message, _loc(rel, vline),
                              {"validated_var": var, "validated_line": vline,
                               "modified_line": mline})
 
-    def _emit_abandoned(self, var, vline, ship, sline, rel, src_lines) -> Finding:
-        snippet = src_lines[vline - 1].strip() if 0 < vline <= len(src_lines) else ""
+    def _emit_abandoned(self, var, vline, ship, sline, rel) -> Finding:
         message = (
             f"'{var}' is validated (line {vline}) but a different artifact '{ship}' "
             f"is returned (line {sline}), and '{var}' is never used after the check — "
@@ -133,11 +127,11 @@ class GateWrongArtifactAnalyzer:
             f"Fix: validate the shipped artifact '{ship}', not '{var}'."
         )
         fp = make_fingerprint(_RULE_ABANDONED, rel, f"{var}->{ship}", str(vline))
-        return self._finding(_RULE_ABANDONED, fp, message, rel, vline,
+        return self._finding(_RULE_ABANDONED, fp, message, _loc(rel, vline),
                              {"validated_var": var, "validated_line": vline,
                               "shipped_var": ship, "shipped_line": sline})
 
-    def _finding(self, rule_id, fp, message, rel, line, extra) -> Finding:
+    def _finding(self, rule_id, fp, message, location, extra) -> Finding:
         meta = {"rule_id": rule_id, "gate_covers_shipped_confirmed": False}
         meta.update(extra)
         return Finding(
@@ -146,7 +140,7 @@ class GateWrongArtifactAnalyzer:
             severity=Severity.MEDIUM,
             confidence=0.6,
             message=message,
-            location=Location(path=rel, line_start=line, line_end=line),
+            location=location,
             fingerprint=fp,
             snippet="",
             metadata=meta,
@@ -180,26 +174,29 @@ class _FnInfo:
             self._visit(node)
 
     def _visit(self, node: ast.AST) -> None:
+        # Node kinds are mutually exclusive, so flat ifs (not an elif chain,
+        # which nests in the AST) dispatch exactly one branch.
+        line = getattr(node, "lineno", 0)
         if isinstance(node, ast.Call):
             self._visit_call(node)
-        elif isinstance(node, ast.Assign):
-            line = getattr(node, "lineno", 0)
-            for t in node.targets:
-                for name in _target_names(t):
-                    self.mutated.setdefault(name, []).append(line)
-            if isinstance(node.value, ast.Call):
-                for t in node.targets:
-                    if isinstance(t, ast.Name):
-                        self.local_builds.add(t.id)
-        elif isinstance(node, (ast.AnnAssign, ast.AugAssign)):
-            line = getattr(node, "lineno", 0)
-            for name in _target_names(node.target):
-                self.mutated.setdefault(name, []).append(line)
-        elif isinstance(node, ast.Return):
-            if isinstance(node.value, ast.Name):
-                self.returns.append((node.value.id, getattr(node, "lineno", 0)))
-        elif isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
-            self.uses.setdefault(node.id, []).append(getattr(node, "lineno", 0))
+        if isinstance(node, ast.Assign):
+            self._visit_assign(node)
+        if isinstance(node, (ast.AnnAssign, ast.AugAssign)):
+            self._record_mutations([node.target], line)
+        if isinstance(node, ast.Return) and isinstance(node.value, ast.Name):
+            self.returns.append((node.value.id, line))
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
+            self.uses.setdefault(node.id, []).append(line)
+
+    def _visit_assign(self, node: ast.Assign) -> None:
+        self._record_mutations(node.targets, getattr(node, "lineno", 0))
+        if isinstance(node.value, ast.Call):
+            self.local_builds.update(
+                t.id for t in node.targets if isinstance(t, ast.Name))
+
+    def _record_mutations(self, targets: list[ast.expr], line: int) -> None:
+        for name in (n for t in targets for n in _target_names(t)):
+            self.mutated.setdefault(name, []).append(line)
 
     def _visit_call(self, node: ast.Call) -> None:
         line = getattr(node, "lineno", 0)
@@ -230,6 +227,10 @@ def _walk_local(fn: ast.AST):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
             continue  # separate scope
         stack.extend(ast.iter_child_nodes(node))
+
+
+def _loc(rel: str, line: int) -> Location:
+    return Location(path=rel, line_start=line, line_end=line)
 
 
 def _is_validation_name(name: str) -> bool:
