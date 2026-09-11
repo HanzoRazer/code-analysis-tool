@@ -15,20 +15,22 @@
     "files_expected_to_change": [
       "src/code_audit/analyzers/pr_scope.py",
       "tests/test_pr_scope_analyzer.py",
-      "cbsp21/pr_scope_acceptance.json"
+      "cbsp21/pr_scope_acceptance.json",
+      "tests/contracts/logic_manifest.json"
     ],
-    "out_of_scope_notes": "Additive to pr_scope only. No new analyzer, no AnalyzerType enum change (reuses PR_SCOPE), no logic/golden/confidence manifest regen (AST hashes for those were re-verified green). Does not touch the ReviewContext no-injection guarantee — the new check reads the real git surface via `git show <ref>:<path>` and reuses the already-resolved merge_base."
+    "out_of_scope_notes": "Additive to pr_scope only. No new analyzer, no AnalyzerType enum change (reuses PR_SCOPE), no golden/confidence manifest regen. The logic manifest IS regenerated (merge-train correction): PrScopeAnalyzer moved 2.0.0 -> 2.1.0 with a new logic hash, and test_version_bump_enforcement passes whether or not the manifest is refreshed (it only asks that a changed hash come with a changed version). Leaving the 2.0.0 entry stale would blind that gate for pr_scope: every later edit would still differ from 2.0.0 and pass without a bump. Does not touch the ReviewContext no-injection guarantee — the new check reads the real git surface via `git show <ref>:<path>` and reuses the already-resolved merge_base."
   },
   "diff_range": {
     "base": "main",
     "head": "feat/pr-scope-dependency-direction"
   },
-  "changed_files_count": 4,
+  "changed_files_count": 5,
   "changed_files_exact": [
     "src/code_audit/analyzers/pr_scope.py",
     "tests/test_pr_scope_analyzer.py",
     "cbsp21/pr_scope_acceptance.json",
-    "patch_input.json"
+    "patch_input.json",
+    "tests/contracts/logic_manifest.json"
   ],
   "diff_articulation": {
     "what_changed": [
@@ -37,7 +39,9 @@
       "Added rule pr_scope.undeclared_dependency_change: for each dependency changed inside a DECLARED package.json but NOT declared in scope.dependency_changes / diff_articulation, emit HIGH on a downgrade or a revert-of-base-landing, MEDIUM otherwise; metadata carries dependency, base_version, head_version, direction, reverts_base_landing.",
       "Added _reverts_base_landing enrichment (merge_base~1 vs merge_base best-effort).",
       "Every failure mode is a Finding, never a raised exception: malformed package.json -> pr_scope.dependency_check_uncheckable (CRITICAL); any internal exception -> pr_scope.dependency_check_error (CRITICAL). An escaping exception would abort the scan — the silent pass this check exists to prevent.",
-      "Enumerated the new rule + severity policy in cbsp21/pr_scope_acceptance.json and added 8 tests reconstructing the #296 shape (HIGH downgrade fires; declared supabase-only stays silent; declared zod stays silent; undeclared upgrade = MEDIUM; undeclared package.json not double-reported; malformed = CRITICAL uncheckable; revert-of-base flag set; contract-valid findings)."
+      "Enumerated the new rule + severity policy in cbsp21/pr_scope_acceptance.json and added 8 tests reconstructing the #296 shape (HIGH downgrade fires; declared supabase-only stays silent; declared zod stays silent; undeclared upgrade = MEDIUM; undeclared package.json not double-reported; malformed = CRITICAL uncheckable; revert-of-base flag set; contract-valid findings).",
+      "Merge train (car 3): merged main (2757993) into the branch, no conflicts. Regenerated tests/contracts/logic_manifest.json on Python 3.11 so its PrScopeAnalyzer entry records 2.1.0 and the current logic hash instead of the stale 2.0.0 entry; the confidence manifests are unchanged.",
+      "Merge train (car 3): cleared 4 new debt-ratchet items the dependency-direction check introduced (PrScopeAnalyzer god_class at 12 methods; 8-parameter _check_dependency_direction and _check_dependency_direction_inner; 69-line _inner), fixed in code with the baseline untouched. The check moved into a module-level frozen _DependencyDirectionCheck that carries the resolved context (root, merge_base, head, declared, prefixes) and builds findings with the analyzer's own constructors, so rule ids, fingerprints, severities and messages are unchanged; _declared_dependency_names became a module function. PrScopeAnalyzer is back to 8 methods. The whole-body exception wrapper still encloses the same work, so any failure is still one pr_scope.dependency_check_error finding. All 45 pr_scope tests pass unchanged; ratchet: 0 new."
     ],
     "why_not_redundant": "Extends the existing pr_scope analyzer rather than adding a sibling. The file-level rule pr_scope.undeclared_file cannot see a change INSIDE a declared file; this is the strictly-additive sub-file granularity that #296 proved was missing."
   },

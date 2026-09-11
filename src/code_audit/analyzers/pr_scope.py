@@ -566,151 +566,11 @@ class PrScopeAnalyzer:
         # a second, undeclared zod downgrade. This looks INSIDE each declared
         # package.json at dependency direction.
         findings.extend(
-            self._check_dependency_direction(
-                root, merge_base, resolved["head"], changed, manifest, scope,
-                declared, prefixes,
-            )
+            _DependencyDirectionCheck(
+                self, root, merge_base, resolved["head"], declared, prefixes,
+            ).run(changed, manifest, scope)
         )
         return findings
-
-    # ── sub-file dependency-direction check (v2.1.0) ─────────────────
-
-    @staticmethod
-    def _declared_dependency_names(scope: dict[str, Any], manifest: dict[str, Any]) -> tuple[set[str], str]:
-        """Dependency names the manifest declares as intentionally changed.
-
-        Explicit: ``scope.dependency_changes`` — a list of names or {name,...}
-        objects. Soft fallback: names mentioned in ``diff_articulation`` text.
-        """
-        names: set[str] = set()
-        dc = scope.get("dependency_changes")
-        if isinstance(dc, list):
-            for item in dc:
-                if isinstance(item, str):
-                    names.add(item)
-                elif isinstance(item, dict) and isinstance(item.get("name"), str):
-                    names.add(item["name"])
-        da = manifest.get("diff_articulation")
-        da_text = json.dumps(da) if da is not None else ""
-        return names, da_text
-
-    def _check_dependency_direction(
-        self,
-        root: Path,
-        merge_base: str,
-        head: str,
-        changed: list[str],
-        manifest: dict[str, Any],
-        scope: dict[str, Any],
-        declared: list[str],
-        prefixes: list[str],
-    ) -> list[Finding]:
-        # Every failure mode is a Finding — an exception escaping here would abort the
-        # scan, i.e. the silent pass this check exists to prevent. Belt-and-suspenders
-        # around the whole body.
-        try:
-            return self._check_dependency_direction_inner(
-                root, merge_base, head, changed, manifest, scope, declared, prefixes,
-            )
-        except Exception as exc:  # noqa: BLE001 — fail loud as a finding, never raise
-            return [self._uncheckable(
-                f"Dependency-direction check raised {type(exc).__name__}: {exc}.",
-                ".", symbol="dependency_check", rule="pr_scope.dependency_check_error",
-            )]
-
-    def _check_dependency_direction_inner(
-        self, root, merge_base, head, changed, manifest, scope, declared, prefixes,
-    ) -> list[Finding]:
-        declared_deps, da_text = self._declared_dependency_names(scope, manifest)
-        findings: list[Finding] = []
-
-        for path in changed:
-            if not _is_package_json(path):
-                continue
-            # Sub-file rule applies to DECLARED package.json — an *undeclared*
-            # package.json is already flagged by pr_scope.undeclared_file.
-            if not _is_declared(path, declared, prefixes):
-                continue
-
-            base_deps, base_status = _read_package_deps(root, merge_base, path, self.git_timeout)
-            head_deps, head_status = _read_package_deps(root, head, path, self.git_timeout)
-
-            if base_status == "malformed" or head_status == "malformed":
-                findings.append(self._uncheckable(
-                    f"'{path}' is not valid JSON at "
-                    f"{'merge-base' if base_status == 'malformed' else 'head'}; "
-                    "its dependency changes cannot be verified.",
-                    path, symbol=path, rule="pr_scope.dependency_check_uncheckable",
-                ))
-                continue
-            if base_deps is None or head_deps is None:  # defensive; malformed handled above
-                continue
-
-            for dep in sorted(set(base_deps) & set(head_deps)):
-                base_ver, head_ver = base_deps[dep], head_deps[dep]
-                if base_ver == head_ver:
-                    continue  # unchanged
-                if dep in declared_deps or dep in da_text:
-                    continue  # the manifest declared this change — legitimate
-
-                direction = _version_direction(base_ver, head_ver)
-                reverts = self._reverts_base_landing(root, merge_base, path, dep, head_ver)
-
-                if direction == "downgrade" or reverts:
-                    severity = Severity.HIGH
-                elif direction == "upgrade":
-                    severity = Severity.MEDIUM
-                else:  # 'same' after normalization, or 'unknown' range
-                    severity = Severity.MEDIUM
-
-                revert_note = (
-                    " It reverts a dependency version the merge-base itself just "
-                    "landed — silently undoing committed work."
-                    if reverts else ""
-                )
-                findings.append(self._finding(
-                    severity,
-                    0.9,
-                    f"Undeclared dependency change in declared file '{path}': "
-                    f"{dep} {base_ver} → {head_ver} ({direction}). The file is in "
-                    f"scope but this dependency change is not declared in the "
-                    f"manifest.{revert_note}",
-                    path,
-                    symbol=dep,
-                    rule="pr_scope.undeclared_dependency_change",
-                    metadata={
-                        "dependency": dep,
-                        "base_version": base_ver,
-                        "head_version": head_ver,
-                        "direction": direction,
-                        "reverts_base_landing": reverts,
-                    },
-                ))
-        return findings
-
-    def _reverts_base_landing(
-        self, root: Path, merge_base: str, path: str, dep: str, head_ver: str
-    ) -> bool:
-        """True if the merge-base commit itself changed ``dep`` and the branch sets
-        it back to the pre-merge-base value — i.e. the branch undoes a landing.
-        Best-effort: any read failure returns False (never a raised exception)."""
-        parent_deps, status = _read_package_deps(
-            root, f"{merge_base}~1", path, self.git_timeout
-        )
-        if status != "ok" or parent_deps is None:
-            return False
-        base_deps, base_status = _read_package_deps(root, merge_base, path, self.git_timeout)
-        if base_status != "ok" or base_deps is None:
-            return False
-        parent_ver = parent_deps.get(dep)
-        base_ver = base_deps.get(dep)
-        # merge-base changed dep (parent != base), and the branch restores parent.
-        return (
-            parent_ver is not None
-            and base_ver is not None
-            and parent_ver != base_ver
-            and head_ver == parent_ver
-        )
 
     # ── manifest helpers ────────────────────────────────────────────
 
@@ -802,6 +662,153 @@ class PrScopeAnalyzer:
             location=Location(path=path, line_start=1, line_end=1),
             fingerprint=fingerprint,
             metadata=finding_metadata,
+        )
+
+
+# ── sub-file dependency-direction check (v2.1.0) ────────────────────
+
+
+def _declared_dependency_names(
+    scope: dict[str, Any], manifest: dict[str, Any]
+) -> tuple[set[str], str]:
+    """Dependency names the manifest declares as intentionally changed.
+
+    Explicit: ``scope.dependency_changes`` — a list of names or {name,...}
+    objects. Soft fallback: names mentioned in ``diff_articulation`` text.
+    """
+    names: set[str] = set()
+    dc = scope.get("dependency_changes")
+    if isinstance(dc, list):
+        for item in dc:
+            if isinstance(item, str):
+                names.add(item)
+            elif isinstance(item, dict) and isinstance(item.get("name"), str):
+                names.add(item["name"])
+    da = manifest.get("diff_articulation")
+    da_text = json.dumps(da) if da is not None else ""
+    return names, da_text
+
+
+@dataclass(frozen=True, slots=True)
+class _DependencyDirectionCheck:
+    """Looks inside each declared, changed package.json for undeclared
+    dependency-version changes, between the merge-base and head.
+
+    Carries the resolved review context so the per-file and per-dependency
+    steps don't thread it through long argument lists. Findings are built with
+    the owning analyzer's constructors so rule ids, fingerprints and severities
+    stay identical to the rest of pr_scope.
+    """
+
+    analyzer: PrScopeAnalyzer
+    root: Path
+    merge_base: str
+    head: str
+    declared: list[str]
+    prefixes: list[str]
+
+    def run(
+        self, changed: list[str], manifest: dict[str, Any], scope: dict[str, Any]
+    ) -> list[Finding]:
+        # Every failure mode is a Finding — an exception escaping here would abort the
+        # scan, i.e. the silent pass this check exists to prevent. Belt-and-suspenders
+        # around the whole body.
+        try:
+            declared_deps, da_text = _declared_dependency_names(scope, manifest)
+            findings: list[Finding] = []
+            for path in changed:
+                # Sub-file rule applies to DECLARED package.json — an *undeclared*
+                # package.json is already flagged by pr_scope.undeclared_file.
+                if _is_package_json(path) and _is_declared(path, self.declared, self.prefixes):
+                    findings.extend(self._file_findings(path, declared_deps, da_text))
+            return findings
+        except Exception as exc:  # noqa: BLE001 — fail loud as a finding, never raise
+            return [self.analyzer._uncheckable(
+                f"Dependency-direction check raised {type(exc).__name__}: {exc}.",
+                ".", symbol="dependency_check", rule="pr_scope.dependency_check_error",
+            )]
+
+    def _read(self, ref: str, path: str):
+        return _read_package_deps(self.root, ref, path, self.analyzer.git_timeout)
+
+    def _file_findings(
+        self, path: str, declared_deps: set[str], da_text: str
+    ) -> list[Finding]:
+        base_deps, base_status = self._read(self.merge_base, path)
+        head_deps, head_status = self._read(self.head, path)
+
+        if base_status == "malformed" or head_status == "malformed":
+            return [self.analyzer._uncheckable(
+                f"'{path}' is not valid JSON at "
+                f"{'merge-base' if base_status == 'malformed' else 'head'}; "
+                "its dependency changes cannot be verified.",
+                path, symbol=path, rule="pr_scope.dependency_check_uncheckable",
+            )]
+        if base_deps is None or head_deps is None:  # defensive; malformed handled above
+            return []
+
+        findings: list[Finding] = []
+        for dep in sorted(set(base_deps) & set(head_deps)):
+            base_ver, head_ver = base_deps[dep], head_deps[dep]
+            if base_ver == head_ver:
+                continue  # unchanged
+            if dep in declared_deps or dep in da_text:
+                continue  # the manifest declared this change — legitimate
+            findings.append(self._dependency_finding(path, dep, base_ver, head_ver))
+        return findings
+
+    def _dependency_finding(
+        self, path: str, dep: str, base_ver: str, head_ver: str
+    ) -> Finding:
+        direction = _version_direction(base_ver, head_ver)
+        reverts = self._reverts_base_landing(path, dep, head_ver)
+
+        # A downgrade or an undone landing is HIGH; an upgrade, a version that is
+        # the same after normalization, or an 'unknown' range is MEDIUM.
+        severity = Severity.HIGH if direction == "downgrade" or reverts else Severity.MEDIUM
+
+        revert_note = (
+            " It reverts a dependency version the merge-base itself just "
+            "landed — silently undoing committed work."
+            if reverts else ""
+        )
+        return self.analyzer._finding(
+            severity,
+            0.9,
+            f"Undeclared dependency change in declared file '{path}': "
+            f"{dep} {base_ver} → {head_ver} ({direction}). The file is in "
+            f"scope but this dependency change is not declared in the "
+            f"manifest.{revert_note}",
+            path,
+            symbol=dep,
+            rule="pr_scope.undeclared_dependency_change",
+            metadata={
+                "dependency": dep,
+                "base_version": base_ver,
+                "head_version": head_ver,
+                "direction": direction,
+                "reverts_base_landing": reverts,
+            },
+        )
+
+    def _reverts_base_landing(self, path: str, dep: str, head_ver: str) -> bool:
+        """True if the merge-base commit itself changed ``dep`` and the branch sets
+        it back to the pre-merge-base value — i.e. the branch undoes a landing.
+        Best-effort: any read failure returns False (never a raised exception)."""
+        parent_deps, status = self._read(f"{self.merge_base}~1", path)
+        if status != "ok" or parent_deps is None:
+            return False
+        base_deps, base_status = self._read(self.merge_base, path)
+        if base_status != "ok" or base_deps is None:
+            return False
+        parent_ver = parent_deps.get(dep)
+        base_ver = base_deps.get(dep)
+        # merge-base changed dep (parent != base), and the branch restores parent.
+        return (
+            parent_ver is not None
+            and base_ver is not None
+            and parent_ver != base_ver
+            and head_ver == parent_ver
         )
 
 
