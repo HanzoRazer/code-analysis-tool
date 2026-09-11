@@ -84,7 +84,7 @@ class SQLAnalyzerConfig:
         if not config_path.exists():
             return cls()
 
-        with open(config_path) as f:
+        with open(config_path, encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
 
         return cls(
@@ -1199,7 +1199,7 @@ class SQLEcosystemAnalyzer:
     """
 
     id = "sql_ecosystem"
-    version = "1.1.0"
+    version = "1.1.1"
 
     # Registry of built-in validators
     _BUILTIN_VALIDATORS: ClassVar[Dict[str, Type[BaseSQLValidator]]] = {

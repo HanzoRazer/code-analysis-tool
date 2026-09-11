@@ -1,47 +1,73 @@
 {
   "schema_version": "cbsp21_patch_manifest_v1",
-  "patch_id": "CP1252-UTF8-001",
-  "title": "Force UTF-8 CLI output so piped stdout is decodable on Windows",
-  "intent": "Make the code_audit CLI write UTF-8 on stdout/stderr regardless of the host locale codepage, so piped or redirected output is decodable by a UTF-8 reader. This fixes the pre-existing Windows failure of the CLI/API parity tests, whose subprocess reads the child's pipe as UTF-8.",
+  "patch_id": "CP1252-FILEWRITES-002",
+  "title": "Pin explicit UTF-8 on all text-mode file IO in src",
+  "intent": "Stop the tool's file reads from silently corrupting non-ASCII data on Windows. Text-mode open()/read_text()/write_text() without an explicit encoding uses the host locale codepage (cp1252 here), so a UTF-8 YAML config or JSON analytics file is decoded as cp1252 and mojibaked without raising. Pinning UTF-8 makes Windows behave the way Linux CI already does.",
   "change_type": "code",
   "behavior_change": "compatible",
   "risk_level": "low",
   "scope": {
     "paths_in_scope": [
-      "src/code_audit/__main__.py"
+      "src/code_audit/analyzers/",
+      "src/code_audit/scaffold.py",
+      "tests/test_sql_ecosystem_analyzer.py",
+      "tests/contracts/"
     ],
     "files_expected_to_change": [
-      "src/code_audit/__main__.py"
+      "src/code_audit/analyzers/deployment.py",
+      "src/code_audit/analyzers/routers.py",
+      "src/code_audit/analyzers/sql_ecosystem.py",
+      "src/code_audit/scaffold.py",
+      "tests/test_sql_ecosystem_analyzer.py",
+      "tests/test_routers.py",
+      "tests/contracts/logic_manifest.json"
     ],
-    "out_of_scope_notes": "Message content is unchanged; no non-ASCII characters were added, removed, or banned. File-write encoding is deliberately NOT addressed here and is recorded as follow-up CP1252-FILEWRITES-002: four text-mode open() calls in src/ lack an explicit encoding -- three reads (analyzers/deployment.py:108 YAML config, analyzers/routers.py:447 JSON analytics, analyzers/sql_ecosystem.py:87 YAML config) and one write (analyzers/routers.py:499 router_analysis.json) -- plus one Path.write_text() in tests/test_sql_ecosystem_analyzer.py:744. Same root cause (implicit locale encoding on Windows), different stream. The three reads are the more dangerous half: a UTF-8 config read as cp1252 either raises or silently mojibakes. PYTHONIOENCODING is deliberately NOT set in the parity test harness -- see why_not_redundant."
+    "out_of_scope_notes": "271 unencoded text-mode IO call sites remain under tests/ (21 reads, 250 writes, AST-counted). They are deliberately NOT swept here: they are overwhelmingly tmp_path fixtures with ASCII content, and a 271-site mechanical edit would swamp a 7-site correctness fix. The single exception is tests/test_sql_ecosystem_analyzer.py, whose fixture write is the direct cause of a permanent Windows skipif -- lifting that skip is this patch's acceptance test. Stdout/stderr encoding is a separate, already-fixed concern (CP1252-UTF8-001, branch fix/utf8-stdout-cp1252)."
   },
   "diff_range": {
     "base": "9e1d2fc",
     "head": "working-tree"
   },
-  "changed_files_count": 1,
+  "changed_files_count": 7,
   "changed_files_exact": [
-    "src/code_audit/__main__.py"
+    "src/code_audit/analyzers/deployment.py",
+    "src/code_audit/analyzers/routers.py",
+    "src/code_audit/analyzers/sql_ecosystem.py",
+    "src/code_audit/scaffold.py",
+    "tests/test_sql_ecosystem_analyzer.py",
+    "tests/test_routers.py",
+    "tests/contracts/logic_manifest.json"
   ],
   "diff_articulation": {
     "what_changed": [
-      "Added a guarded sys.stdout/sys.stderr reconfigure(encoding='utf-8') at the top of main() in src/code_audit/__main__.py, before any output is produced, wrapped in try/except so a already-wrapped or redirected stream cannot break the entry point",
-      "Covered stderr as well as stdout, because the reproduction showed the undecodable cp1252 byte on both streams"
+      "Pinned encoding=\"utf-8\" on the three structured-data reads the tool owns: deployment.py:108 (its own YAML config), sql_ecosystem.py:87 (its own YAML config), routers.py:447 (a caller-supplied JSON analytics file). A decode error on these must surface rather than be papered over, so no errors= is used.",
+      "Pinned encoding=\"utf-8\", errors=\"replace\" on the two reads of arbitrary files from the repo under scan: deployment.py:271 (requirements.txt) and deployment.py:356 (Dockerfile). This matches the convention already used at 27 sites across the analyzers, so a genuinely non-UTF-8 file in a scanned repo degrades instead of aborting the scan.",
+      "Pinned encoding=\"utf-8\" on the two text-mode writes: routers.py:499 (router_analysis.json) and scaffold.py:986 (generated scaffold files).",
+      "Removed the platform skipif on tests/test_sql_ecosystem_analyzer.py::TestEdgeCases::test_unicode_content and pinned its fixture write_text to UTF-8. The analyzer under test always handled the Unicode content correctly; only the test's own fixture write failed, so the skip was suppressing Windows coverage of a working feature.",
+      "DISCLOSED behavior change on Linux: the two errors=\"replace\" reads (deployment.py:271, :356) were previously strict UTF-8 on Linux, so a malformed byte raised UnicodeDecodeError and aborted the scan; they now degrade to replacement characters instead. This is a loosening, not a tightening, and it matches the convention already applied at 27 analyzer sites that read arbitrary scanned files. The three structured reads were left strict precisely so that this loosening does not reach config or JSON parsing.",
+      "Bumped DeploymentAnalyzer 1.0.0->1.0.1, RoutersAnalyzer 1.0.0->1.0.1 and SQLEcosystemAnalyzer 1.1.0->1.1.1, and regenerated tests/contracts/logic_manifest.json. test_rule_logic_changes_require_version_bump flagged all three logic_hash changes. The bump is honest here rather than ceremonial: these analyzers genuinely return different values for the same input file now (a UTF-8 config that previously decoded to mojibake now decodes correctly), which is exactly the semantic change the gate exists to force an author to acknowledge. Per-analyzer versions were bumped rather than the global signal_logic_version, because the change is local to these three analyzers and bumping the engine-wide fixtures knob would overstate its blast radius.",
+      "Updated the one test that pins an analyzer version literal (tests/test_routers.py:217, assert a.version == \"1.0.0\" -> \"1.0.1\"). A sweep found this is the only pinned version assertion among the three bumped analyzers; test_deployment_analyzer.py and test_sql_ecosystem_analyzer.py do not pin theirs."
     ],
-    "why_not_redundant": "The observed failure is a decode error in the PARENT process, not an encode crash in the child: the child exits 2 normally and writes its em-dash as cp1252 byte 0x97, then subprocess.run's UTF-8 reader thread raises UnicodeDecodeError, dies, and leaves proc.stdout as None -- producing the json.loads(None) TypeError. Setting PYTHONIOENCODING=utf-8 in the test harness also turns the test green, but it was rejected: it would make the parity test pass even if this production fix were later removed, destroying the only regression witness for it. Fixing the child's write encoding at the entry point fixes the parity tests and the real redirect path (code-audit <path> --json > out.json on Windows) with the same change."
+    "why_not_redundant": "The three structured reads are a LIVE silent-corruption defect, reproduced before the fix: reading a UTF-8 file through the original call shape returns mojibake and raises nothing, so no existing test or gate can see it. The two writes are LATENT, not live, and are stated as such: json.dump defaults to ensure_ascii=True so routers.py:499 emits pure ASCII today, and scaffold.py contains zero non-ASCII characters -- both are one keyword or one template away from breaking, and were pinned for robustness rather than to fix an observed failure. Pinning UTF-8 does not introduce a new failure mode relative to the working platform: Linux CI already reads these files as UTF-8, so this makes Windows match Linux rather than diverge from it."
   },
   "verification": {
     "commands_run": [
-      "PYTHONPATH=<worktree>/src py -3.11 -m pytest tests/test_api_cli_parity_ci.py tests/test_cli_api_parity_debt_ci.py tests/test_cli_api_parity_scan_ci.py -q",
-      "PYTHONPATH=<worktree>/src py -3.11 -m pytest -q",
-      "PYTHONPATH=<worktree>/src py -3.11 -m pytest --collect-only -q"
+      "AST scan for text-mode open()/read_text()/write_text() lacking an encoding kwarg, before and after",
+      "PYTHONPATH=<worktree>/src py -3.11 <round-trip probe through the patched public APIs>",
+      "PYTHONPATH=<worktree>/src py -3.11 -m pytest tests/test_sql_ecosystem_analyzer.py::TestEdgeCases::test_unicode_content -q",
+      "py -3.11 -m ruff check <the five touched files>  (baseline compared against main)",
+      "PYTHONIOENCODING=utf-8 PYTHONPATH=<worktree>/src py -3.11 -m pytest -q"
     ],
     "test_results": [
-      "Pre-fix reproduction: test_api_cli_parity_ci_default_scan_sample_repo_exceptions FAILED with TypeError: the JSON object must be str, bytes or bytearray, not NoneType, and UnicodeDecodeError: 'utf-8' codec can't decode byte 0x97 raised inside subprocess.py _readerthread",
-      "Post-fix targeted: 9 passed across the three CLI/API parity test files, with no PYTHONIOENCODING set",
-      "Post-fix full suite: 1223 tests collected across 123 files, 0 failed, 9 skipped, run reached 100% (addopts carries --maxfail=1, so completion is itself evidence of zero failures)"
+      "AST scan: src went from 7 unencoded text-mode IO sites (5 reads, 2 writes) to 0",
+      "Pre-fix reproduction: yaml.safe_load(open(p)) and json.load(open(p)) both returned mojibake with round-trip match=False and raised nothing; the same shapes with encoding=utf-8 returned match=True",
+      "Post-fix round-trip through the real call sites: DeploymentConfig.from_yaml, SQLAnalyzerConfig.load and the deployment requirements read all round-trip non-ASCII exactly; generate_router_report writes a UTF-8-decodable report",
+      "test_unicode_content: was permanently skipped on Windows, now PASSES on Windows",
+      "ruff: 102 errors on the five files at main, 102 after this patch -- zero introduced (no workflow runs ruff)",
+      "Version gate: test_rule_logic_changes_require_version_bump flagged 3 analyzers, then passed after the bumps + manifest regeneration",
+      "Full suite: reached 100% with 0 failures and 8 skips (down from 9 -- the removed skip is the Windows encoding skipif this patch lifts). addopts carries --maxfail=1, so completion is itself evidence of zero failures."
     ],
-    "notes": "All runs pin PYTHONPATH to this worktree's src. Without that pin, 'python -m code_audit' on this machine resolves to C:/Users/thepr/Downloads/code-analysis-tool-fresh, which is checked out on feat/gate-wrong-artifact-detector at an incomplete WIP commit with a dirty tree that includes a modified __main__.py; any unpinned reproduction would be testing that tree instead of main. The 9 skips are pre-existing and unchanged by this patch; one of them (tests/test_sql_ecosystem_analyzer.py:744) is a Windows skipif for the same root cause on the file-write stream and remains correctly skipped under this fix."
+    "notes": "All runs pin PYTHONPATH to this worktree's src; without that pin, 'python -m code_audit' resolves to the installed C:/Users/thepr/Downloads/code-analysis-tool-fresh checkout, which sits on an incomplete WIP commit. This branch is cut from main and therefore does NOT contain CP1252-UTF8-001, so the CLI-subprocess parity tests fail on Windows for that separate, already-fixed reason; the full-suite run above sets PYTHONIOENCODING=utf-8 in the run environment ONLY to neutralize that unrelated bug and isolate this patch. That env var is deliberately not added to the harness or the diff -- doing so would mask the regression witness for 001. A sweep confirmed test_unicode_content was the only encoding-motivated skip in the suite; none remain."
   },
   "file_context_coverage_percent": 100.0,
   "metadata": {

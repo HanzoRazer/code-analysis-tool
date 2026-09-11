@@ -26,9 +26,9 @@
     },
     {
       "class_name": "DeploymentAnalyzer",
-      "logic_hash": "sha256:3891af3c355fb653e9c7f9f3b54bfb7888439d6395ccc8ac84176af749684492",
+      "logic_hash": "sha256:083a99c06c3585f13376315d4cde24542e3edf911b656b96f5d9e1afc5a00f01",
       "module": "code_audit.analyzers.deployment",
-      "version": "1.0.0"
+      "version": "1.0.1"
     },
     {
       "class_name": "DuplicationAnalyzer",
@@ -92,9 +92,9 @@
     },
     {
       "class_name": "RoutersAnalyzer",
-      "logic_hash": "sha256:35f8a6e0a70c74f369d1a41cc5be69b905efa9f650fb54487a5d5844d4e6c227",
+      "logic_hash": "sha256:801b366a03c8383cbbe66b4a645380ac7a5ca7e54dedf614d1830fe9fc13f897",
       "module": "code_audit.analyzers.routers",
-      "version": "1.0.0"
+      "version": "1.0.1"
     },
     {
       "class_name": "SecurityAnalyzer",
@@ -104,9 +104,9 @@
     },
     {
       "class_name": "SQLEcosystemAnalyzer",
-      "logic_hash": "sha256:219c0197905e21d37c1e8561c6e4a629aefc54e25457b778fe5e6443ea00d6f6",
+      "logic_hash": "sha256:b2e6a0886a6f516d6e1d138b063da977b2325c9dded046f49b5587fd9f315a45",
       "module": "code_audit.analyzers.sql_ecosystem",
-      "version": "1.1.0"
+      "version": "1.1.1"
     },
     {
       "class_name": "UnpinnedToolchainAnalyzer",
