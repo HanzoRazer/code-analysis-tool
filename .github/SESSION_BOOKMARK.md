@@ -1,9 +1,80 @@
-# Session Bookmark — 2026-02-19
+# Session Bookmark — 2026-09-11
 
 > **Purpose:** snapshot of project state for session continuity after system reset.
-> Supplements `docs/ENGINEER_HANDBACK_2026-02-14.md` (unchanged; covers sessions 02-14 through 02-16).
+> The 2026-02-19 bookmark is kept below, superseded.
 
 ---
+
+## Interrupted session
+
+| Field | Value |
+|-------|-------|
+| **Session** | `5b1d4628-2b05-4e39-92ee-6b0cfb1e23a9` (last active 2026-09-11 08:09 UTC) |
+| **Reopen** | `claude --resume 5b1d4628-2b05-4e39-92ee-6b0cfb1e23a9`, or `/resume` and pick it |
+| **Cut off during** | a check of a luthiers-toolbox script's CRLF handling (re-run and finished in session `778e3df9`) |
+| **main** | `3a4717e` (#31), CI green on both required checks |
+
+It had two threads open: the CRLF endpoint-scan question and the merge train.
+
+---
+
+## 1. CRLF endpoint-scan fix — NOT RESOLVED
+
+The chat claimed the instance fix (strip `\r` in the endpoint scan) was "already done". No repo shows it:
+
+- The script found is luthiers-toolbox `services/api/scripts/build_endpoint_consumer_map.py` (defines `ENDPOINT_ROOTS`). It hasn't changed since #204 (`a2d24bed`, 2026-07-07), and there's no uncommitted edit to it.
+- It also can't have the bug. Every file read goes through `read_text()`, which turns `\r\n` into `\n`. Its one subprocess read (`git rev-parse HEAD`) is `.strip()`ped.
+- No commit in luthiers-toolbox, CNC-Production-Shop, tap_tone_pi or code-analysis-tool mentions CRLF, `\r`, line endings or an endpoint scan.
+
+So either the fix only existed in the chat's sandbox, or the scan that hit the false zero is a different script.
+
+**Open question for the owner:** which repo and script does that endpoint scan live in?
+
+**Detector follow-up (filed, not built):** a "CRLF in a data file breaks a comparison without normalizing line endings" detector waits until the train drains. It gets grounded against **merged** A (after car 9). It could be a rule on A, an axis on `context_pinned_hash` (which already normalizes line endings to LF, but only for values that reach a hash), or a standalone detector.
+
+---
+
+## 2. Merge train (freeze on new detector work until drained)
+
+| Car | Branch | PR | State |
+|-----|--------|----|-------|
+| 1 | `fix/utf8-stdout-cp1252` | #30 | merged `38c4ca4`, main CI green |
+| 2 | `fix/utf8-file-encoding` | #31 | merged `3a4717e` 2026-09-11 08:13 UTC, main CI green |
+| 3 | `feat/pr-scope-dependency-direction` | — | **next**: one commit `78e1f82` on `9e1d2fc`, no PR yet |
+| 4 | `feat/silencer-protocol-note` | — | queued |
+| 5 | `feat/deployment-watch-coverage-validator` (C) | — | queued. Only conflicting line vs car 2 is `DeploymentAnalyzer.version`, which resolves to `"1.1.0"`. Regenerate its logic-manifest entry on py3.11 |
+| 6 | `feat/dangling-reference-analyzer` | — | queued (enum clique) |
+| 7 | `feat/unbacked-claim-analyzer` | — | queued (enum clique) |
+| 8 | `feat/canonical-pill-analyzer` | — | queued (enum clique) |
+| 9 | `feat/unguarded-stdout-encoding-detector` (A) | — | queued; must land after car 1 |
+| 10 | `feat/gate-wrong-artifact-detector` (#5) | #32 | **pulled ahead of 3–9 by the owner.** Main merged in (`api.py`/`model` union-resolved), manifests refreshed on py3.11, full suite 1229 passed / 0 failed, dogfood 0 FP. Owner presses merge |
+| — | `feat/silent-fallback-rule-sf-001` | #1 closed | branch deleted 2026-09-10; content at `refs/pull/1/head` (`ad561ab`) |
+| — | `held/maxfail-ci-surfaces-matrix-fail-fast` | none (held) | `274198b` on `3802ccf`. Snapshot of uncommitted maxfail 1.1.0 arms (matrix `fail-fast`, Makefile, GitLab/CircleCI) that existed on no branch. Rebuild onto main's 2.0.0 after the drain; don't merge as-is |
+
+**Merge button:** owner for cars 1–3, likely 5, 9 and 10. Whether the terminal merges cars 4–8 itself once green gets decided after car 3.
+
+**Per-car loop:** fetch main → confirm main's own CI → merge main into the car (no rebase, no force-push) → on a `patch_input.json` conflict keep the car's manifest; resolve CHANGELOG/enum → refresh manifests on py3.11 if touched → full suite with `CI=true`, `CONFIDENCE_ENTRYPOINTS=src/code_audit/insights/confidence.py`, `PYTHONPATH` pinned to the worktree (`C:/tmp/wt-train`) → push → open PR → required checks (`Run pytest (Python 3.11)`, `rule-registry-sync`) green → merge.
+
+**Collision classes:**
+- **Enum clique:** cars 6–10 all conflict on `model/__init__.py`, `api.py` and both confidence manifests. Each car pays one mechanical re-resolution.
+- **`patch_input.json` fixed path:** every pair inside the root group and every pair inside the `cbsp21/` group conflicts.
+- **Real code overlap:** `deployment.py` (car 2 × car 5).
+
+---
+
+## Next step
+
+1. Merge #32 (car 10) once it's green. The owner presses the button.
+2. Run the car 3 loop and open its PR. Cars 6–9 will each re-resolve the enum clique against car 10 once it lands.
+3. Still pending: the CRLF question above.
+
+**Main checkout cleanup (not done):** the working tree on `feat/gate-wrong-artifact-detector` still has uncommitted copies that are superseded: `pr_scope.py` and its test (by #20), `patch_input_v2.*` drafts and the pr-scope edits in `__main__.py`/`api.py`/`__init__.py` (on main), plus maxfail 1.1.0 (now on the held branch). Once the checkout is pulled up to date after #32 merges, they can be discarded.
+
+---
+
+# Previous bookmark — 2026-02-19 (superseded)
+
+> Supplements `docs/ENGINEER_HANDBACK_2026-02-14.md` (unchanged; covers sessions 02-14 through 02-16).
 
 ## Current state
 
