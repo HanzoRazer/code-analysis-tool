@@ -16,7 +16,10 @@
       "src/code_audit/analyzers/pr_scope.py",
       "tests/test_pr_scope_analyzer.py",
       "cbsp21/pr_scope_acceptance.json",
-      "tests/contracts/logic_manifest.json"
+      "tests/contracts/logic_manifest.json",
+      "cbsp21/README.md",
+      "cbsp21/patch_input_v2.schema.json",
+      "cbsp21/patch_input_v2.template.json"
     ],
     "out_of_scope_notes": "Additive to pr_scope only. No new analyzer, no AnalyzerType enum change (reuses PR_SCOPE), no golden/confidence manifest regen. The logic manifest IS regenerated (merge-train correction): PrScopeAnalyzer moved 2.0.0 -> 2.1.0 with a new logic hash, and test_version_bump_enforcement passes whether or not the manifest is refreshed (it only asks that a changed hash come with a changed version). Leaving the 2.0.0 entry stale would blind that gate for pr_scope: every later edit would still differ from 2.0.0 and pass without a bump. Does not touch the ReviewContext no-injection guarantee — the new check reads the real git surface via `git show <ref>:<path>` and reuses the already-resolved merge_base."
   },
@@ -24,13 +27,16 @@
     "base": "main",
     "head": "feat/pr-scope-dependency-direction"
   },
-  "changed_files_count": 5,
+  "changed_files_count": 8,
   "changed_files_exact": [
     "src/code_audit/analyzers/pr_scope.py",
     "tests/test_pr_scope_analyzer.py",
     "cbsp21/pr_scope_acceptance.json",
     "patch_input.json",
-    "tests/contracts/logic_manifest.json"
+    "tests/contracts/logic_manifest.json",
+    "cbsp21/README.md",
+    "cbsp21/patch_input_v2.schema.json",
+    "cbsp21/patch_input_v2.template.json"
   ],
   "diff_articulation": {
     "what_changed": [
@@ -41,7 +47,8 @@
       "Every failure mode is a Finding, never a raised exception: malformed package.json -> pr_scope.dependency_check_uncheckable (CRITICAL); any internal exception -> pr_scope.dependency_check_error (CRITICAL). An escaping exception would abort the scan — the silent pass this check exists to prevent.",
       "Enumerated the new rule + severity policy in cbsp21/pr_scope_acceptance.json and added 8 tests reconstructing the #296 shape (HIGH downgrade fires; declared supabase-only stays silent; declared zod stays silent; undeclared upgrade = MEDIUM; undeclared package.json not double-reported; malformed = CRITICAL uncheckable; revert-of-base flag set; contract-valid findings).",
       "Merge train (car 3): merged main (2757993) into the branch, no conflicts. Regenerated tests/contracts/logic_manifest.json on Python 3.11 so its PrScopeAnalyzer entry records 2.1.0 and the current logic hash instead of the stale 2.0.0 entry; the confidence manifests are unchanged.",
-      "Merge train (car 3): cleared 4 new debt-ratchet items the dependency-direction check introduced (PrScopeAnalyzer god_class at 12 methods; 8-parameter _check_dependency_direction and _check_dependency_direction_inner; 69-line _inner), fixed in code with the baseline untouched. The check moved into a module-level frozen _DependencyDirectionCheck that carries the resolved context (root, merge_base, head, declared, prefixes) and builds findings with the analyzer's own constructors, so rule ids, fingerprints, severities and messages are unchanged; _declared_dependency_names became a module function. PrScopeAnalyzer is back to 8 methods. The whole-body exception wrapper still encloses the same work, so any failure is still one pr_scope.dependency_check_error finding. All 45 pr_scope tests pass unchanged; ratchet: 0 new."
+      "Merge train (car 3): cleared 4 new debt-ratchet items the dependency-direction check introduced (PrScopeAnalyzer god_class at 12 methods; 8-parameter _check_dependency_direction and _check_dependency_direction_inner; 69-line _inner), fixed in code with the baseline untouched. The check moved into a module-level frozen _DependencyDirectionCheck that carries the resolved context (root, merge_base, head, declared, prefixes) and builds findings with the analyzer's own constructors, so rule ids, fingerprints, severities and messages are unchanged; _declared_dependency_names became a module function. PrScopeAnalyzer is back to 8 methods. The whole-body exception wrapper still encloses the same work, so any failure is still one pr_scope.dependency_check_error finding. All 45 pr_scope tests pass unchanged; ratchet: 0 new.",
+      "Review response (PR #34): (1) _parse_version now orders only a single specifier -- a bare version behind at most one of ^ ~ >= > = -- and returns None otherwise. Before, '>=4.4.3 <5' parsed as its lower bound (so ^4.4.3 -> >=4.4.3 <5 read 'same', contradicting its own docstring), an upper bound '<5' parsed as version 5.0.0 (so ^4.4.3 -> <5 read 'upgrade' and the reverse a false HIGH 'downgrade'), and '1.0.0-rc.1' parsed as 1.0.0 (a prerelease downgrade read 'same'). Unorderable specifiers are reported with direction 'unknown' at MEDIUM, never skipped. (2) Only scope.dependency_changes declares a dependency change. A diff_articulation mention no longer silences the finding (substring matching let 'react' match 'react-dom', and prose like 'zod is untouched' would have silenced the zod downgrade); it is recorded as metadata.mentioned_in_diff_articulation with whole-name matching, and the message tells the author to declare it. (3) patch_input_v2.schema.json now defines scope.dependency_changes (name strings or {name, from, to, reason} objects). Its scope is additionalProperties:false, so before this every schema-valid v2 manifest was unable to use the explicit declaration the analyzer and acceptance contract documented -- prose was the only way to declare. Template gains an empty dependency_changes. (4) Rule documentation: cbsp21/README.md lists the dependency rule and the unsupported-specifier limitation; pr_scope_acceptance.json gains diff_articulation_mention_does_not_declare and unorderable_specifier_reported_unknown."
     ],
     "why_not_redundant": "Extends the existing pr_scope analyzer rather than adding a sibling. The file-level rule pr_scope.undeclared_file cannot see a change INSIDE a declared file; this is the strictly-additive sub-file granularity that #296 proved was missing."
   },
@@ -52,7 +59,8 @@
     ],
     "test_results": [
       "tests/test_pr_scope_analyzer.py: 46 passed (38 pre-existing green + 8 new).",
-      "logic/golden/confidence/signal manifest tests: all passed — no AST-hash drift from the pr_scope.py edit."
+      "logic/golden/confidence/signal manifest tests: all passed — no AST-hash drift from the pr_scope.py edit.",
+      "Review-response tests: 44 new cases (specifier table, unknown-direction integration incl. ^4.4.3 -> >=4.4.3 <5, articulation-does-not-declare, whole-name mention matching, schema accept/reject for dependency_changes). 18 of them fail against the pre-revision analyzer."
     ],
     "notes": "Read-only against the real git surface; no synthetic-diff injection. Existing pr_scope behavior unchanged."
   },

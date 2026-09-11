@@ -33,7 +33,7 @@
     "drift_and_mismatch": "HIGH — base/head drift, observed-file or count mismatch",
     "contamination": "MEDIUM per undeclared file",
     "coverage_summary": "HIGH when below threshold, otherwise MEDIUM",
-    "undeclared_dependency_change": "HIGH when a downgrade or a revert-of-base-landing, otherwise MEDIUM — a per-dependency version change inside a declared package.json that the manifest does not declare"
+    "undeclared_dependency_change": "HIGH when a downgrade or a revert-of-base-landing, otherwise MEDIUM (upgrade, same, or unknown direction) — a per-dependency version change inside a declared package.json that scope.dependency_changes does not declare"
   },
   "acceptance": [
     {
@@ -90,11 +90,19 @@
     },
     {
       "id": "undeclared_dependency_change_downgrade_high",
-      "behavior": "A per-dependency version change inside a DECLARED package.json that the manifest does not declare (not in scope.dependency_changes, not named in diff_articulation) produces rule pr_scope.undeclared_dependency_change: HIGH when the change is a downgrade or reverts a version the merge-base itself landed, MEDIUM otherwise. Motivating case: PR #296 declared a supabase bump and rode an undeclared zod ^4.4.3 -> ^3.25.76 downgrade in the same file. Metadata carries dependency, base_version, head_version, direction, reverts_base_landing."
+      "behavior": "A per-dependency version change inside a DECLARED package.json that scope.dependency_changes does not declare produces rule pr_scope.undeclared_dependency_change: HIGH when the change is a downgrade or reverts a version the merge-base itself landed, MEDIUM otherwise. Motivating case: PR #296 declared a supabase bump and rode an undeclared zod ^4.4.3 -> ^3.25.76 downgrade in the same file. Metadata carries dependency, base_version, head_version, direction, reverts_base_landing, mentioned_in_diff_articulation."
     },
     {
       "id": "declared_dependency_change_passes",
-      "behavior": "A dependency change named in scope.dependency_changes (or in diff_articulation text) is legitimate and produces no pr_scope.undeclared_dependency_change finding. A declared supabase-only bump with zod untouched stays silent."
+      "behavior": "A dependency change named in scope.dependency_changes (a name, or an object with name and optional from/to/reason; the v2 schema accepts both) is legitimate and produces no pr_scope.undeclared_dependency_change finding. A declared supabase-only bump with zod untouched stays silent."
+    },
+    {
+      "id": "diff_articulation_mention_does_not_declare",
+      "behavior": "Naming a dependency only in diff_articulation prose does not declare its change: the finding is still produced at its normal severity, with metadata.mentioned_in_diff_articulation=true and a message telling the author to list it in scope.dependency_changes. Prose matching is fuzzy (substring hits such as react in react-dom) and can be negated (\"zod is untouched\"), so it is recorded as a mitigation signal, never used as the declaration. Mentions are matched on whole dependency names."
+    },
+    {
+      "id": "unorderable_specifier_reported_unknown",
+      "behavior": "Version direction is derived only from a single orderable specifier: a bare version behind at most one of ^ ~ >= > =. Compound ranges (>=4.4.3 <5, 1.2.3 - 2.0.0, a || b), upper bounds (<5, <=4.9.0), wildcards and tags (*, 1.2.x, latest), prerelease/build suffixes (1.0.0-rc.1) and non-registry sources (git/URL, github:, file:, workspace:, npm: aliases) are not ordered: direction is 'unknown' and the change is reported at MEDIUM, never silently passed. Known limitation: a real downgrade written as a compound range is MEDIUM, not HIGH."
     },
     {
       "id": "dependency_check_only_declared_files",

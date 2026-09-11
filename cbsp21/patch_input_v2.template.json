@@ -10,7 +10,8 @@
     "paths_in_scope": ["src/"],
     "files_expected_to_change": ["src/REPLACE_ME.py"],
     "out_of_scope_notes": "",
-    "min_coverage_percent": 95
+    "min_coverage_percent": 95,
+    "dependency_changes": []
   },
   "diff_range": {
     "base": "main",

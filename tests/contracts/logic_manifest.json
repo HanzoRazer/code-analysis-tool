@@ -92,7 +92,7 @@
     },
     {
       "class_name": "PrScopeAnalyzer",
-      "logic_hash": "sha256:bacfcded9260311f0cb3c7714eb2fedaf5bac72d9a614477e18f79885c63d396",
+      "logic_hash": "sha256:d19925a96f23eeb65515e7fa9c28bf23f1aa220b8a0a2ff701e949577c35f493",
       "module": "code_audit.analyzers.pr_scope",
       "version": "2.1.0"
     },

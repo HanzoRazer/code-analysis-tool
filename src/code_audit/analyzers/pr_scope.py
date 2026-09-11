@@ -108,7 +108,9 @@ def _normalized_path(value: str) -> str | None:
 # package.json at any depth (root or a workspace package).
 _PACKAGE_JSON_RE = re.compile(r"(^|/)package\.json$")
 # Leading semver-range operators to strip before a numeric compare.
-_VERSION_RE = re.compile(r"(\d+)(?:\.(\d+))?(?:\.(\d+))?")
+# An orderable specifier: at most one pinned or lower-bound operator, then a bare
+# numeric version and nothing else. See _parse_version for what falls outside.
+_ORDERABLE_SPEC_RE = re.compile(r"(?:\^|~|>=|>|=)?\s*v?(\d+)(?:\.(\d+))?(?:\.(\d+))?")
 _DEP_KEYS = ("dependencies", "devDependencies", "peerDependencies", "optionalDependencies")
 
 
@@ -117,17 +119,23 @@ def _is_package_json(path: str) -> bool:
 
 
 def _parse_version(spec: str) -> tuple[int, int, int] | None:
-    """Numeric (major, minor, patch) from a specifier, ignoring range operators.
+    """Numeric (major, minor, patch) of a single orderable specifier, else None.
 
-    ``^4.4.3`` → (4, 4, 3); ``~3.25`` → (3, 25, 0). Returns None for ranges we
-    cannot order (``*``, ``latest``, ``>=1 <2``, git/url specs) — the caller then
-    records direction 'unknown' rather than guessing.
+    Orderable: a bare version, optionally behind ONE of ``^ ~ >= > =`` and an
+    optional ``v`` — ``^4.4.3`` → (4, 4, 3); ``~3.25`` → (3, 25, 0).
+
+    Deliberately NOT ordered (returns None, so the caller records direction
+    'unknown' at MEDIUM — the change is still reported, never silently passed):
+
+    * compound ranges — ``>=4.4.3 <5``, ``1.2.3 - 2.0.0``, ``1 || 2``
+    * upper bounds — ``<5``, ``<=4.9.0`` (the bound is not the version in use)
+    * wildcards and tags — ``*``, ``1.2.x``, ``latest``, ``next``
+    * prerelease / build suffixes — ``1.0.0-rc.1`` (semver orders rc below the
+      release; comparing only the numeric core would call a downgrade 'same')
+    * non-registry sources — git/URL/``github:``/``file:``/``workspace:`` specs
+      and ``npm:`` aliases
     """
-    s = spec.strip()
-    # Reject specifiers with two comparators or wildcards — not a single pinned line.
-    if any(t in s for t in ("||", " - ", "*", "x", "X")) or "://" in s:
-        return None
-    m = _VERSION_RE.match(s.lstrip("v^~>=< "))
+    m = _ORDERABLE_SPEC_RE.fullmatch(spec.strip())
     if not m:
         return None
     return tuple(int(g) if g else 0 for g in m.groups())  # type: ignore[return-value]
@@ -671,10 +679,14 @@ class PrScopeAnalyzer:
 def _declared_dependency_names(
     scope: dict[str, Any], manifest: dict[str, Any]
 ) -> tuple[set[str], str]:
-    """Dependency names the manifest declares as intentionally changed.
+    """Dependency names the manifest declares as intentionally changed, plus the
+    ``diff_articulation`` text.
 
-    Explicit: ``scope.dependency_changes`` — a list of names or {name,...}
-    objects. Soft fallback: names mentioned in ``diff_articulation`` text.
+    Only ``scope.dependency_changes`` (a list of names or ``{name, ...}``
+    objects) declares a change. The articulation text is returned so a mention
+    can be *recorded* on the finding, but prose never declares: substring
+    matching is fuzzy, and a sentence such as "zod is untouched" would
+    otherwise silence exactly the zod downgrade this rule exists to catch.
     """
     names: set[str] = set()
     dc = scope.get("dependency_changes")
@@ -687,6 +699,13 @@ def _declared_dependency_names(
     da = manifest.get("diff_articulation")
     da_text = json.dumps(da) if da is not None else ""
     return names, da_text
+
+
+def _mentioned_in(dep: str, text: str) -> bool:
+    """Whole-name mention of *dep* in *text*: ``react`` does not match
+    ``react-dom`` or ``preact``, and ``node`` does not match ``@types/node``."""
+    pattern = rf"(?<![\w@/.-]){re.escape(dep)}(?![\w/-]|\.\w)"
+    return re.search(pattern, text) is not None
 
 
 @dataclass(frozen=True, slots=True)
@@ -752,13 +771,14 @@ class _DependencyDirectionCheck:
             base_ver, head_ver = base_deps[dep], head_deps[dep]
             if base_ver == head_ver:
                 continue  # unchanged
-            if dep in declared_deps or dep in da_text:
-                continue  # the manifest declared this change — legitimate
-            findings.append(self._dependency_finding(path, dep, base_ver, head_ver))
+            if dep in declared_deps:
+                continue  # declared in scope.dependency_changes — legitimate
+            findings.append(self._dependency_finding(
+                path, dep, base_ver, head_ver, _mentioned_in(dep, da_text)))
         return findings
 
     def _dependency_finding(
-        self, path: str, dep: str, base_ver: str, head_ver: str
+        self, path: str, dep: str, base_ver: str, head_ver: str, mentioned: bool
     ) -> Finding:
         direction = _version_direction(base_ver, head_ver)
         reverts = self._reverts_base_landing(path, dep, head_ver)
@@ -772,13 +792,18 @@ class _DependencyDirectionCheck:
             "landed — silently undoing committed work."
             if reverts else ""
         )
+        mention_note = (
+            f" '{dep}' is mentioned in diff_articulation, but prose is not a "
+            f"declaration — list it in scope.dependency_changes."
+            if mentioned else ""
+        )
         return self.analyzer._finding(
             severity,
             0.9,
             f"Undeclared dependency change in declared file '{path}': "
             f"{dep} {base_ver} → {head_ver} ({direction}). The file is in "
-            f"scope but this dependency change is not declared in the "
-            f"manifest.{revert_note}",
+            f"scope but this dependency change is not declared in "
+            f"scope.dependency_changes.{revert_note}{mention_note}",
             path,
             symbol=dep,
             rule="pr_scope.undeclared_dependency_change",
@@ -788,6 +813,7 @@ class _DependencyDirectionCheck:
                 "head_version": head_ver,
                 "direction": direction,
                 "reverts_base_landing": reverts,
+                "mentioned_in_diff_articulation": mentioned,
             },
         )
 

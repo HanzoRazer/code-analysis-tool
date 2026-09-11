@@ -558,6 +558,8 @@ def test_acceptance_contract_file_lists_required_behaviors():
         "undeclared_dependency_change_downgrade_high",
         "declared_dependency_change_passes",
         "dependency_check_fail_loud",
+        "diff_articulation_mention_does_not_declare",
+        "unorderable_specifier_reported_unknown",
     } <= ids
     assert "undeclared_dependency_change" in data["severity_policy"]
 
@@ -589,18 +591,20 @@ def _pkgjson(deps: dict) -> str:
 
 def _write_dep_manifest(
     root: Path, base: str, declared_files: list[str], *,
-    declared_deps: list | None = None, head: str = "HEAD",
+    declared_deps: list | None = None, articulation: dict | None = None,
 ) -> Path:
-    """Manifest that can additionally declare `scope.dependency_changes` — the
-    knob `_write_manifest` does not expose."""
+    """Manifest that can additionally declare `scope.dependency_changes` (and
+    carry `diff_articulation` prose) — knobs `_write_manifest` does not expose."""
     scope: dict = {"files_expected_to_change": declared_files}
     if declared_deps is not None:
         scope["dependency_changes"] = declared_deps
     manifest = {
         "schema_version": "cbsp21_patch_manifest_v2",
         "scope": scope,
-        "diff_range": {"base": base, "head": head, "base_sha": base},
+        "diff_range": {"base": base, "head": "HEAD", "base_sha": base},
     }
+    if articulation is not None:
+        manifest["diff_articulation"] = articulation
     path = root / "patch.json"
     path.write_text(json.dumps(manifest), encoding="utf-8")
     return path
@@ -748,3 +752,140 @@ def test_dependency_findings_validate_against_contract(pkg_repo):
 
     for f in PrScopeAnalyzer(manifest=manifest, base=base).run(root, []):
         validate_finding(f.to_dict())
+
+
+# ── version specifiers: what is ordered, and what is reported 'unknown' ──
+
+
+@pytest.mark.parametrize("spec, expected", [
+    ("^4.4.3", (4, 4, 3)),
+    ("~3.25", (3, 25, 0)),
+    ("4", (4, 0, 0)),
+    (">=4.4.3", (4, 4, 3)),
+    (">4.0.0", (4, 0, 0)),
+    ("=2.1.0", (2, 1, 0)),
+    ("v1.2.3", (1, 2, 3)),
+    (">= 1.2.3", (1, 2, 3)),
+    # Not orderable -> None -> direction 'unknown'.
+    (">=4.4.3 <5", None),          # compound range: the lower bound is not the version
+    ("1.2.3 - 2.0.0", None),
+    ("1.2.3 || 2.0.0", None),
+    ("<5", None),                  # an upper bound is not the version in use
+    ("<=4.9.0", None),
+    ("*", None),
+    ("1.2.x", None),
+    ("latest", None),
+    ("1.0.0-rc.1", None),          # semver orders rc below the release
+    ("1.0.0+build.5", None),
+    ("git+https://github.com/colinhacks/zod.git", None),
+    ("github:colinhacks/zod#v3.25.76", None),
+    ("file:../zod", None),
+    ("workspace:^1.2.0", None),
+    ("npm:zod@3.25.76", None),
+])
+def test_parse_version_orders_only_single_specifiers(spec, expected):
+    assert pr_scope_module._parse_version(spec) == expected
+
+
+@pytest.mark.parametrize("head_spec", [
+    ">=4.4.3 <5",                  # mixed style: caret -> explicit range
+    "<5",
+    "4.4.3-rc.1",
+    "latest",
+    "github:colinhacks/zod#v3.25.76",
+])
+def test_unorderable_specifier_change_is_reported_unknown_not_silent(pkg_repo, head_spec):
+    """A specifier the parser cannot order must still be reported — direction
+    'unknown', MEDIUM — never guessed and never silently passed. ``^4.4.3 ->
+    >=4.4.3 <5`` used to read as 'same' (the lower bound), and ``^4.4.3 -> <5``
+    as an 'upgrade' (the upper bound taken for the version)."""
+    root, base = pkg_repo
+    _commit_file(root, _PKG_PATH,
+                 _pkgjson({"@supabase/supabase-js": "^2.0.0", "zod": head_spec}))
+    manifest = _write_dep_manifest(root, base, [_PKG_PATH], declared_deps=[])
+
+    dep = _dep_findings(PrScopeAnalyzer(manifest=manifest, base=base).run(root, []))
+    assert len(dep) == 1
+    assert dep[0].metadata["direction"] == "unknown"
+    assert dep[0].severity is Severity.MEDIUM
+
+
+# ── declaration: only scope.dependency_changes declares ─────────────────
+
+
+def test_articulation_mention_does_not_declare_the_change(pkg_repo):
+    """Prose is not a declaration. A diff_articulation that says zod is
+    untouched must not silence the zod downgrade riding in the same file; the
+    mention is recorded on the finding instead."""
+    root, base = pkg_repo
+    _commit_file(root, _PKG_PATH,
+                 _pkgjson({"@supabase/supabase-js": "^2.1.0", "zod": "^3.25.76"}))
+    manifest = _write_dep_manifest(
+        root, base, [_PKG_PATH], declared_deps=["@supabase/supabase-js"],
+        articulation={"what_changed": ["Bump @supabase/supabase-js; zod is untouched."]},
+    )
+
+    dep = _dep_findings(PrScopeAnalyzer(manifest=manifest, base=base).run(root, []))
+    assert len(dep) == 1
+    assert dep[0].severity is Severity.HIGH
+    assert dep[0].metadata["mentioned_in_diff_articulation"] is True
+    assert "scope.dependency_changes" in dep[0].message
+
+
+def test_unmentioned_dependency_records_no_mention(pkg_repo):
+    root, base = pkg_repo
+    _commit_file(root, _PKG_PATH,
+                 _pkgjson({"@supabase/supabase-js": "^2.1.0", "zod": "^3.25.76"}))
+    manifest = _write_dep_manifest(
+        root, base, [_PKG_PATH], declared_deps=["@supabase/supabase-js"],
+        articulation={"what_changed": ["Bump @supabase/supabase-js."]},
+    )
+
+    dep = _dep_findings(PrScopeAnalyzer(manifest=manifest, base=base).run(root, []))
+    assert dep[0].metadata["mentioned_in_diff_articulation"] is False
+
+
+@pytest.mark.parametrize("dep, text, expected", [
+    ("zod", "the zod downgrade", True),
+    ("zod", "downgraded zod.", True),            # sentence-final period
+    ("zod", "zodiac", False),
+    ("react", "bumped react-dom", False),
+    ("react", "moved to preact", False),
+    ("node", "@types/node", False),
+    ("@supabase/supabase-js", "bump @supabase/supabase-js to 2.1", True),
+    ("lodash", "lodash.merge", False),
+])
+def test_articulation_mention_matches_whole_names(dep, text, expected):
+    assert pr_scope_module._mentioned_in(dep, text) is expected
+
+
+@pytest.mark.parametrize("dependency_changes", [
+    ["zod"],
+    [{"name": "zod", "from": "^4.4.3", "to": "^3.25.76", "reason": "pin for runtime"}],
+    [],
+])
+def test_v2_schema_accepts_dependency_changes(dependency_changes):
+    """The explicit declaration pr_scope honours must be expressible in a
+    schema-valid v2 manifest (the schema used to reject scope.dependency_changes,
+    leaving prose as the only way to declare)."""
+    import jsonschema
+
+    schema = json.loads(
+        (_REPO / "cbsp21" / "patch_input_v2.schema.json").read_text(encoding="utf-8"))
+    instance = json.loads(
+        (_REPO / "cbsp21" / "patch_input_v2.template.json").read_text(encoding="utf-8"))
+    instance["scope"]["dependency_changes"] = dependency_changes
+    jsonschema.validate(instance, schema)
+
+
+@pytest.mark.parametrize("bad", [[{"from": "^4.4.3"}], [""], [{"name": "zod", "why": "x"}]])
+def test_v2_schema_rejects_malformed_dependency_changes(bad):
+    import jsonschema
+
+    schema = json.loads(
+        (_REPO / "cbsp21" / "patch_input_v2.schema.json").read_text(encoding="utf-8"))
+    instance = json.loads(
+        (_REPO / "cbsp21" / "patch_input_v2.template.json").read_text(encoding="utf-8"))
+    instance["scope"]["dependency_changes"] = bad
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(instance, schema)
