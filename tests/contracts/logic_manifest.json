@@ -49,6 +49,12 @@
       "version": "1.1.0"
     },
     {
+      "class_name": "GateWrongArtifactAnalyzer",
+      "logic_hash": "sha256:e934d50d6fb05183beeebb2d0444edff6f1da99d139048bdec51a86c8e4f5b66",
+      "module": "code_audit.analyzers.gate_wrong_artifact",
+      "version": "1.0.0"
+    },
+    {
       "class_name": "GlobalStateAnalyzer",
       "logic_hash": "sha256:038d4507d57638747af97edbc497b001a1f412a93c93573d1991374d35babb01",
       "module": "code_audit.analyzers.global_state",
