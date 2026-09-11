@@ -1,56 +1,78 @@
 {
   "schema_version": "cbsp21_patch_manifest_v1",
-  "patch_id": "CAT-0023",
-  "title": "Fix pytest BOM manifest gate on Python 3.11",
-  "intent": "Restore the failing pytest BOM manifest gate by making BOM manifest paths platform-stable and regenerating the recorded AST hashes with the same Python 3.11 runtime used in GitHub Actions.",
+  "patch_id": "CP1252-FILEWRITES-002",
+  "title": "Pin explicit UTF-8 on all text-mode file IO in src",
+  "intent": "Stop the tool's file reads from silently corrupting non-ASCII data on Windows. Text-mode open()/read_text()/write_text() without an explicit encoding uses the host locale codepage (cp1252 here), so a UTF-8 YAML config or JSON analytics file is decoded as cp1252 and mojibaked without raising. Pinning UTF-8 makes Windows behave the way Linux CI already does.",
   "change_type": "code",
   "behavior_change": "compatible",
   "risk_level": "low",
   "scope": {
     "paths_in_scope": [
-      "scripts/",
+      "src/code_audit/analyzers/",
+      "src/code_audit/scaffold.py",
+      "tests/test_sql_ecosystem_analyzer.py",
       "tests/contracts/"
     ],
     "files_expected_to_change": [
-      "scripts/refresh_bom_manifest.py",
-      "tests/contracts/bom_manifest.json"
+      "src/code_audit/analyzers/deployment.py",
+      "src/code_audit/analyzers/routers.py",
+      "src/code_audit/analyzers/sql_ecosystem.py",
+      "src/code_audit/scaffold.py",
+      "tests/test_sql_ecosystem_analyzer.py",
+      "tests/test_routers.py",
+      "tests/contracts/logic_manifest.json"
     ],
-    "out_of_scope_notes": "No analyzer, schema, or workflow logic changes. The fix is limited to the BOM refresh utility and the generated BOM manifest artifact it owns."
+    "out_of_scope_notes": "271 unencoded text-mode IO call sites remain under tests/ (21 reads, 250 writes, AST-counted). They are deliberately NOT swept here: they are overwhelmingly tmp_path fixtures with ASCII content, and a 271-site mechanical edit would swamp a 7-site correctness fix. The single exception is tests/test_sql_ecosystem_analyzer.py, whose fixture write is the direct cause of a permanent Windows skipif -- lifting that skip is this patch's acceptance test. Stdout/stderr encoding is a separate, already-fixed concern (CP1252-UTF8-001, branch fix/utf8-stdout-cp1252)."
   },
   "diff_range": {
-    "base": "79f9947",
+    "base": "9e1d2fc",
     "head": "working-tree"
   },
-  "changed_files_count": 2,
+  "changed_files_count": 7,
   "changed_files_exact": [
-    "scripts/refresh_bom_manifest.py",
-    "tests/contracts/bom_manifest.json"
+    "src/code_audit/analyzers/deployment.py",
+    "src/code_audit/analyzers/routers.py",
+    "src/code_audit/analyzers/sql_ecosystem.py",
+    "src/code_audit/scaffold.py",
+    "tests/test_sql_ecosystem_analyzer.py",
+    "tests/test_routers.py",
+    "tests/contracts/logic_manifest.json"
   ],
   "diff_articulation": {
     "what_changed": [
-      "Normalized refresh_bom_manifest.py relative-path serialization to POSIX form with as_posix(), preventing Windows-only backslashes from being written into the shared manifest",
-      "Kept the refresh utility lint-clean while preserving behavior by modernizing a few local type hints and using importlib for the existing dynamic helper import",
-      "Regenerated tests/contracts/bom_manifest.json under Python 3.11 so the recorded script AST hashes match the GitHub Actions runtime and the manifest uses stable forward-slash paths"
+      "Pinned encoding=\"utf-8\" on the three structured-data reads the tool owns: deployment.py:108 (its own YAML config), sql_ecosystem.py:87 (its own YAML config), routers.py:447 (a caller-supplied JSON analytics file). A decode error on these must surface rather than be papered over, so no errors= is used.",
+      "Pinned encoding=\"utf-8\", errors=\"replace\" on the two reads of arbitrary files from the repo under scan: deployment.py:271 (requirements.txt) and deployment.py:356 (Dockerfile). This matches the convention already used at 27 sites across the analyzers, so a genuinely non-UTF-8 file in a scanned repo degrades instead of aborting the scan.",
+      "Pinned encoding=\"utf-8\" on the two text-mode writes: routers.py:499 (router_analysis.json) and scaffold.py:986 (generated scaffold files).",
+      "Removed the platform skipif on tests/test_sql_ecosystem_analyzer.py::TestEdgeCases::test_unicode_content and pinned its fixture write_text to UTF-8. The analyzer under test always handled the Unicode content correctly; only the test's own fixture write failed, so the skip was suppressing Windows coverage of a working feature.",
+      "DISCLOSED behavior change on Linux: the two errors=\"replace\" reads (deployment.py:271, :356) were previously strict UTF-8 on Linux, so a malformed byte raised UnicodeDecodeError and aborted the scan; they now degrade to replacement characters instead. This is a loosening, not a tightening, and it matches the convention already applied at 27 analyzer sites that read arbitrary scanned files. The three structured reads were left strict precisely so that this loosening does not reach config or JSON parsing.",
+      "Bumped DeploymentAnalyzer 1.0.0->1.0.1, RoutersAnalyzer 1.0.0->1.0.1 and SQLEcosystemAnalyzer 1.1.0->1.1.1, and regenerated tests/contracts/logic_manifest.json. test_rule_logic_changes_require_version_bump flagged all three logic_hash changes. The bump is honest here rather than ceremonial: these analyzers genuinely return different values for the same input file now (a UTF-8 config that previously decoded to mojibake now decodes correctly), which is exactly the semantic change the gate exists to force an author to acknowledge. Per-analyzer versions were bumped rather than the global signal_logic_version, because the change is local to these three analyzers and bumping the engine-wide fixtures knob would overstate its blast radius.",
+      "Updated the one test that pins an analyzer version literal (tests/test_routers.py:217, assert a.version == \"1.0.0\" -> \"1.0.1\"). A sweep found this is the only pinned version assertion among the three bumped analyzers; test_deployment_analyzer.py and test_sql_ecosystem_analyzer.py do not pin theirs."
     ],
-    "why_not_redundant": "Refreshing the manifest alone would fix this checkout today but would allow a future Windows refresh to break Linux CI again. Normalizing the stored paths removes that portability trap while the regenerated Python 3.11 hashes address the current pytest failure."
+    "why_not_redundant": "The three structured reads are a LIVE silent-corruption defect, reproduced before the fix: reading a UTF-8 file through the original call shape returns mojibake and raises nothing, so no existing test or gate can see it. The two writes are LATENT, not live, and are stated as such: json.dump defaults to ensure_ascii=True so routers.py:499 emits pure ASCII today, and scaffold.py contains zero non-ASCII characters -- both are one keyword or one template away from breaking, and were pinned for robustness rather than to fix an observed failure. Pinning UTF-8 does not introduce a new failure mode relative to the working platform: Linux CI already reads these files as UTF-8, so this makes Windows match Linux rather than diverge from it."
   },
   "verification": {
     "commands_run": [
-      "python3.11 scripts/refresh_bom_manifest.py",
-      "python3.11 -m ruff check scripts/refresh_bom_manifest.py",
-      "python3.11 -m pytest tests/test_bom_manifest_gate.py tests/test_bom_js_ts_surface.py tests/test_release_bom_contract.py::test_release_bom_is_buildable_and_self_consistent -q"
+      "AST scan for text-mode open()/read_text()/write_text() lacking an encoding kwarg, before and after",
+      "PYTHONPATH=<worktree>/src py -3.11 <round-trip probe through the patched public APIs>",
+      "PYTHONPATH=<worktree>/src py -3.11 -m pytest tests/test_sql_ecosystem_analyzer.py::TestEdgeCases::test_unicode_content -q",
+      "py -3.11 -m ruff check <the five touched files>  (baseline compared against main)",
+      "PYTHONIOENCODING=utf-8 PYTHONPATH=<worktree>/src py -3.11 -m pytest -q"
     ],
     "test_results": [
-      "BOM manifest refreshed successfully under Python 3.11",
-      "Ruff passed for scripts/refresh_bom_manifest.py",
-      "10 targeted BOM and release-contract pytest checks passed"
+      "AST scan: src went from 7 unencoded text-mode IO sites (5 reads, 2 writes) to 0",
+      "Pre-fix reproduction: yaml.safe_load(open(p)) and json.load(open(p)) both returned mojibake with round-trip match=False and raised nothing; the same shapes with encoding=utf-8 returned match=True",
+      "Post-fix round-trip through the real call sites: DeploymentConfig.from_yaml, SQLAnalyzerConfig.load and the deployment requirements read all round-trip non-ASCII exactly; generate_router_report writes a UTF-8-decodable report",
+      "test_unicode_content: was permanently skipped on Windows, now PASSES on Windows",
+      "ruff: 102 errors on the five files at main, 102 after this patch -- zero introduced (no workflow runs ruff)",
+      "Version gate: test_rule_logic_changes_require_version_bump flagged 3 analyzers, then passed after the bumps + manifest regeneration",
+      "Full suite: reached 100% with 0 failures and 8 skips (down from 9 -- the removed skip is the Windows encoding skipif this patch lifts). addopts carries --maxfail=1, so completion is itself evidence of zero failures."
     ],
-    "notes": "I also inspected the failing GitHub Actions job logs for job 89640614655 before changing code. The original CI failure was an AST hash mismatch in tests/test_bom_manifest_gate.py for scripts/check_release_bom_consistency.py; local reproduction under Python 3.11 additionally exposed the manifest path separator portability problem that this patch closes. In this sandbox, the Python 3.11 commands were executed via a temporary local py311 environment."
+    "notes": "All runs pin PYTHONPATH to this worktree's src; without that pin, 'python -m code_audit' resolves to the installed C:/Users/thepr/Downloads/code-analysis-tool-fresh checkout, which sits on an incomplete WIP commit. This branch is cut from main and therefore does NOT contain CP1252-UTF8-001, so the CLI-subprocess parity tests fail on Windows for that separate, already-fixed reason; the full-suite run above sets PYTHONIOENCODING=utf-8 in the run environment ONLY to neutralize that unrelated bug and isolate this patch. That env var is deliberately not added to the harness or the diff -- doing so would mask the regression witness for 001. A sweep confirmed test_unicode_content was the only encoding-motivated skip in the suite; none remain."
   },
   "file_context_coverage_percent": 100.0,
   "metadata": {
-    "author": "GitHub Copilot",
-    "created_at": "2026-07-25T04:45:25Z",
+    "author": "Claude Opus 5",
+    "created_at": "2026-09-01T00:00:00Z",
     "reviewers": []
   }
 }

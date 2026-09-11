@@ -47,4 +47,8 @@ class AnalyzerType(str, Enum):
     MAXFAIL_MASKING = "maxfail_masking"
     CROSS_COPY_DRIFT = "cross_copy_drift"
     ORDER_DEPENDENCE = "order_dependence"
+    UNPINNED_TOOLCHAIN = "unpinned_toolchain"
+    PR_SCOPE = "pr_scope"
+    NAMESPACE_AUTHORITY_DRIFT = "namespace_authority_drift"
+    HOLLOW_GUARANTEE = "hollow_guarantee"
     GATE_WRONG_ARTIFACT = "gate_wrong_artifact"

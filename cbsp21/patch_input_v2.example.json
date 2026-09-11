@@ -1,0 +1,54 @@
+{
+  "schema_version": "cbsp21_patch_manifest_v2",
+  "patch_id": "CAT-PR-SCOPE-EXAMPLE",
+  "title": "Example: pr_scope clean declaration",
+  "intent": "Illustrate a v2 manifest that the pr_scope detector can enforce.",
+  "change_type": "code",
+  "behavior_change": "compatible",
+  "risk_level": "low",
+  "scope": {
+    "paths_in_scope": [
+      "src/code_audit/analyzers/",
+      "tests/",
+      "cbsp21/"
+    ],
+    "files_expected_to_change": [
+      "src/code_audit/analyzers/pr_scope.py",
+      "tests/test_pr_scope_analyzer.py",
+      "cbsp21/patch_input_v2.schema.json"
+    ],
+    "out_of_scope_notes": "Do not touch i18n or OpenAPI gates in this patch.",
+    "min_coverage_percent": 95
+  },
+  "diff_range": {
+    "base": "main",
+    "base_sha": "e54ee07601a59508895be6e1901048a9b3f66ba4",
+    "head": "HEAD"
+  },
+  "changed_files_count": 3,
+  "changed_files_exact": [
+    "src/code_audit/analyzers/pr_scope.py",
+    "tests/test_pr_scope_analyzer.py",
+    "cbsp21/patch_input_v2.schema.json"
+  ],
+  "diff_articulation": {
+    "what_changed": [
+      "Added pr_scope analyzer and its acceptance tests.",
+      "Added patch_input_v2 schema fields required by the detector."
+    ],
+    "why_not_redundant": "v1 manifests cannot express min_coverage_percent or pinned_merge_base for enforcement."
+  },
+  "verification": {
+    "commands_run": [
+      "python -m pytest tests/test_pr_scope_analyzer.py -q"
+    ],
+    "test_results": ["pass"],
+    "notes": "Ordinary scans without --pr-scope-manifest remain silent."
+  },
+  "file_context_coverage_percent": 100.0,
+  "metadata": {
+    "author": "code-audit",
+    "created_at": "2026-08-13T00:00:00Z",
+    "reviewers": []
+  }
+}

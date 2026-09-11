@@ -5,6 +5,8 @@ Usage:
     python -m code_audit <path> --json
     python -m code_audit <path> --project-id MY_PROJECT
     python -m code_audit scan --root <dir> --out <dir> [--emit-signals signals_latest.json]
+    python -m code_audit pr-scope --root <dir> --manifest <file> [--json]
+    python -m code_audit namespace-authority <root> --context <context.json> [--json]
     python -m code_audit validate <instance.json> <schema_name>
     python -m code_audit fence check <path> [--patterns PAT ...] [--json]
     python -m code_audit fence list
@@ -83,10 +85,14 @@ def _require_ci_flag(ci_mode: bool, *, what: str) -> int | None:
         return ExitCode.ERROR
     return None
 from code_audit.api import (
+    check_pr_scope as _api_check_pr_scope,
     compare_debt as _api_compare_debt,
     scan_project as _api_scan_project,
     snapshot_debt as _api_snapshot_debt,
     validate_instance as _api_validate_instance,
+)
+from code_audit.namespace_authority import (
+    check_namespace_authority as _api_check_namespace_authority,
 )
 
 
@@ -298,6 +304,16 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--max-file-lines", type=int, default=400)
     p.add_argument("--max-func-lines", type=int, default=60)
+    p.add_argument(
+        "--pr-scope-manifest",
+        dest="pr_scope_manifest",
+        type=Path,
+        default=None,
+        help=(
+            "Path to a CBSP21 patch_input_v2 manifest. Activates pr_scope "
+            "review enforcement; omit for an ordinary silent scan."
+        ),
+    )
     _jsts_group = p.add_mutually_exclusive_group()
     _jsts_group.add_argument(
         "--enable-js-ts",
@@ -353,6 +369,16 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     scan_p.add_argument("--max-file-lines", type=int, default=400)
     scan_p.add_argument("--max-func-lines", type=int, default=60)
+    scan_p.add_argument(
+        "--pr-scope-manifest",
+        dest="pr_scope_manifest",
+        type=Path,
+        default=None,
+        help=(
+            "Path to a CBSP21 patch_input_v2 manifest. Activates pr_scope "
+            "review enforcement; omit for an ordinary silent scan."
+        ),
+    )
     _scan_jsts_group = scan_p.add_mutually_exclusive_group()
     _scan_jsts_group.add_argument(
         "--enable-js-ts",
@@ -367,6 +393,48 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_false",
         help="Disable JS/TS scanning (Python-only).",
     )
+
+    # ── pr-scope subcommand (review-time Git/manifest gate) ─────────
+    scope_p = sub.add_parser(
+        "pr-scope",
+        help="Verify a committed branch diff against a CBSP21 v2 manifest.",
+    )
+    scope_p.add_argument("--root", type=Path, required=True, help="Git repository root.")
+    scope_p.add_argument("--manifest", type=Path, required=True, help="CBSP21 manifest path.")
+    scope_p.add_argument("--base", default=None, help="Override manifest target base ref.")
+    scope_p.add_argument("--head", default=None, help="Override manifest head ref.")
+    scope_p.add_argument(
+        "--coverage-threshold",
+        type=float,
+        default=0.95,
+        help=(
+            "Declared-file coverage floor as a fraction (default: 0.95). The "
+            "manifest's scope.min_coverage_percent may raise it, never lower it."
+        ),
+    )
+    scope_p.add_argument("--git-timeout", type=float, default=30.0)
+    scope_p.add_argument("--json", dest="json_out", action="store_true", default=False)
+
+    # ── namespace-authority subcommand (advisory review-time check) ──
+    na_p = sub.add_parser(
+        "namespace-authority",
+        help=(
+            "Advisory namespace-authority drift check from a serialized "
+            "namespace_authority_context_v1 JSON file."
+        ),
+    )
+    na_p.add_argument(
+        "root",
+        type=Path,
+        help="Project root directory (not used for discovery; activation is context-driven).",
+    )
+    na_p.add_argument(
+        "--context",
+        type=Path,
+        required=True,
+        help="Path to a namespace_authority_context_v1 JSON file.",
+    )
+    na_p.add_argument("--json", dest="json_out", action="store_true", default=False)
 
     # ── validate subcommand ─────────────────────────────────────────
     val_p = sub.add_parser(
@@ -1636,6 +1704,15 @@ def _build_default_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     """Entry-point — returns an exit code (0 = green, 1 = yellow, 2 = red)."""
+    # Emit UTF-8 regardless of the host console/pipe codepage. On Windows a
+    # redirected or piped stdout defaults to the locale encoding (cp1252), so
+    # non-ASCII report glyphs are written as bytes a UTF-8 reader cannot decode.
+    for _stream in (sys.stdout, sys.stderr):
+        try:
+            _stream.reconfigure(encoding="utf-8")
+        except Exception:
+            pass
+
     effective_argv = list(argv) if argv is not None else sys.argv[1:]
 
     # Determine whether this is default positional mode or a subcommand.
@@ -1643,6 +1720,8 @@ def main(argv: list[str] | None = None) -> int:
     # default-mode parser so `code-audit <path> --ci --json` works.
     known_commands = {
         "scan",
+        "pr-scope",
+        "namespace-authority",
         "validate",
         "fence",
         "governance",
@@ -1664,6 +1743,63 @@ def main(argv: list[str] | None = None) -> int:
         args = _build_default_parser().parse_args(effective_argv)
     else:
         args = _build_parser().parse_args(effective_argv)
+
+    # ── pr-scope subcommand ─────────────────────────────────────────
+    if args.command == "pr-scope":
+        try:
+            findings = _api_check_pr_scope(
+                args.root,
+                manifest=args.manifest,
+                base=args.base,
+                head=args.head,
+                coverage_threshold=args.coverage_threshold,
+                git_timeout=args.git_timeout,
+            )
+        except (FileNotFoundError, ValueError) as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            return ExitCode.ERROR
+
+        payload = {
+            "passed": not findings,
+            "finding_count": len(findings),
+            "findings": [finding.to_dict() for finding in findings],
+        }
+        if args.json_out:
+            stable_json_dump(payload, sys.stdout, ci_mode=True, indent=2)
+        elif findings:
+            for finding in findings:
+                print(f"[{finding.severity.value}] {finding.message}", file=sys.stderr)
+        else:
+            print("PR scope verified.", file=sys.stderr)
+        return ExitCode.VIOLATION if findings else ExitCode.SUCCESS
+
+    # ── namespace-authority subcommand (advisory; findings do not fail) ──
+    if args.command == "namespace-authority":
+        from jsonschema.exceptions import ValidationError
+
+        try:
+            findings = _api_check_namespace_authority(
+                args.root,
+                context=args.context,
+            )
+        except (FileNotFoundError, ValueError, TypeError, OSError, ValidationError) as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            return ExitCode.ERROR
+
+        payload = {
+            "advisory": True,
+            "finding_count": len(findings),
+            "findings": [finding.to_dict() for finding in findings],
+        }
+        if args.json_out:
+            stable_json_dump(payload, sys.stdout, ci_mode=True, indent=2)
+        elif findings:
+            for finding in findings:
+                print(f"[{finding.severity.value}] {finding.message}", file=sys.stderr)
+        else:
+            print("Namespace authority: no findings.", file=sys.stderr)
+        # Advisory posture: findings never force a non-zero exit.
+        return ExitCode.SUCCESS
 
     # ── validate subcommand ─────────────────────────────────────────
     if args.command == "validate":
@@ -1758,6 +1894,7 @@ def main(argv: list[str] | None = None) -> int:
             project_id=args.project_id or "",
             ci_mode=ci_mode,
             enable_js_ts=getattr(args, "enable_js_ts", True),
+            pr_scope_manifest=getattr(args, "pr_scope_manifest", None),
         )
 
         # In CI mode, enforce minimal structural integrity
@@ -1843,6 +1980,7 @@ def main(argv: list[str] | None = None) -> int:
         project_id=args.project_id or "",
         ci_mode=ci_mode,
         enable_js_ts=getattr(args, "enable_js_ts", True),
+        pr_scope_manifest=getattr(args, "pr_scope_manifest", None),
     )
 
     # In CI mode, enforce minimal structural integrity

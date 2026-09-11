@@ -28,7 +28,7 @@ import hashlib
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Mapping, Optional
 
 from code_audit.analyzers.complexity import ComplexityAnalyzer
 from code_audit.analyzers.dead_code import DeadCodeAnalyzer
@@ -47,9 +47,17 @@ from code_audit.analyzers.context_pinned_hash import ContextPinnedHashAnalyzer
 from code_audit.analyzers.maxfail_masking import MaxfailMaskingAnalyzer
 from code_audit.analyzers.cross_copy_drift import CrossCopyDriftAnalyzer
 from code_audit.analyzers.order_dependence import OrderDependenceAnalyzer
+from code_audit.analyzers.unpinned_toolchain import UnpinnedToolchainAnalyzer
+from code_audit.analyzers.hollow_guarantee import HollowGuaranteeAnalyzer
+from code_audit.analyzers.namespace_authority_drift import (
+    NamespaceAuthorityContext,
+    NamespaceAuthorityDriftAnalyzer,
+)
+from code_audit.analyzers.pr_scope import PrScopeAnalyzer, ReviewContext
 from code_audit.analyzers.gate_wrong_artifact import GateWrongArtifactAnalyzer
 from code_audit.core.discover import discover_py_files
 from code_audit.core.runner import run_scan
+from code_audit.model.finding import Finding
 from code_audit.model.run_result import RunResult
 from code_audit.strangler.debt_detector import DebtDetector
 from code_audit.strangler.debt_registry import DebtRegistry
@@ -58,6 +66,15 @@ from code_audit.strangler.debt_registry import DebtRegistry
 _DETERMINISTIC_TIMESTAMP = "2000-01-01T00:00:00+00:00"
 
 # Default analyzer set — matches what the CLI's `scan` command uses.
+#
+# Review-only / context-gated analyzers (PrScopeAnalyzer,
+# NamespaceAuthorityDriftAnalyzer) stay in this registry so
+# ``test_analyzer_registry_contract`` remains exhaustive: every concrete
+# ``*Analyzer`` under ``code_audit.analyzers`` must appear here. They are
+# inert in an ordinary sweep (no findings) until a review context is
+# injected via ``scan_project(pr_scope_manifest=...)`` or
+# ``scan_project(namespace_authority_context=...)`` (or a pre-built
+# instance is passed in ``analyzers=``).
 _DEFAULT_ANALYZERS = (
     ComplexityAnalyzer,
     DeadCodeAnalyzer,
@@ -76,6 +93,10 @@ _DEFAULT_ANALYZERS = (
     MaxfailMaskingAnalyzer,
     CrossCopyDriftAnalyzer,
     OrderDependenceAnalyzer,
+    UnpinnedToolchainAnalyzer,
+    HollowGuaranteeAnalyzer,
+    PrScopeAnalyzer,
+    NamespaceAuthorityDriftAnalyzer,
     GateWrongArtifactAnalyzer,
 )
 
@@ -99,6 +120,8 @@ def scan_project(
     ci_mode: bool = False,
     analyzers: Optional[list[Any]] = None,
     enable_js_ts: bool = True,
+    pr_scope_manifest: str | Path | None = None,
+    namespace_authority_context: NamespaceAuthorityContext | Mapping[str, Any] | str | Path | None = None,
 ) -> tuple[RunResult, dict[str, Any]]:
     """Run the standard scan pipeline programmatically.
 
@@ -115,6 +138,20 @@ def scan_project(
     analyzers:
         Override the default analyzer set. Each must conform to the
         ``Analyzer`` protocol (``id``, ``version``, ``run()``).
+    pr_scope_manifest:
+        Optional path to a CBSP21 patch_input_v2 manifest. When set, the
+        ``PrScopeAnalyzer`` runs in review context; when omitted, pr_scope
+        stays silent (ordinary scan).
+    namespace_authority_context:
+        Optional review context for :class:`NamespaceAuthorityDriftAnalyzer`.
+        Accepts a :class:`NamespaceAuthorityContext`, a JSON-serializable
+        ``namespace_authority_context_v1`` mapping, or a filesystem path
+        (``Path`` or path ``str``) to such a JSON file. Raw JSON string
+        payloads are not accepted. Object-bearing legacy dicts are rejected
+        by schema validation. The default registry instance stays silent
+        unless this is provided (or an analyzer instance is configured via
+        ``analyzers=``). Same review-only lifecycle as ``pr_scope_manifest``
+        / ``PrScopeAnalyzer``.
 
     Returns
     -------
@@ -130,9 +167,30 @@ def scan_project(
     if not root_p.exists():
         raise FileNotFoundError(f"scan_project: root does not exist: {root_p}")
 
-    analyzer_instances = (
-        analyzers if analyzers is not None else [cls() for cls in _DEFAULT_ANALYZERS]
-    )
+    if analyzers is not None:
+        analyzer_instances = list(analyzers)
+    else:
+        analyzer_instances = [cls() for cls in _DEFAULT_ANALYZERS]
+        if pr_scope_manifest is not None:
+            analyzer_instances = [
+                a for a in analyzer_instances if getattr(a, "id", None) != "pr_scope"
+            ]
+            analyzer_instances.append(
+                PrScopeAnalyzer(
+                    ReviewContext(manifest_path=_to_path(pr_scope_manifest))
+                )
+            )
+        if namespace_authority_context is not None:
+            analyzer_instances = [
+                a
+                for a in analyzer_instances
+                if getattr(a, "id", None) != "namespace_authority_drift"
+            ]
+            analyzer_instances.append(
+                NamespaceAuthorityDriftAnalyzer(
+                    review_context=namespace_authority_context,
+                )
+            )
 
     kwargs: dict[str, Any] = {
         "project_id": project_id,
@@ -156,6 +214,41 @@ def scan_project(
     rr = run_scan(root_p, analyzer_instances, **kwargs)
     rr_dict = rr.to_dict()
     return rr, rr_dict
+
+
+def check_pr_scope(
+    root: str | Path,
+    *,
+    manifest: str | Path,
+    base: str | None = None,
+    head: str | None = None,
+    coverage_threshold: float = 0.95,
+    git_timeout: float = 30.0,
+) -> list[Finding]:
+    """Run the review-time PR scope gate without invoking source analyzers.
+
+    Parameters
+    ----------
+    manifest:
+        Path to a CBSP21 ``patch_input_v2`` manifest.
+    base, head:
+        Override the manifest's ``diff_range`` refs (the merge-base is always
+        recomputed from the real Git history).
+    coverage_threshold:
+        Operator-level declared-file coverage floor as a fraction. The
+        manifest's ``scope.min_coverage_percent`` may raise it, never lower it.
+    """
+    root_p = _to_path(root).resolve()
+    if not root_p.is_dir():
+        raise FileNotFoundError(f"check_pr_scope: root is not a directory: {root_p}")
+    analyzer = PrScopeAnalyzer(
+        manifest=manifest,
+        base=base,
+        head=head,
+        coverage_threshold=coverage_threshold,
+        git_timeout=git_timeout,
+    )
+    return analyzer.run(root_p, [])
 
 
 # ── snapshot_debt ───────────────────────────────────────────────────

@@ -1,8 +1,296 @@
 {
   "created_at": "2000-01-01T00:00:00+00:00",
-  "debt_count": 61,
-  "schema_version": "debt_snapshot_v1",
+  "debt_count": 255,
   "items": [
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:ae8b9d6b45a17440c04f2afe77b14215cdb219564638a5513b1daaa6ef04f729",
+      "line_end": 169,
+      "line_start": 105,
+      "metrics": {
+        "lines": 65
+      },
+      "path": "scripts/build_release_bom.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "main"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:4392f85bfe404d66dc66e99327e8c43d070e08dec4a347f6e5de4cef44595299",
+      "line_end": 269,
+      "line_start": 93,
+      "metrics": {
+        "lines": 177
+      },
+      "path": "scripts/build_release_manifest.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "main"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:e9245842cadf81235da1526ffc97dfcbd69eeeda00f0f3a9af18d9a978faaa17",
+      "line_end": 181,
+      "line_start": 118,
+      "metrics": {
+        "lines": 64
+      },
+      "path": "scripts/check_changelog_template.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "main"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:48f801177e1a880158b7e98f3db442d72ce3de01992548616dd30681ad53bae1",
+      "line_end": 442,
+      "line_start": 190,
+      "metrics": {
+        "lines": 253
+      },
+      "path": "scripts/check_changelog_truth.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "main"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:018ce100cfd63e1699e5bd06eb8e1f9682e9a86d51dc48fc59675883953c466c",
+      "line_end": 142,
+      "line_start": 35,
+      "metrics": {
+        "lines": 108
+      },
+      "path": "scripts/check_oncall_rotation_manifest.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "main"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:a53d1259ee794bca6b167151af9e19193432c80fb8093a6556c7e335f861cfb7",
+      "line_end": 109,
+      "line_start": 28,
+      "metrics": {
+        "lines": 82
+      },
+      "path": "scripts/check_oncall_rotation_schema_manifest.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "main"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:b2ba5801df52745a1139a688d8a91600c10d41ad29b3cdadb465977f8fcceb4d",
+      "line_end": 313,
+      "line_start": 171,
+      "metrics": {
+        "lines": 143
+      },
+      "path": "scripts/check_openapi_release_gate.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "main"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:7fc44d37960d84dbc5273eb222da89e46dea9af3aaa6e31525ab5f2279ff5440",
+      "line_end": 167,
+      "line_start": 93,
+      "metrics": {
+        "lines": 75
+      },
+      "path": "scripts/check_release_bom_generator_gate.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "_preflight_verify_ref_edges_hashes"
+    },
+    {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:84cc57dd4654e611cccc9acc6c24e4d003c535ce5ba7bc3132c6e8df481164e8",
+      "line_end": 190,
+      "line_start": 160,
+      "metrics": {
+        "nesting_depth": 6
+      },
+      "path": "scripts/check_route_conflicts.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "parse_route_decorator"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:1474a170652adbb827771b515330ce04e3b4fac3278dbd140229a6c220b53ab1",
+      "line_end": 292,
+      "line_start": 229,
+      "metrics": {
+        "lines": 64
+      },
+      "path": "scripts/check_route_conflicts.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "main"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:7bf889137f9d7c1f41e686c5f66e066c489fee068b9598cd8478a3fb3ff1dc8c",
+      "line_end": 268,
+      "line_start": 118,
+      "metrics": {
+        "lines": 151
+      },
+      "path": "scripts/check_semver_breaking_gate.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "main"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:f5358c3215618957eed0268d31e3656c2f72e07ed6cacb94ae91af6792702ea3",
+      "line_end": 91,
+      "line_start": 29,
+      "metrics": {
+        "lines": 63
+      },
+      "path": "scripts/code_quality/__main__.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "parse_args"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:b4d5262c0c22ee724464e9f6302e9611643aab71765a4a4d5009fffdc16b5d41",
+      "line_end": 160,
+      "line_start": 94,
+      "metrics": {
+        "lines": 67
+      },
+      "path": "scripts/code_quality/__main__.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "main"
+    },
+    {
+      "debt_type": "god_class",
+      "fingerprint": "sha256:821e6b8357c9e976dde0734b046078c789c5236fd5ab69a1a7de0c0e96ce255f",
+      "line_end": 405,
+      "line_start": 53,
+      "metrics": {
+        "attributes": 9,
+        "methods": 12
+      },
+      "path": "scripts/code_quality/analyzer.py",
+      "strategy": "Extract Class / Extract Interface",
+      "symbol": "CodeQualityAnalyzer"
+    },
+    {
+      "debt_type": "long_parameter_list",
+      "fingerprint": "sha256:dbd35520d20f650078e433490fcba195c094351d35688cd37ba73815e6f504a3",
+      "line_end": 105,
+      "line_start": 66,
+      "metrics": {
+        "param_count": 9
+      },
+      "path": "scripts/code_quality/analyzer.py",
+      "strategy": "Introduce Parameter Object / Preserve Whole Object",
+      "symbol": "__init__"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:69f6fc6bbcf62e7cbf5e9046eb2225acc82adce380fa09f8444c9ba3c2f85e74",
+      "line_end": 360,
+      "line_start": 301,
+      "metrics": {
+        "lines": 60
+      },
+      "path": "scripts/code_quality/analyzer.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "analyze"
+    },
+    {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:e1361d1eb1ec591453368e1b0dde9e9fc7853b434d52b6143788134c9b7bb44c",
+      "line_end": 108,
+      "line_start": 69,
+      "metrics": {
+        "nesting_depth": 5
+      },
+      "path": "scripts/code_quality/checkers/css_checker.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "_extract_css_selectors"
+    },
+    {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:21283d72045004eb35a28a49a10cbc962b9519e26cb59220ac0c72b73da5ada8",
+      "line_end": 227,
+      "line_start": 156,
+      "metrics": {
+        "nesting_depth": 5
+      },
+      "path": "scripts/code_quality/checkers/css_checker.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "check_file"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:de1e037427d0622d85cc808d617d271521be49636e72327be3013247dc4f1072",
+      "line_end": 227,
+      "line_start": 156,
+      "metrics": {
+        "lines": 72
+      },
+      "path": "scripts/code_quality/checkers/css_checker.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "check_file"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:05848d1be1ce45b07fb6e1b5beaf98f13df141654b20157d1bec22aa1dd95d18",
+      "line_end": 148,
+      "line_start": 80,
+      "metrics": {
+        "lines": 69
+      },
+      "path": "scripts/code_quality/checkers/magic_number.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "check_file"
+    },
+    {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:3da848659724296ee9834b9e7631930e096c774cf1435a3796516f4c6e4a9d8d",
+      "line_end": 159,
+      "line_start": 120,
+      "metrics": {
+        "nesting_depth": 5
+      },
+      "path": "scripts/code_quality/config.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "load_config"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:3df947a25275919e031f9fd14768af3e69997ce84ddbba4279e905a537b008d8",
+      "line_end": 443,
+      "line_start": 360,
+      "metrics": {
+        "lines": 84
+      },
+      "path": "scripts/code_quality/test_analyzer.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "test_python_checkers"
+    },
+    {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:ef2acbb878e249e9f20bcf44fcc04e26b00a4e1da3e343f1fdb1ea1e41512596",
+      "line_end": 94,
+      "line_start": 75,
+      "metrics": {
+        "nesting_depth": 7
+      },
+      "path": "scripts/complexity_refactor_assistant.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "calculate_complexity"
+    },
+    {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:cf82893537b5c7601a9287005b1901093e8d3f880d49175110e182df6712d06e",
+      "line_end": 235,
+      "line_start": 216,
+      "metrics": {
+        "nesting_depth": 5
+      },
+      "path": "scripts/complexity_refactor_assistant.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "_suggest_block_name"
+    },
     {
       "debt_type": "god_function",
       "fingerprint": "sha256:0346d344cb56757a634a2ac113681e7e12c3bd9c003b58d9c3189bce79d07d78",
@@ -65,6 +353,18 @@
     },
     {
       "debt_type": "god_function",
+      "fingerprint": "sha256:02e646245b2bb30f852f02c6c71c7b4bd29c823757dbe3c34ab928b4eba750ab",
+      "line_end": 338,
+      "line_start": 165,
+      "metrics": {
+        "lines": 174
+      },
+      "path": "scripts/generate_release_bom.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "main"
+    },
+    {
+      "debt_type": "god_function",
       "fingerprint": "sha256:3b6daffbb3096d9766bdeb651927b97c79a7afca9bf05ee0b14a74db819a70cc",
       "line_end": 111,
       "line_start": 47,
@@ -77,11 +377,492 @@
     },
     {
       "debt_type": "god_function",
-      "fingerprint": "sha256:e77374b28a2a35dbaa9e7f3e76e45c1bb48494f5272ab79f40223186846c3166",
-      "line_end": 656,
-      "line_start": 103,
+      "fingerprint": "sha256:ae307f35d7e1fecd2cf76bf352b47c3e576359b01a0436ae6ade1ea047acc1e2",
+      "line_end": 196,
+      "line_start": 115,
       "metrics": {
-        "lines": 554
+        "lines": 82
+      },
+      "path": "scripts/migrate_rule_ids_to_public.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "main"
+    },
+    {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:b673fc3e36afe346d7dc58a83f87bdc0bc49ae98997f2f012bc6d88c09f4420f",
+      "line_end": 128,
+      "line_start": 84,
+      "metrics": {
+        "nesting_depth": 5
+      },
+      "path": "scripts/python_decomposition_analyzer.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "analyze_ast"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:ffd67047b19e2114788657e31572abead4e97e02e5722f822d167d3a243dfcbb",
+      "line_end": 349,
+      "line_start": 285,
+      "metrics": {
+        "lines": 65
+      },
+      "path": "scripts/python_decomposition_analyzer.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "generate_markdown_report"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:7106ee09dc6ede178317b8c5e559f35ef8b6fdafc94adaf59dae62065d12fa67",
+      "line_end": 131,
+      "line_start": 49,
+      "metrics": {
+        "lines": 83
+      },
+      "path": "scripts/refresh_baseline.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "main"
+    },
+    {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:3d94ad6d5f03ee464d2a1aa1c9fed704e567bcf74c5098ff9a893a33b7728857",
+      "line_end": 143,
+      "line_start": 131,
+      "metrics": {
+        "nesting_depth": 5
+      },
+      "path": "scripts/refresh_confidence_golden_manifest.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "_extract_internal_imports"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:384e0096d2cf55c1d0f6d165dcd6c12eef7bbb178a2075fddd74f93438e0f186",
+      "line_end": 392,
+      "line_start": 333,
+      "metrics": {
+        "lines": 60
+      },
+      "path": "scripts/refresh_confidence_golden_manifest.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "main"
+    },
+    {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:75a0f25eb3198f8d97551743bcc8710b44354376678ed29dec53fb7ea54bfb41",
+      "line_end": 141,
+      "line_start": 129,
+      "metrics": {
+        "nesting_depth": 5
+      },
+      "path": "scripts/refresh_confidence_policy_manifest.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "_extract_internal_imports"
+    },
+    {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:65e3f14cf4c68e01ad137842573893020b49c0fc4356fff9f1deb1af9003d5bb",
+      "line_end": 111,
+      "line_start": 89,
+      "metrics": {
+        "nesting_depth": 5
+      },
+      "path": "scripts/refresh_exit_code_policy_manifest.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "_semantic_hash_policy_surface"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:422b8c2d6491dfaada50dcd14772e4c3e19a16e1a5830b0ef53334609b03a993",
+      "line_end": 160,
+      "line_start": 41,
+      "metrics": {
+        "lines": 120
+      },
+      "path": "scripts/refresh_golden_manifest.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "main"
+    },
+    {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:6fd7579661f0838e2f5864be4669348b3ff4e52176ca01807267a291425957d0",
+      "line_end": 90,
+      "line_start": 75,
+      "metrics": {
+        "nesting_depth": 6
+      },
+      "path": "scripts/refresh_openapi_classifier_manifest.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "_collect_import_modules"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:22b79a666a0c6242c6f51db5d135ee54ef5f2c58664c4200ef52c23b00aab36a",
+      "line_end": 208,
+      "line_start": 149,
+      "metrics": {
+        "lines": 60
+      },
+      "path": "scripts/refresh_openapi_classifier_manifest.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "main"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:0eab54d2db91863f0771c23eb96930c6e088c8532e320d62b9082f48e63a0154",
+      "line_end": 126,
+      "line_start": 30,
+      "metrics": {
+        "lines": 97
+      },
+      "path": "scripts/refresh_openapi_golden_endpoints.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "main"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:7532f3b3790412bee24f9cdf67a4811aec280447e3f6de59faf112077fcb46b5",
+      "line_end": 272,
+      "line_start": 99,
+      "metrics": {
+        "lines": 174
+      },
+      "path": "scripts/release_bom_consistency_lib.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "check_release_bom_object_against_dist"
+    },
+    {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:79e3780a1bae270db12e1ea46ba6e5fbb391653ecb6efb9792a7a3c77968da9b",
+      "line_end": 272,
+      "line_start": 99,
+      "metrics": {
+        "nesting_depth": 5
+      },
+      "path": "scripts/release_bom_consistency_lib.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "check_release_bom_object_against_dist"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:669e583b8f5682248f6efaa0e75ee509fd9cd1ad3e967d5abc3fe780fb211d9b",
+      "line_end": 212,
+      "line_start": 132,
+      "metrics": {
+        "lines": 81
+      },
+      "path": "scripts/reproduce_openapi_diff_from_dist.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "main"
+    },
+    {
+      "debt_type": "god_class",
+      "fingerprint": "sha256:fafe66736639ec7b3bec109609a13cdfe6b9a82257fc53b9c64b0005942aef1a",
+      "line_end": 492,
+      "line_start": 228,
+      "metrics": {
+        "attributes": 4,
+        "methods": 10
+      },
+      "path": "scripts/route_consolidation_tool.py",
+      "strategy": "Extract Class / Extract Interface",
+      "symbol": "RouteUsageAnalyzer"
+    },
+    {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:211df23846f867e9459be6d5a6fb40c79243886e7334aa58caaf6ca01a79e738",
+      "line_end": 386,
+      "line_start": 347,
+      "metrics": {
+        "nesting_depth": 6
+      },
+      "path": "scripts/route_consolidation_tool.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "_parse_route_decorator"
+    },
+    {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:81c1c7847170fffe09866eaf2abf4062198e020b0716d212660741949693fe54",
+      "line_end": 462,
+      "line_start": 416,
+      "metrics": {
+        "nesting_depth": 9
+      },
+      "path": "scripts/route_consolidation_tool.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "scan_frontend"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:fe7a4fbff9247027d52d24257c410256a2aa0efda7a9d226d4726a24c6609ccd",
+      "line_end": 1022,
+      "line_start": 960,
+      "metrics": {
+        "lines": 63
+      },
+      "path": "scripts/route_consolidation_tool.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "cmd_dashboard"
+    },
+    {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:d3c29c9b3fc37d0ba842b79dcf471702b7976c78c8c4c058da180aff633cfb29",
+      "line_end": 1063,
+      "line_start": 1025,
+      "metrics": {
+        "nesting_depth": 6
+      },
+      "path": "scripts/route_consolidation_tool.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "main"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:186110238e556ccf4ea331cbc950de6ac8ddc89374f75b4e334599b2e51d264b",
+      "line_end": 228,
+      "line_start": 159,
+      "metrics": {
+        "lines": 70
+      },
+      "path": "scripts/scan_stub_endpoints.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "extract_routes_from_file"
+    },
+    {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:a867d66e343fec86e83e7ad7a582aaabbcdb9680e494ea96c617229e6cf0908a",
+      "line_end": 246,
+      "line_start": 231,
+      "metrics": {
+        "nesting_depth": 6
+      },
+      "path": "scripts/scan_stub_endpoints.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "parse_route_decorator"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:399a892b5b549c28ce55f6bc3b91f7347e7ee710d9e8c1320e3bdcc9170c09b8",
+      "line_end": 203,
+      "line_start": 139,
+      "metrics": {
+        "lines": 65
+      },
+      "path": "scripts/schema_ref_graph.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "build_dist_schema_graph_records"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:403fc39d1c976166d2c676a9407f81da71ea2fe0139323bb5456b4011444c0f6",
+      "line_end": 102,
+      "line_start": 42,
+      "metrics": {
+        "lines": 61
+      },
+      "path": "scripts/sync_rule_registry.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "validate"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:54e7decae79d4a4faef6ef73abddaf5e6940a3fe508d315a4336c94841b4cea8",
+      "line_end": 280,
+      "line_start": 218,
+      "metrics": {
+        "lines": 63
+      },
+      "path": "scripts/verify_api_wiring.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "check_critical_endpoints"
+    },
+    {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:85db6ce6b8a89fbe80b2ba5afa25b5957e32cb533b370156e59adeab207a2884",
+      "line_end": 280,
+      "line_start": 218,
+      "metrics": {
+        "nesting_depth": 5
+      },
+      "path": "scripts/verify_api_wiring.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "check_critical_endpoints"
+    },
+    {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:6db36208899c644d9a11ea9f4a20152f8d2ac4f5a252da31af21c6fd919eb19a",
+      "line_end": 356,
+      "line_start": 283,
+      "metrics": {
+        "nesting_depth": 5
+      },
+      "path": "scripts/verify_api_wiring.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "check_no_import_errors_in_routes"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:fffd197b2499f1c8072d3ecf475d9e2faa1e210a4040b9a84464911668a5894d",
+      "line_end": 356,
+      "line_start": 283,
+      "metrics": {
+        "lines": 74
+      },
+      "path": "scripts/verify_api_wiring.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "check_no_import_errors_in_routes"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:0d920a3d81bd69b83b370fff7d9d84a0afa79fe9800177ecfc7d50bffd58c707",
+      "line_end": 170,
+      "line_start": 105,
+      "metrics": {
+        "lines": 66
+      },
+      "path": "scripts/vue_composable_generator.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "generate_api_composable"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:280755afa30f0f83c5fb5c87f502336e540ae36f01d04f5b1ef1ac6a2d6d519b",
+      "line_end": 243,
+      "line_start": 173,
+      "metrics": {
+        "lines": 71
+      },
+      "path": "scripts/vue_composable_generator.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "generate_export_composable"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:7cfa0c96e06225094dccb9aa607ae90ed860dd49961371e6e5522f44a7789e4d",
+      "line_end": 331,
+      "line_start": 246,
+      "metrics": {
+        "lines": 86
+      },
+      "path": "scripts/vue_composable_generator.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "generate_validation_composable"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:4cba4ac0ba7eead65734c4a37c431d67f7763a6c4f77636625fa7c584d9ef3cd",
+      "line_end": 447,
+      "line_start": 334,
+      "metrics": {
+        "lines": 114
+      },
+      "path": "scripts/vue_composable_generator.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "generate_filters_composable"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:2ded601366b9612c363de22d4d252fba818972b43260256cef3fe266416f8ee3",
+      "line_end": 520,
+      "line_start": 450,
+      "metrics": {
+        "lines": 71
+      },
+      "path": "scripts/vue_composable_generator.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "generate_actions_composable"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:405d3cee129878d131173ef9e9084dceae2c6f04a1298af60ebb63b8dc205eca",
+      "line_end": 620,
+      "line_start": 544,
+      "metrics": {
+        "lines": 77
+      },
+      "path": "scripts/vue_composable_generator.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "main"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:74654504ad10f1ff30ef10122e7ae7277368a5ffda3c8d9837d7e5dfcbf4cce8",
+      "line_end": 241,
+      "line_start": 158,
+      "metrics": {
+        "lines": 84
+      },
+      "path": "scripts/vue_decomposition_analyzer.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "find_panel_sections"
+    },
+    {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:8d004ef72114e742e993d2a357fc1ae08b36869634f5801c8fe3828a956ca120",
+      "line_end": 241,
+      "line_start": 158,
+      "metrics": {
+        "nesting_depth": 5
+      },
+      "path": "scripts/vue_decomposition_analyzer.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "find_panel_sections"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:facb6a5edddd4e75ebeed084dc964aedec665663e93ea5ea7009735950e117b8",
+      "line_end": 435,
+      "line_start": 357,
+      "metrics": {
+        "lines": 79
+      },
+      "path": "scripts/vue_decomposition_analyzer.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "analyze_vue_file"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:31e6f15bdba22344e9f82321d6156dc2b0bf02569e0e2ccb96af553caf4686f6",
+      "line_end": 523,
+      "line_start": 456,
+      "metrics": {
+        "lines": 68
+      },
+      "path": "scripts/vue_decomposition_analyzer.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "print_report"
+    },
+    {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:3937ac02fc7171bd72866c52bd4140d6470853097823153763b6364e56f55b4a",
+      "line_end": 523,
+      "line_start": 456,
+      "metrics": {
+        "nesting_depth": 5
+      },
+      "path": "scripts/vue_decomposition_analyzer.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "print_report"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:a978b558ea578f4bb67845fca492ac30594f08e26e511a02842e5ba3ad6328d3",
+      "line_end": 616,
+      "line_start": 552,
+      "metrics": {
+        "lines": 65
+      },
+      "path": "scripts/vue_decomposition_analyzer.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "main"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:e77374b28a2a35dbaa9e7f3e76e45c1bb48494f5272ab79f40223186846c3166",
+      "line_end": 931,
+      "line_start": 264,
+      "metrics": {
+        "lines": 668
       },
       "path": "src/code_audit/__main__.py",
       "strategy": "Extract Method / Decompose Conditional",
@@ -90,10 +871,10 @@
     {
       "debt_type": "god_function",
       "fingerprint": "sha256:363fc7f7ed8706e785e9b215591514dc7c49094fa1a613cc5436c54314093bb9",
-      "line_end": 795,
-      "line_start": 714,
+      "line_end": 1064,
+      "line_start": 986,
       "metrics": {
-        "lines": 82
+        "lines": 79
       },
       "path": "src/code_audit/__main__.py",
       "strategy": "Extract Method / Decompose Conditional",
@@ -102,10 +883,10 @@
     {
       "debt_type": "god_function",
       "fingerprint": "sha256:5214b0a70e5a4a9b6f719d1ed66897e40dfc04fef8752f8975fb29da5081424d",
-      "line_end": 1428,
-      "line_start": 1178,
+      "line_end": 1646,
+      "line_start": 1419,
       "metrics": {
-        "lines": 251
+        "lines": 228
       },
       "path": "src/code_audit/__main__.py",
       "strategy": "Extract Method / Decompose Conditional",
@@ -114,14 +895,26 @@
     {
       "debt_type": "god_function",
       "fingerprint": "sha256:749465ca4225093fde661abe99eb135f35dcd80f43524e0d2b971d38178487b7",
-      "line_end": 1565,
-      "line_start": 1431,
+      "line_end": 1998,
+      "line_start": 1705,
       "metrics": {
-        "lines": 135
+        "lines": 294
       },
       "path": "src/code_audit/__main__.py",
       "strategy": "Extract Method / Decompose Conditional",
       "symbol": "main"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:4a57a146ea4394782bb0e5c1a367dc6225f91be511799c6d52be01e01140c88d",
+      "line_end": 121,
+      "line_start": 40,
+      "metrics": {
+        "lines": 82
+      },
+      "path": "src/code_audit/analyzers/__init__.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "__getattr__"
     },
     {
       "debt_type": "deep_nesting",
@@ -134,6 +927,162 @@
       "path": "src/code_audit/analyzers/complexity.py",
       "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
       "symbol": "_cyclomatic_complexity"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:4b8a187d6dba71a8f2eebced3ed26575381bedac0fe9f3fec5ba0e8e7ecda3d9",
+      "line_end": 217,
+      "line_start": 147,
+      "metrics": {
+        "lines": 71
+      },
+      "path": "src/code_audit/analyzers/context_pinned_hash.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "_scan_module"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:08c238a139e0346b463bf8533f26fd1f08e6483f6735d49b043de9f5191c1cc4",
+      "line_end": 289,
+      "line_start": 221,
+      "metrics": {
+        "lines": 69
+      },
+      "path": "src/code_audit/analyzers/context_pinned_hash.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "_emit"
+    },
+    {
+      "debt_type": "long_parameter_list",
+      "fingerprint": "sha256:a7e90fc1549092f87cd067878bbabc67c3f9db4f151a39af716b4591dbee28e0",
+      "line_end": 289,
+      "line_start": 221,
+      "metrics": {
+        "param_count": 8
+      },
+      "path": "src/code_audit/analyzers/context_pinned_hash.py",
+      "strategy": "Introduce Parameter Object / Preserve Whole Object",
+      "symbol": "_emit"
+    },
+    {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:c0aa68d2a540cd6569c46028c09ca75f7ba634d160bc92b43db23247444fb21b",
+      "line_end": 629,
+      "line_start": 605,
+      "metrics": {
+        "nesting_depth": 6
+      },
+      "path": "src/code_audit/analyzers/context_pinned_hash.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "_serialiser_names"
+    },
+    {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:f54deb412ee138be8e402cb4b5fcddb7ae842216ab0c5e65f921f1156b16aa9f",
+      "line_end": 757,
+      "line_start": 733,
+      "metrics": {
+        "nesting_depth": 6
+      },
+      "path": "src/code_audit/analyzers/context_pinned_hash.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "_assignment_map"
+    },
+    {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:46343f8982cadc0f0e45016e0183675e1bf2a3bcb354bbdc7c4082fb320c5b72",
+      "line_end": 220,
+      "line_start": 166,
+      "metrics": {
+        "nesting_depth": 7
+      },
+      "path": "src/code_audit/analyzers/dead_code.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "_detect_unreachable"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:5aa859f9d8ecc9a10d62e2e3f646a322515c95e01fc6848dfc9073696390061e",
+      "line_end": 349,
+      "line_start": 280,
+      "metrics": {
+        "lines": 70
+      },
+      "path": "src/code_audit/analyzers/dead_code.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "_detect_if_false"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:224506f25278df16cbe70745994e57f31718ee730ce32b6107a7ee8eaafb36e7",
+      "line_end": 516,
+      "line_start": 403,
+      "metrics": {
+        "lines": 114
+      },
+      "path": "src/code_audit/analyzers/dead_code.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "analyze_dead_code"
+    },
+    {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:9201dd196c41a7a9290553477d18c65be1b9eb2ff1ecc628b3216564d8144e89",
+      "line_end": 516,
+      "line_start": 403,
+      "metrics": {
+        "nesting_depth": 7
+      },
+      "path": "src/code_audit/analyzers/dead_code.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "analyze_dead_code"
+    },
+    {
+      "debt_type": "long_parameter_list",
+      "fingerprint": "sha256:a11850b56c07a6497f985e5a25a2dd07e47205340cdc3acfe4d21ea7d87c8ea1",
+      "line_end": 198,
+      "line_start": 177,
+      "metrics": {
+        "param_count": 7
+      },
+      "path": "src/code_audit/analyzers/deployment.py",
+      "strategy": "Introduce Parameter Object / Preserve Whole Object",
+      "symbol": "_make_finding"
+    },
+    {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:220125a7d50f74b0550c1f5c0b9ff9005d89d622068c1dd72361cea872bbf259",
+      "line_end": 320,
+      "line_start": 286,
+      "metrics": {
+        "nesting_depth": 5
+      },
+      "path": "src/code_audit/analyzers/deployment.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "_find_critical_imports"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:f70ece81184e0535173a9a49fcb40144821dcb05e129cada8ca2e12dbf101c73",
+      "line_end": 459,
+      "line_start": 396,
+      "metrics": {
+        "lines": 64
+      },
+      "path": "src/code_audit/analyzers/deployment.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "validate"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:9278fb89af9b90c4f5f0e240aa8f4a03d7239726538f65beaabc168fccce4ff7",
+      "line_end": 887,
+      "line_start": 801,
+      "metrics": {
+        "lines": 87
+      },
+      "path": "src/code_audit/analyzers/deployment.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "main"
     },
     {
       "debt_type": "god_function",
@@ -150,10 +1099,10 @@
     {
       "debt_type": "deep_nesting",
       "fingerprint": "sha256:8a7e259d50b55fa5661eaf5e769c75905db1245b0cb0ea47a1b7e06f58e4ff26",
-      "line_end": 111,
-      "line_start": 42,
+      "line_end": 127,
+      "line_start": 63,
       "metrics": {
-        "nesting_depth": 6
+        "nesting_depth": 5
       },
       "path": "src/code_audit/analyzers/exceptions.py",
       "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
@@ -162,10 +1111,10 @@
     {
       "debt_type": "god_function",
       "fingerprint": "sha256:c1e556e147a6a1a435c26b09fcf641ce1adeeab4edcc3b00b3676c8c667d026d",
-      "line_end": 111,
-      "line_start": 42,
+      "line_end": 127,
+      "line_start": 63,
       "metrics": {
-        "lines": 70
+        "lines": 65
       },
       "path": "src/code_audit/analyzers/exceptions.py",
       "strategy": "Extract Method / Decompose Conditional",
@@ -174,8 +1123,8 @@
     {
       "debt_type": "deep_nesting",
       "fingerprint": "sha256:1a99603476a7407bbb483fc720a8b1a1af8036fc7228bce74d2d7b7f0ef22916",
-      "line_end": 213,
-      "line_start": 181,
+      "line_end": 229,
+      "line_start": 197,
       "metrics": {
         "nesting_depth": 5
       },
@@ -186,8 +1135,8 @@
     {
       "debt_type": "god_function",
       "fingerprint": "sha256:6845d6a9da3e8ca93debddbf97440a054a88c739e4df484a51d0131d7813d415",
-      "line_end": 374,
-      "line_start": 246,
+      "line_end": 390,
+      "line_start": 262,
       "metrics": {
         "lines": 129
       },
@@ -198,14 +1147,602 @@
     {
       "debt_type": "deep_nesting",
       "fingerprint": "sha256:d5e878ca63ca7fb39b8383fc139079afcf249073bc6d2b2b43b40391e0329e05",
-      "line_end": 374,
-      "line_start": 246,
+      "line_end": 390,
+      "line_start": 262,
       "metrics": {
         "nesting_depth": 7
       },
       "path": "src/code_audit/analyzers/exceptions.py",
       "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
       "symbol": "analyze_exceptions"
+    },
+    {
+      "debt_type": "long_parameter_list",
+      "fingerprint": "sha256:053bd83882a047eb6e89f4274e0e59e8b1c66a58df8fc5f7f987226131219234",
+      "line_end": 136,
+      "line_start": 110,
+      "metrics": {
+        "param_count": 6
+      },
+      "path": "src/code_audit/analyzers/global_state.py",
+      "strategy": "Introduce Parameter Object / Preserve Whole Object",
+      "symbol": "_emit_module_mutable"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:bd03e698ca0368ca5a18546b10ea0ecf140a8c0b7565e2fc80283d7c18eda6bc",
+      "line_end": 206,
+      "line_start": 140,
+      "metrics": {
+        "lines": 67
+      },
+      "path": "src/code_audit/analyzers/global_state.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "_check_functions"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:a0b3ae9cb5d9bdd58033eba06cf9650488c5f5229a7a25fb85b48ea27bfdd42d",
+      "line_end": 164,
+      "line_start": 101,
+      "metrics": {
+        "lines": 64
+      },
+      "path": "src/code_audit/analyzers/hollow_guarantee.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "_iter_steps"
+    },
+    {
+      "debt_type": "long_parameter_list",
+      "fingerprint": "sha256:23330d8d2d136ff15abf2019af61be8a67dd06911c3e655df0ea358227a015ae",
+      "line_end": 315,
+      "line_start": 289,
+      "metrics": {
+        "param_count": 6
+      },
+      "path": "src/code_audit/analyzers/hollow_guarantee.py",
+      "strategy": "Introduce Parameter Object / Preserve Whole Object",
+      "symbol": "_finding"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:47296c5c169a66426ccbe6b92069c218084b70526ba1fc11c7e75916ae7b17f7",
+      "line_end": 203,
+      "line_start": 46,
+      "metrics": {
+        "lines": 158
+      },
+      "path": "src/code_audit/analyzers/js_ts_security.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "analyze_file"
+    },
+    {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:f77b36ce5f7722ffd50dcdd17618342a58db9bf9e9e2ebeb7079ff0e8f5e3703",
+      "line_end": 203,
+      "line_start": 46,
+      "metrics": {
+        "nesting_depth": 5
+      },
+      "path": "src/code_audit/analyzers/js_ts_security.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "analyze_file"
+    },
+    {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:0bc7fce982e2c0dca2f4dbfb7a308f13cc8531ccfaa9e01d8faef2eee499a6e5",
+      "line_end": 200,
+      "line_start": 56,
+      "metrics": {
+        "nesting_depth": 5
+      },
+      "path": "src/code_audit/analyzers/js_ts_security.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "visit"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:10475e78c56b0d980f75fbc74cd113dc973d1d78527afa81ae0936a321083287",
+      "line_end": 200,
+      "line_start": 56,
+      "metrics": {
+        "lines": 145
+      },
+      "path": "src/code_audit/analyzers/js_ts_security.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "visit"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:a4920c0f82368141563dbd89ca49f1e99cfa937cd4e3c461a2f7c5ec58379e04",
+      "line_end": 180,
+      "line_start": 102,
+      "metrics": {
+        "lines": 79
+      },
+      "path": "src/code_audit/analyzers/maxfail_masking.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "_scan_config"
+    },
+    {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:1aa5ee464f42f407746e5717bd7712767bdf4087940681da071f0d5710b5cc84",
+      "line_end": 96,
+      "line_start": 83,
+      "metrics": {
+        "nesting_depth": 5
+      },
+      "path": "src/code_audit/analyzers/method_checker.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "visit_ClassDef"
+    },
+    {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:ca656b11575cfd010cb10cfafa21e3f7184cd7cc2078194622d8226f415f6e74",
+      "line_end": 165,
+      "line_start": 119,
+      "metrics": {
+        "nesting_depth": 5
+      },
+      "path": "src/code_audit/analyzers/method_checker.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "visit_Call"
+    },
+    {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:4250158cfe7ace382e35e0f530ca2303ad33e87532c29bc728b7a021600652bd",
+      "line_end": 370,
+      "line_start": 326,
+      "metrics": {
+        "nesting_depth": 5
+      },
+      "path": "src/code_audit/analyzers/method_checker.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "find_typos_in_file"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:7cab4a81670b96de6fdb910fb37aaf01d59d782b6d9e23fd57c31ae9befe2bc9",
+      "line_end": 299,
+      "line_start": 221,
+      "metrics": {
+        "lines": 79
+      },
+      "path": "src/code_audit/analyzers/namespace_authority_engine.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "adjudicate"
+    },
+    {
+      "debt_type": "long_parameter_list",
+      "fingerprint": "sha256:f375c9841fcba184fac12dd8c172a41927524a2cce1c828b8d1e5285c67e71c9",
+      "line_end": 169,
+      "line_start": 134,
+      "metrics": {
+        "param_count": 6
+      },
+      "path": "src/code_audit/analyzers/pr_scope.py",
+      "strategy": "Introduce Parameter Object / Preserve Whole Object",
+      "symbol": "__init__"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:cc3bfff5155d7ff4e464f6dac6b22c537e208add16131acf54bb6a05fb87e9d1",
+      "line_end": 491,
+      "line_start": 171,
+      "metrics": {
+        "lines": 321
+      },
+      "path": "src/code_audit/analyzers/pr_scope.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "run"
+    },
+    {
+      "debt_type": "long_parameter_list",
+      "fingerprint": "sha256:ad058d5dad9ff88fd0f6322ae51c1b9b763c81737d7e368489afe24afc137802",
+      "line_end": 583,
+      "line_start": 557,
+      "metrics": {
+        "param_count": 7
+      },
+      "path": "src/code_audit/analyzers/pr_scope.py",
+      "strategy": "Introduce Parameter Object / Preserve Whole Object",
+      "symbol": "_finding"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:b0fb46b7875ed937e86ce8d72613358d856022691af8eb8a3754bfa1e3c4750c",
+      "line_end": 423,
+      "line_start": 309,
+      "metrics": {
+        "lines": 115
+      },
+      "path": "src/code_audit/analyzers/routers.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "run"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:5ac91db9584739c923a80cc5f8e8ddbbfba62005661c687cc6b33b4fde85cd21",
+      "line_end": 502,
+      "line_start": 436,
+      "metrics": {
+        "lines": 67
+      },
+      "path": "src/code_audit/analyzers/routers.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "generate_router_report"
+    },
+    {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:ae4a31bdf5b647829cb8d2ce85c8ce32212a3ea567b6dd738bd414f722e121c8",
+      "line_end": 220,
+      "line_start": 191,
+      "metrics": {
+        "nesting_depth": 6
+      },
+      "path": "src/code_audit/analyzers/security.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "_detect_hardcoded_secrets"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:e06f0fa67987d3fa869a32e1709b0264a146f6e6a4565819e689f8dbdee63a3c",
+      "line_end": 380,
+      "line_start": 291,
+      "metrics": {
+        "lines": 90
+      },
+      "path": "src/code_audit/analyzers/security.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "_detect_subprocess_shell"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:6dbb9eb9e82594802e9ce969d41332ce05c9b1b9d1a9aac225242fa969dbdec1",
+      "line_end": 460,
+      "line_start": 382,
+      "metrics": {
+        "lines": 79
+      },
+      "path": "src/code_audit/analyzers/security.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "_detect_sql_injection"
+    },
+    {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:9b3add668ec6b06d184b5c73c470c22a57c1dbaa10ece182713d89217485bcdd",
+      "line_end": 460,
+      "line_start": 382,
+      "metrics": {
+        "nesting_depth": 7
+      },
+      "path": "src/code_audit/analyzers/security.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "_detect_sql_injection"
+    },
+    {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:9026c849dc9adbeb3fd762ae36e30a2839f6526bb1c33761efeb090f6684c8c4",
+      "line_end": 605,
+      "line_start": 507,
+      "metrics": {
+        "nesting_depth": 6
+      },
+      "path": "src/code_audit/analyzers/security.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "_detect_yaml_unsafe"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:ca5813d0578676b28e4aad1916ee4edb46a31a8dfadb49059f6f1527ae30311e",
+      "line_end": 605,
+      "line_start": 507,
+      "metrics": {
+        "lines": 99
+      },
+      "path": "src/code_audit/analyzers/security.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "_detect_yaml_unsafe"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:cba26f3abb11057fd6dfd64d2b40c99bfc4ab6735794e7b59a27dc33cf002f8c",
+      "line_end": 227,
+      "line_start": 168,
+      "metrics": {
+        "lines": 60
+      },
+      "path": "src/code_audit/analyzers/sql_autofix.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "_create_fstring_fix"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:1346bb9b14318469e0e54e160d4ba4fab2e4373c5728dc11b6793a1dd7fa575d",
+      "line_end": 372,
+      "line_start": 306,
+      "metrics": {
+        "lines": 67
+      },
+      "path": "src/code_audit/analyzers/sql_autofix.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "_fix_percent_sql_injection"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:4eec5d6da0ac3bff49c7d8a87c2eb23d39be10aca99d111b8f695879dd3d88bc",
+      "line_end": 490,
+      "line_start": 378,
+      "metrics": {
+        "lines": 113
+      },
+      "path": "src/code_audit/analyzers/sql_autofix.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "_fix_shell_injection"
+    },
+    {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:5ab3b5ed1439ed1bb6113259b449b1633e1564d2585a52fcd3b5088b3fd0223c",
+      "line_end": 490,
+      "line_start": 378,
+      "metrics": {
+        "nesting_depth": 5
+      },
+      "path": "src/code_audit/analyzers/sql_autofix.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "_fix_shell_injection"
+    },
+    {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:3c042ceaa5470e77b42d63f25ddab76235c7894e9ab9162889bd344cc66abdb3",
+      "line_end": 580,
+      "line_start": 493,
+      "metrics": {
+        "nesting_depth": 5
+      },
+      "path": "src/code_audit/analyzers/sql_autofix.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "apply_fixes"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:b902ebf61f09774cf1f6d7a749bb8e943405491bb797bfd76592043a4f4747c0",
+      "line_end": 580,
+      "line_start": 493,
+      "metrics": {
+        "lines": 88
+      },
+      "path": "src/code_audit/analyzers/sql_autofix.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "apply_fixes"
+    },
+    {
+      "debt_type": "long_parameter_list",
+      "fingerprint": "sha256:460e1a3faad2c03d51c8fba9fe783482c45643538a0cd9e9e15675b6b617801e",
+      "line_end": 181,
+      "line_start": 149,
+      "metrics": {
+        "param_count": 10
+      },
+      "path": "src/code_audit/analyzers/sql_ecosystem.py",
+      "strategy": "Introduce Parameter Object / Preserve Whole Object",
+      "symbol": "_make_finding"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:0b0a47fe19cf2cc1eb606d44a0beee0a9afad33feb5060eaef5ac0bb6486ac15",
+      "line_end": 569,
+      "line_start": 499,
+      "metrics": {
+        "lines": 71
+      },
+      "path": "src/code_audit/analyzers/sql_ecosystem.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "_check_execute_call"
+    },
+    {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:eb089c5d64ad2eed1f64bd146a5d6cae1f66bb71bfde8c0ac88cbdea590723d4",
+      "line_end": 756,
+      "line_start": 730,
+      "metrics": {
+        "nesting_depth": 5
+      },
+      "path": "src/code_audit/analyzers/sql_ecosystem.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "_check_n_plus_one"
+    },
+    {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:d356d92aaa21dc0dc1a8a41cbf4405f1c6e55552a093c545fd34acffcae542d2",
+      "line_end": 1156,
+      "line_start": 1110,
+      "metrics": {
+        "nesting_depth": 8
+      },
+      "path": "src/code_audit/analyzers/sql_ecosystem.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "_check_sqlalchemy_model"
+    },
+    {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:8490f458360744fdfe4b33d60cdf087e5c75ded384ee77f2e19e9eb64aeee9ab",
+      "line_end": 1187,
+      "line_start": 1158,
+      "metrics": {
+        "nesting_depth": 6
+      },
+      "path": "src/code_audit/analyzers/sql_ecosystem.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "_check_django_model"
+    },
+    {
+      "debt_type": "long_parameter_list",
+      "fingerprint": "sha256:02bdea9a4244f940142995f5b0359c995dd6ccd87aa67d15aa394dc03493aac1",
+      "line_end": 285,
+      "line_start": 250,
+      "metrics": {
+        "param_count": 7
+      },
+      "path": "src/code_audit/analyzers/unpinned_toolchain.py",
+      "strategy": "Introduce Parameter Object / Preserve Whole Object",
+      "symbol": "_finding"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:82f171b4772b7778ab0191c644453c42c407b5ea1359b54bb42b2111f65adc13",
+      "line_end": 110,
+      "line_start": 51,
+      "metrics": {
+        "lines": 60
+      },
+      "path": "src/code_audit/analyzers/vue_component.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "_parse_vue_metrics"
+    },
+    {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:e3229e1c1b52611e3eb4c89861404690d3e248f511ceb5a2bcdcebf4f813e7e6",
+      "line_end": 110,
+      "line_start": 51,
+      "metrics": {
+        "nesting_depth": 7
+      },
+      "path": "src/code_audit/analyzers/vue_component.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "_parse_vue_metrics"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:685df12f5373f80c98f13d5e87a09d081f184a2ab6316809eef81ae16fb4733e",
+      "line_end": 323,
+      "line_start": 203,
+      "metrics": {
+        "lines": 121
+      },
+      "path": "src/code_audit/analyzers/vue_component.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "run"
+    },
+    {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:2f8aab7b5b254131d6d5f95a453119f8dc46f25842361e5b77fa043652d198ce",
+      "line_end": 302,
+      "line_start": 213,
+      "metrics": {
+        "nesting_depth": 5
+      },
+      "path": "src/code_audit/analyzers/vue_coupling.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "_detect_state_groups"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:fa41497bf98a2847625ea2bcd9ac5fff61f2b58485b5419a1954afea75019155",
+      "line_end": 302,
+      "line_start": 213,
+      "metrics": {
+        "lines": 90
+      },
+      "path": "src/code_audit/analyzers/vue_coupling.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "_detect_state_groups"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:33c33c5a33da47027b898ef87793c066b3e864175b99829ace2f91fecdcb511a",
+      "line_end": 393,
+      "line_start": 309,
+      "metrics": {
+        "lines": 85
+      },
+      "path": "src/code_audit/analyzers/vue_coupling.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "_parse_coupling_metrics"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:ae5422c0da261684cd4432c97f21cbc7fc3ac10aca712680900fa1ef2ee83194",
+      "line_end": 609,
+      "line_start": 432,
+      "metrics": {
+        "lines": 178
+      },
+      "path": "src/code_audit/analyzers/vue_coupling.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "run"
+    },
+    {
+      "debt_type": "long_parameter_list",
+      "fingerprint": "sha256:7a896311007c7faea443c2fed919f8ca3a0c4679ea8926a37f1a5df0fa75c31c",
+      "line_end": 214,
+      "line_start": 113,
+      "metrics": {
+        "param_count": 8
+      },
+      "path": "src/code_audit/api.py",
+      "strategy": "Introduce Parameter Object / Preserve Whole Object",
+      "symbol": "scan_project"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:bc6d25f753b937805f5db1cc306d48949df95f82bd2f383996cf2c458933814d",
+      "line_end": 214,
+      "line_start": 113,
+      "metrics": {
+        "lines": 102
+      },
+      "path": "src/code_audit/api.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "scan_project"
+    },
+    {
+      "debt_type": "long_parameter_list",
+      "fingerprint": "sha256:9d665435c6093ab1f84ad3275618e72d20e5e31bd2295cbf8699703e04227345",
+      "line_end": 249,
+      "line_start": 217,
+      "metrics": {
+        "param_count": 6
+      },
+      "path": "src/code_audit/api.py",
+      "strategy": "Introduce Parameter Object / Preserve Whole Object",
+      "symbol": "check_pr_scope"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:b55a7388da472cc666e079f94e5dd161619dfadd9160a194f89d6be1e3ceab80",
+      "line_end": 379,
+      "line_start": 308,
+      "metrics": {
+        "lines": 72
+      },
+      "path": "src/code_audit/api.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "compare_debt"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:a44915dac6c1f7ac693eaf89f1c3304946d5bc885e5108005259eb929ed4c8a7",
+      "line_end": 102,
+      "line_start": 35,
+      "metrics": {
+        "lines": 68
+      },
+      "path": "src/code_audit/contracts/namespace_authority_context.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "load_namespace_authority_context"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:c1ecb9c1eedc069dc97c2744fc77cdc211c92a0e588351bc7625b0d655fe3d72",
+      "line_end": 165,
+      "line_start": 101,
+      "metrics": {
+        "lines": 65
+      },
+      "path": "src/code_audit/contracts/openapi_scrub.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "scrub_json"
     },
     {
       "debt_type": "god_function",
@@ -220,12 +1757,36 @@
       "symbol": "_check_safety_decorators"
     },
     {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:e704e58fa90fcefed4eea45fe77cdaa2e05dbb4e2a9da697dd1a9d268cef1183",
+      "line_end": 120,
+      "line_start": 78,
+      "metrics": {
+        "nesting_depth": 5
+      },
+      "path": "src/code_audit/core/discover.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "discover_py_files"
+    },
+    {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:3c7d6f936441580a507de45ca23f16c500219c925e40066b3a57c7d9736236a9",
+      "line_end": 199,
+      "line_start": 33,
+      "metrics": {
+        "nesting_depth": 6
+      },
+      "path": "src/code_audit/core/runner.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "run_scan"
+    },
+    {
       "debt_type": "long_parameter_list",
       "fingerprint": "sha256:69c8ef8826480142d3d4eaf4de92e2328edd359036babe2becbca8ef1850c122",
-      "line_end": 120,
-      "line_start": 21,
+      "line_end": 199,
+      "line_start": 33,
       "metrics": {
-        "param_count": 8
+        "param_count": 10
       },
       "path": "src/code_audit/core/runner.py",
       "strategy": "Introduce Parameter Object / Preserve Whole Object",
@@ -234,14 +1795,76 @@
     {
       "debt_type": "god_function",
       "fingerprint": "sha256:fb4af95153fa81ed553acf555bd497ed3a8f4f03bafe5fa8ec54c14d96d7007c",
-      "line_end": 120,
-      "line_start": 21,
+      "line_end": 199,
+      "line_start": 33,
       "metrics": {
-        "lines": 100
+        "lines": 167
       },
       "path": "src/code_audit/core/runner.py",
       "strategy": "Extract Method / Decompose Conditional",
       "symbol": "run_scan"
+    },
+    {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:79720a1c0b0cb8718e099b6c6b7f1c199979fd1a8cbfd00a78d518c0c5bcc8ef",
+      "line_end": 385,
+      "line_start": 329,
+      "metrics": {
+        "nesting_depth": 9
+      },
+      "path": "src/code_audit/diagnostics/validation_suite.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "validate"
+    },
+    {
+      "debt_type": "god_class",
+      "fingerprint": "sha256:181381d47aa91e0460b5dbb3073a10c47f0d531f25bd5bf4e1f1c0865a0129ce",
+      "line_end": 899,
+      "line_start": 572,
+      "metrics": {
+        "attributes": 3,
+        "methods": 11
+      },
+      "path": "src/code_audit/diagnostics/validation_suite.py",
+      "strategy": "Extract Class / Extract Interface",
+      "symbol": "ValidationSuite"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:e4951d640ff51cac10e79ec06a06b7116433f6284b266b513e69949abeabc1de",
+      "line_end": 818,
+      "line_start": 737,
+      "metrics": {
+        "lines": 82
+      },
+      "path": "src/code_audit/diagnostics/validation_suite.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "_apply_file_fixes"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:6c74e54d0e89f4bf456a633b61ca1f70966e32615c73717040e1885260de8af5",
+      "line_end": 899,
+      "line_start": 838,
+      "metrics": {
+        "lines": 62
+      },
+      "path": "src/code_audit/diagnostics/validation_suite.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "generate_report"
+    },
+    {
+      "debt_type": "god_class",
+      "fingerprint": "sha256:cf956346794a8482a68d64e9f8848a6393ee433af190827e6e27e46d21319994",
+      "line_end": 244,
+      "line_start": 124,
+      "metrics": {
+        "attributes": 2,
+        "methods": 10
+      },
+      "path": "src/code_audit/drift/drift_monitor.py",
+      "strategy": "Extract Class / Extract Interface",
+      "symbol": "DriftTracker"
     },
     {
       "debt_type": "god_function",
@@ -302,6 +1925,30 @@
       "path": "src/code_audit/governance/sdk_boundary.py",
       "strategy": "Extract Method / Decompose Conditional",
       "symbol": "run"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:4d24f5d45fe34f9cd2a1478b4c84316c60300b3db98c89eacba1eb88043b2c15",
+      "line_end": 335,
+      "line_start": 264,
+      "metrics": {
+        "lines": 72
+      },
+      "path": "src/code_audit/insights/translator.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "_signal_from_security"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:23e11fa2e6d91aee7a58fb05f6d739dbb380dfd637adf35ca8df3266c0fb6adc",
+      "line_end": 425,
+      "line_start": 338,
+      "metrics": {
+        "lines": 88
+      },
+      "path": "src/code_audit/insights/translator.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "findings_to_signals"
     },
     {
       "debt_type": "deep_nesting",
@@ -366,8 +2013,8 @@
     {
       "debt_type": "god_function",
       "fingerprint": "sha256:0e228234aab383b6cf80f1544611a89e2ae9dc0716130d60e7ad006f314996ef",
-      "line_end": 199,
-      "line_start": 138,
+      "line_end": 200,
+      "line_start": 139,
       "metrics": {
         "lines": 62
       },
@@ -376,10 +2023,22 @@
       "symbol": "export_html"
     },
     {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:d3ed805f7b5ebf2186f9ce49692d01320af339a395b9103d8a77674233dadb0c",
+      "line_end": 155,
+      "line_start": 87,
+      "metrics": {
+        "lines": 69
+      },
+      "path": "src/code_audit/run_result.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "_compute_confidence_and_vibe"
+    },
+    {
       "debt_type": "deep_nesting",
       "fingerprint": "sha256:dce1c00bbfa4d2e946e5c85f51295b7285ace7f5ce2db361bd1ba6674a6d366d",
-      "line_end": 134,
-      "line_start": 78,
+      "line_end": 155,
+      "line_start": 87,
       "metrics": {
         "nesting_depth": 8
       },
@@ -390,10 +2049,10 @@
     {
       "debt_type": "god_function",
       "fingerprint": "sha256:b1e3f2132abd4012433227eba92eb2608230d9f73dc8c062421df3fa5c0504db",
-      "line_end": 217,
-      "line_start": 137,
+      "line_end": 309,
+      "line_start": 158,
       "metrics": {
-        "lines": 81
+        "lines": 152
       },
       "path": "src/code_audit/run_result.py",
       "strategy": "Extract Method / Decompose Conditional",
@@ -402,10 +2061,10 @@
     {
       "debt_type": "god_function",
       "fingerprint": "sha256:5b08a693b7e10870eaa9bcfe35b2185b8439541abb40de7af37e462d7fa8b1e5",
-      "line_end": 289,
-      "line_start": 222,
+      "line_end": 391,
+      "line_start": 314,
       "metrics": {
-        "lines": 68
+        "lines": 78
       },
       "path": "src/code_audit/run_result.py",
       "strategy": "Extract Method / Decompose Conditional",
@@ -414,8 +2073,8 @@
     {
       "debt_type": "long_parameter_list",
       "fingerprint": "sha256:a79004952033fa5e44b9e8b97a108e2ec46ae975089defb03c1c21e555293dc7",
-      "line_end": 289,
-      "line_start": 222,
+      "line_end": 391,
+      "line_start": 314,
       "metrics": {
         "param_count": 8
       },
@@ -438,8 +2097,8 @@
     {
       "debt_type": "god_function",
       "fingerprint": "sha256:440a850312917a56a9666023b475fc5540c2d8053b822b18c376b20d66e47481",
-      "line_end": 255,
-      "line_start": 189,
+      "line_end": 257,
+      "line_start": 191,
       "metrics": {
         "lines": 67
       },
@@ -450,8 +2109,8 @@
     {
       "debt_type": "god_function",
       "fingerprint": "sha256:a227065d01f3aa494f342ab50776af6a0fe63a0ef8bc8b31725670e3cad87b8f",
-      "line_end": 410,
-      "line_start": 257,
+      "line_end": 412,
+      "line_start": 259,
       "metrics": {
         "lines": 154
       },
@@ -472,6 +2131,18 @@
       "symbol": "generate_plan"
     },
     {
+      "debt_type": "long_parameter_list",
+      "fingerprint": "sha256:11b56137db031b133adf2629950a4a25a6f84b21441b215d27f1618f83f769b6",
+      "line_end": 92,
+      "line_start": 83,
+      "metrics": {
+        "param_count": 6
+      },
+      "path": "src/code_audit/utils/json_norm.py",
+      "strategy": "Introduce Parameter Object / Preserve Whole Object",
+      "symbol": "stable_json_dump"
+    },
+    {
       "debt_type": "god_function",
       "fingerprint": "sha256:8f1ddfb7768b94dee2c2ec3b62e224ed2b0f27323548d5d755eeb4fd15a2c2f6",
       "line_end": 144,
@@ -482,6 +2153,246 @@
       "path": "src/code_audit/utils/parse_truth_map.py",
       "strategy": "Extract Method / Decompose Conditional",
       "symbol": "parse_truth_map"
+    },
+    {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:f09b0b79b03f7a9bad8e623afa0276a7dacebe46eb964ff9ed7f4e9614147232",
+      "line_end": 52,
+      "line_start": 39,
+      "metrics": {
+        "nesting_depth": 5
+      },
+      "path": "src/code_audit/web_api/config.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "__post_init__"
+    },
+    {
+      "debt_type": "long_parameter_list",
+      "fingerprint": "sha256:9353d99b76efff057e006bcce58a33e584e4529d32148b62155a9a38cc0d86cc",
+      "line_end": 161,
+      "line_start": 91,
+      "metrics": {
+        "param_count": 6
+      },
+      "path": "src/code_audit/web_api/openapi_diff.py",
+      "strategy": "Introduce Parameter Object / Preserve Whole Object",
+      "symbol": "diff_openapi_core"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:fa70e788f0dbfcba3a5a782bd98637fa06b2a9057412166ed7414ee5b98b886a",
+      "line_end": 161,
+      "line_start": 91,
+      "metrics": {
+        "lines": 71
+      },
+      "path": "src/code_audit/web_api/openapi_diff.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "diff_openapi_core"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:24f1c0eea796eae049dd6a5b7ced8841fabd9bb41ccff18e348a7bdd6a0394d8",
+      "line_end": 329,
+      "line_start": 184,
+      "metrics": {
+        "lines": 146
+      },
+      "path": "src/code_audit/web_api/openapi_diff.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "_diff_operation_core"
+    },
+    {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:446ffc9f443304867273bef2aac08938f8a3a8f1d9c21bffd4900984a18cf162",
+      "line_end": 329,
+      "line_start": 184,
+      "metrics": {
+        "nesting_depth": 5
+      },
+      "path": "src/code_audit/web_api/openapi_diff.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "_diff_operation_core"
+    },
+    {
+      "debt_type": "long_parameter_list",
+      "fingerprint": "sha256:52260657ff3b793a807145bce6676dc2cd0b37085bc501a48edce829b7291af1",
+      "line_end": 329,
+      "line_start": 184,
+      "metrics": {
+        "param_count": 10
+      },
+      "path": "src/code_audit/web_api/openapi_diff.py",
+      "strategy": "Introduce Parameter Object / Preserve Whole Object",
+      "symbol": "_diff_operation_core"
+    },
+    {
+      "debt_type": "long_parameter_list",
+      "fingerprint": "sha256:3a2fc4ffca692055da20ded5efe444cf4266561482000ce2f0dc54429c1b8a53",
+      "line_end": 472,
+      "line_start": 332,
+      "metrics": {
+        "param_count": 9
+      },
+      "path": "src/code_audit/web_api/openapi_diff.py",
+      "strategy": "Introduce Parameter Object / Preserve Whole Object",
+      "symbol": "_diff_request_body"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:98c18c8bbf6fedcc730d681e28e2f1748df728c3ca4ec1aacf00b2e8247e115d",
+      "line_end": 472,
+      "line_start": 332,
+      "metrics": {
+        "lines": 141
+      },
+      "path": "src/code_audit/web_api/openapi_diff.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "_diff_request_body"
+    },
+    {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:b16aa89971ae38497b810e8de5436d099d9522c5aa14b9347e43bcc45fb41761",
+      "line_end": 472,
+      "line_start": 332,
+      "metrics": {
+        "nesting_depth": 5
+      },
+      "path": "src/code_audit/web_api/openapi_diff.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "_diff_request_body"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:3b2021bb5d61a898d35caa3856bd9e472f9c17985940b7b3b6644eb6fa99b43b",
+      "line_end": 639,
+      "line_start": 475,
+      "metrics": {
+        "lines": 165
+      },
+      "path": "src/code_audit/web_api/openapi_diff.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "_diff_responses_presence"
+    },
+    {
+      "debt_type": "long_parameter_list",
+      "fingerprint": "sha256:e380d72b4f9c5e1a3245db5456126fb74fcaf3b691dbf4abb140f1ec6ed5cd04",
+      "line_end": 639,
+      "line_start": 475,
+      "metrics": {
+        "param_count": 10
+      },
+      "path": "src/code_audit/web_api/openapi_diff.py",
+      "strategy": "Introduce Parameter Object / Preserve Whole Object",
+      "symbol": "_diff_responses_presence"
+    },
+    {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:e9b3e9b10c2094489fe6affd0df33a699bed3c3f41a5464a58289e50189b41e0",
+      "line_end": 639,
+      "line_start": 475,
+      "metrics": {
+        "nesting_depth": 6
+      },
+      "path": "src/code_audit/web_api/openapi_diff.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "_diff_responses_presence"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:cf1cb5bf13b97a3482c5c4cfde5ff718974f4eef7d89d51606129437c6a9b6d8",
+      "line_end": 768,
+      "line_start": 647,
+      "metrics": {
+        "lines": 122
+      },
+      "path": "src/code_audit/web_api/openapi_diff.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "apply_allowlist_policy"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:e609dd532aa51a4f891532ae7e49c0939200249dcc1d22c26348eb22dcb506cb",
+      "line_end": 199,
+      "line_start": 83,
+      "metrics": {
+        "lines": 117
+      },
+      "path": "src/code_audit/web_api/openapi_normalize.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "schema_signature"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:fb1a3e0784dd9750e5dd71dac429d2fea89e1c1ce6b492f1215a3d7ed400c011",
+      "line_end": 197,
+      "line_start": 100,
+      "metrics": {
+        "lines": 98
+      },
+      "path": "src/code_audit/web_api/openapi_normalize.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "sig_node"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:9b04859a9a845d8ddd72f7eef63ee56be06afe4f2f6d92f8e1639984da7f66b7",
+      "line_end": 347,
+      "line_start": 255,
+      "metrics": {
+        "lines": 93
+      },
+      "path": "src/code_audit/web_api/openapi_normalize.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "normalize_openapi"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:c676300abeb60905acb9e16005278d6304a95dd53c3e93068d274df2aab43885",
+      "line_end": 140,
+      "line_start": 26,
+      "metrics": {
+        "lines": 115
+      },
+      "path": "src/code_audit/web_api/schema_semver.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "compare_schema_semver"
+    },
+    {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:ef2a0a933fa1ef52dc4c288f7521f03863d27fe543efaedc5ce6eede163bbbe2",
+      "line_end": 140,
+      "line_start": 26,
+      "metrics": {
+        "nesting_depth": 5
+      },
+      "path": "src/code_audit/web_api/schema_semver.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "compare_schema_semver"
+    },
+    {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:931b003bcb8f20adadd7e21d8b96f2123c8af1129355f103f3a9b8b4523fdf48",
+      "line_end": 200,
+      "line_start": 143,
+      "metrics": {
+        "nesting_depth": 5
+      },
+      "path": "src/code_audit/web_api/schema_semver.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "_compare_bounds"
+    },
+    {
+      "debt_type": "long_parameter_list",
+      "fingerprint": "sha256:582fa756ac0648314abe84877c07d0a9844588afc91d1ad390d0b0b43b23745c",
+      "line_end": 247,
+      "line_start": 203,
+      "metrics": {
+        "param_count": 7
+      },
+      "path": "src/code_audit/web_api/schema_semver.py",
+      "strategy": "Introduce Parameter Object / Preserve Whole Object",
+      "symbol": "_compare_string_constraints"
     },
     {
       "debt_type": "deep_nesting",
@@ -496,6 +2407,18 @@
       "symbol": "do_work"
     },
     {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:ae5102656e2d622897d38113bf48067d103417fd2d69087f26b8b3013e958968",
+      "line_end": 68,
+      "line_start": 45,
+      "metrics": {
+        "nesting_depth": 6
+      },
+      "path": "tests/fixtures/repos/sample_repo_exceptions/src/handlers.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "complex_branching"
+    },
+    {
       "debt_type": "god_function",
       "fingerprint": "sha256:2ed9fc4bf1abd50e4df3646006e95f953fc93580cd54283334057cf793f25607",
       "line_end": 72,
@@ -506,6 +2429,198 @@
       "path": "tests/fixtures/sample_repo_debt/big.py",
       "strategy": "Extract Method / Decompose Conditional",
       "symbol": "big_function"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:746d1faf43e885359c700838510ae64138dfb6e64c52434315626a055421b126",
+      "line_end": 159,
+      "line_start": 62,
+      "metrics": {
+        "lines": 98
+      },
+      "path": "tests/rescue/test_extraction_plan.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "generate_god_class_plan"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:23895f9594023e911a267b0bf98d225927ed255e4eb14a4cc65cff14f4bdffd4",
+      "line_end": 265,
+      "line_start": 162,
+      "metrics": {
+        "lines": 104
+      },
+      "path": "tests/rescue/test_extraction_plan.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "generate_god_function_plan"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:bf0632ffc50d010b4faa252438f1066ed865d751e24475f57692c0de84fa1065",
+      "line_end": 411,
+      "line_start": 268,
+      "metrics": {
+        "lines": 144
+      },
+      "path": "tests/rescue/test_extraction_plan.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "generate_large_file_plan"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:ffc4c73c9480ba1c835ecfab2bf1b380e8400664c2abf571253f3f3d634966df",
+      "line_end": 510,
+      "line_start": 414,
+      "metrics": {
+        "lines": 97
+      },
+      "path": "tests/rescue/test_extraction_plan.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "generate_deep_nesting_plan"
+    },
+    {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:e7f43d0862eae32cfb8d19e441a8e3f7a71c12de8d612c8da53db03df5d83f28",
+      "line_end": 291,
+      "line_start": 257,
+      "metrics": {
+        "nesting_depth": 7
+      },
+      "path": "tests/rescue/test_smell_detection.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "detect_mutable_defaults"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:70c1079c2d6665dfe50d594ac84658ae907eac77e3c003be6ca04d401baf8f29",
+      "line_end": 549,
+      "line_start": 486,
+      "metrics": {
+        "lines": 64
+      },
+      "path": "tests/rescue/test_smell_detection.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "test_generate_rescue_summary"
+    },
+    {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:daf1b9ff71f326db612613ccd44fc507681225e8895b9081f4883b59c68e026c",
+      "line_end": 217,
+      "line_start": 204,
+      "metrics": {
+        "nesting_depth": 5
+      },
+      "path": "tests/template/test_migration_validator.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "run_check"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:13103cc65a7c5165827adf21181ff2796be4dd38bc508ffb09c49e943ebb67a8",
+      "line_end": 108,
+      "line_start": 37,
+      "metrics": {
+        "lines": 72
+      },
+      "path": "tests/test_cli_ratchet_compare_violation_subprocess.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "test_debt_compare_returns_1_on_new_debt"
+    },
+    {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:05b076f07fb31fdb34f7ab4e5f1a8f84e7d35464d8643d434e5798bb1125e03a",
+      "line_end": 148,
+      "line_start": 136,
+      "metrics": {
+        "nesting_depth": 5
+      },
+      "path": "tests/test_confidence_golden_requires_confidence_version_bump.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "_extract_internal_imports"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:c0ed441783cc413acb1c5e28db07a860d7871faa602c8d5ea181b464766a1a8a",
+      "line_end": 408,
+      "line_start": 297,
+      "metrics": {
+        "lines": 112
+      },
+      "path": "tests/test_confidence_golden_requires_confidence_version_bump.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "test_confidence_golden_surface_requires_confidence_version_bump"
+    },
+    {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:c38594dbe6b1a2e40a2089d5b9e7d565af8d45acda07a724a0ca6709b2308551",
+      "line_end": 154,
+      "line_start": 142,
+      "metrics": {
+        "nesting_depth": 5
+      },
+      "path": "tests/test_confidence_policy_requires_signal_logic_bump.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "_extract_internal_imports"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:2ea145e57e844cd7a553f5d6677780a87caee586d37628c33cdd83d9f07590f2",
+      "line_end": 158,
+      "line_start": 98,
+      "metrics": {
+        "lines": 61
+      },
+      "path": "tests/test_contract_coverage_lint_version_gate_targets.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "test_dedicated_version_gates_reference_correct_artifact_files"
+    },
+    {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:3fffbcd37866ae8750891773a7144c1e546fdfb9284d73fb79afae4150014c16",
+      "line_end": 145,
+      "line_start": 126,
+      "metrics": {
+        "nesting_depth": 6
+      },
+      "path": "tests/test_contract_manifest_self_consistency.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "_gate_files"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:21b210db8a72bac0a5cadbaef425300f75e10fb1d1023f53f00e3eb3e8960bc2",
+      "line_end": 328,
+      "line_start": 198,
+      "metrics": {
+        "lines": 131
+      },
+      "path": "tests/test_contract_manifest_self_consistency.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "test_promoted_artifacts_declare_coverage_intent"
+    },
+    {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:c1a2a6f8d462731cbde52e1176fdae0a2e07ba32151b2bc4299aef7b462b5830",
+      "line_end": 328,
+      "line_start": 198,
+      "metrics": {
+        "nesting_depth": 5
+      },
+      "path": "tests/test_contract_manifest_self_consistency.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "test_promoted_artifacts_declare_coverage_intent"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:d124f3f32119635cec812b7c019f5975d5dbfb89f6d645fc4eaa8ed62d348108",
+      "line_end": 127,
+      "line_start": 64,
+      "metrics": {
+        "lines": 64
+      },
+      "path": "tests/test_contract_parity_cli_api_debt_ci.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "test_contract_parity_debt_compare_ci"
     },
     {
       "debt_type": "long_parameter_list",
@@ -546,6 +2661,43 @@
       "symbol": "TestDuplicationAnalyzer"
     },
     {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:838744f5fee78164fdbb161c2c8e2edf8c70c176454999c2f4294b8d2dcf870e",
+      "line_end": 150,
+      "line_start": 68,
+      "metrics": {
+        "lines": 83
+      },
+      "path": "tests/test_duration_monotonicity.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "test_human_duration_bruteforce_monotonic_minutes_0_to_90000"
+    },
+    {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:8094f8ca222c3fa969ecc53f99117574c40e15f14189dd12424f0e62c617886b",
+      "line_end": 138,
+      "line_start": 117,
+      "metrics": {
+        "nesting_depth": 5
+      },
+      "path": "tests/test_exit_code_policy_requires_signal_logic_bump.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "_semantic_hash_policy_surface"
+    },
+    {
+      "debt_type": "god_class",
+      "fingerprint": "sha256:0e6935d5fcc7d8339016b3c08c882869eb4fceaabeb25e91e7c531f9d7564d0f",
+      "line_end": 235,
+      "line_start": 167,
+      "metrics": {
+        "attributes": 0,
+        "methods": 11
+      },
+      "path": "tests/test_exit_codes_contract.py",
+      "strategy": "Extract Class / Extract Interface",
+      "symbol": "TestCiRequiredKeysGuard"
+    },
+    {
       "debt_type": "god_class",
       "fingerprint": "sha256:c515d89e96d7b23d90c50c5ffd18bd3959ab3d987ee55734319cebd95682adb2",
       "line_end": 146,
@@ -557,6 +2709,30 @@
       "path": "tests/test_file_sizes.py",
       "strategy": "Extract Class / Extract Interface",
       "symbol": "TestFileSizesAnalyzer"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:a8ca78497aabc1a96ed5597cdb92b0615951817360bb902f743b7794956d25f5",
+      "line_end": 130,
+      "line_start": 58,
+      "metrics": {
+        "lines": 73
+      },
+      "path": "tests/test_golden_fixtures.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "_normalize"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:dc63c99b47250f4a5369dca76bd3fe68d6b20cc62d6b7427a8ea0a3acbc52f0e",
+      "line_end": 170,
+      "line_start": 103,
+      "metrics": {
+        "lines": 68
+      },
+      "path": "tests/test_golden_manifest_requires_signal_logic_bump.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "test_golden_fixtures_manifest_matches_and_requires_signal_logic_version_bump"
     },
     {
       "debt_type": "god_class",
@@ -596,6 +2772,42 @@
       "path": "tests/test_governance.py",
       "strategy": "Extract Class / Extract Interface",
       "symbol": "TestLegacyUsageAnalyzer"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:fda900ac7925e6f170236027d7b96fc8473b73f5eaccdb858aae4a7763eb1806",
+      "line_end": 314,
+      "line_start": 246,
+      "metrics": {
+        "lines": 69
+      },
+      "path": "tests/test_namespace_authority_drift_analyzer.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "test_scan_project_wires_namespace_authority_context"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:d9104e894f406bdc439394a5ba121ce2c773b3458b877788fbc38cfa2a0cbcb8",
+      "line_end": 273,
+      "line_start": 92,
+      "metrics": {
+        "lines": 182
+      },
+      "path": "tests/test_openapi_scrub_audit_baseline.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "test_openapi_scrub_audit_matches_baseline"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:57c5f8c2f541f3f3f8b3838bed64d3bb6fad1878dc58bd5d5534f9769da19df2",
+      "line_end": 118,
+      "line_start": 51,
+      "metrics": {
+        "lines": 68
+      },
+      "path": "tests/test_openapi_scrub_baseline_requires_signal_logic_bump.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "test_openapi_scrub_baseline_requires_signal_logic_bump"
     },
     {
       "debt_type": "long_parameter_list",
@@ -660,6 +2872,90 @@
       "path": "tests/test_phase7.py",
       "strategy": "Extract Class / Extract Interface",
       "symbol": "TestCLISmoke"
+    },
+    {
+      "debt_type": "long_parameter_list",
+      "fingerprint": "sha256:2d7af980b9ef43f580d8cba1e41f130dea6aa3024f9db5bc0644db7a9b37c3e9",
+      "line_end": 104,
+      "line_start": 61,
+      "metrics": {
+        "param_count": 14
+      },
+      "path": "tests/test_pr_scope_analyzer.py",
+      "strategy": "Introduce Parameter Object / Preserve Whole Object",
+      "symbol": "_write_manifest"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:ad20b4e9be456ef440582e0b147ddd8377e91926cb485c71b789f5cb1fc16d91",
+      "line_end": 145,
+      "line_start": 57,
+      "metrics": {
+        "lines": 89
+      },
+      "path": "tests/test_public_rules_registry_parity_contract.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "test_public_rule_ids_change_requires_registry_regen_and_signal_bump"
+    },
+    {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:985465524473325af77de300081de32b0a388dc43f7e23b733360b84844e88d8",
+      "line_end": 179,
+      "line_start": 119,
+      "metrics": {
+        "nesting_depth": 5
+      },
+      "path": "tests/test_release_bom_contract.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "test_release_bom_proves_golden_manifest_includes_promoted_openapi_artifacts"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:a1986c70f747002a5b7bc6b4d1b8da7fbb5b8b2559601f9ae569a208c206a37e",
+      "line_end": 179,
+      "line_start": 119,
+      "metrics": {
+        "lines": 61
+      },
+      "path": "tests/test_release_bom_contract.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "test_release_bom_proves_golden_manifest_includes_promoted_openapi_artifacts"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:d3e3b12e9e03b3a9e69256e98ba23071a4e657b04518eac5b73555719bef4a9b",
+      "line_end": 290,
+      "line_start": 231,
+      "metrics": {
+        "lines": 60
+      },
+      "path": "tests/test_release_bom_contract.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "test_release_bom_validates_endpoint_registry_against_schema_on_tagged_ci"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:476f668811d5aeaecf07c9fa738219750429a06b6d46bda45fc151b0c93f3e0b",
+      "line_end": 369,
+      "line_start": 296,
+      "metrics": {
+        "lines": 74
+      },
+      "path": "tests/test_release_bom_contract.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "test_release_bom_enforces_endpoint_registry_sorted_unique_on_tagged_ci"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:d5a1ed7f2fae73867543997d31b74fa3af3141772e66cbcc8f83a843e8ea6b39",
+      "line_end": 227,
+      "line_start": 143,
+      "metrics": {
+        "lines": 85
+      },
+      "path": "tests/test_release_openapi_registry_matches_snapshot.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "test_release_openapi_registry_exists_in_snapshot"
     },
     {
       "debt_type": "god_class",
@@ -751,6 +3047,43 @@
       "path": "tests/test_supporting_modules.py",
       "strategy": "Extract Class / Extract Interface",
       "symbol": "TestP6CLI"
+    },
+    {
+      "debt_type": "deep_nesting",
+      "fingerprint": "sha256:c39867d01adb040f859ca06239fcd7c504754f91a8589c0b648b4328848c90cb",
+      "line_end": 203,
+      "line_start": 148,
+      "metrics": {
+        "nesting_depth": 7
+      },
+      "path": "tests/test_version_bump_enforcement.py",
+      "strategy": "Extract Method / Replace Nested Conditional with Guard Clauses",
+      "symbol": "_discover_analyzers"
+    },
+    {
+      "debt_type": "god_function",
+      "fingerprint": "sha256:326b20c5fd676234f69eb1986b50ee36ce3e4cd4195c00ccd023fbfbd61ec226",
+      "line_end": 276,
+      "line_start": 206,
+      "metrics": {
+        "lines": 71
+      },
+      "path": "tests/test_version_bump_enforcement.py",
+      "strategy": "Extract Method / Decompose Conditional",
+      "symbol": "test_rule_logic_changes_require_version_bump"
+    },
+    {
+      "debt_type": "god_class",
+      "fingerprint": "sha256:7669d57bfb9a9a3d077121407567d0898789ec21a4fe93a12f418ebc60f80174",
+      "line_end": 474,
+      "line_start": 340,
+      "metrics": {
+        "attributes": 0,
+        "methods": 10
+      },
+      "path": "tests/test_vue_component_analyzer.py",
+      "strategy": "Extract Class / Extract Interface",
+      "symbol": "TestVueComponentAnalyzer"
     }
   ],
   "schema_version": "debt_snapshot_v1"

@@ -1,0 +1,14 @@
+{
+  "boe": {
+    "domain": "geometry",
+    "concept": "BOE"
+  },
+  "rmos": {
+    "domain": "feasibility",
+    "concept": "RMOS"
+  },
+  "brandnew": {
+    "domain": "greenfield",
+    "concept": "BrandNew"
+  }
+}

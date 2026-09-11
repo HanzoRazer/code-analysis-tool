@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "fixture \u2014 binding-less topology for suite dogfood",
+  "version": "1.0.0",
+  "domain_ownership": {
+    "geometry": {
+      "canonical_owner": "Geometry Layer",
+      "operational_owners": [
+        "IBG",
+        "Body Grid",
+        "BOE"
+      ],
+      "authority_tier": 2,
+      "consumers": [
+        "CAM",
+        "Export",
+        "Visualization"
+      ],
+      "forbidden_ownership": "Runtime systems may not redefine geometry semantics"
+    },
+    "topology": {
+      "canonical_owner": "CAD Topology Governance",
+      "operational_owners": [
+        "TopologyBuilder",
+        "ShellValidation"
+      ],
+      "authority_tier": 2,
+      "consumers": [
+        "Translators"
+      ],
+      "forbidden_ownership": "Translators may not generate topology"
+    }
+  },
+  "chains": {}
+}

@@ -105,7 +105,7 @@ class DeploymentConfig:
         except ImportError:
             raise ImportError("PyYAML required for config loading: pip install pyyaml")
 
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
 
         return cls(**{k: v for k, v in data.items() if hasattr(cls, k)})
@@ -268,7 +268,7 @@ class PythonDependencyValidator(BaseValidator):
     def _parse_requirements(self, path: Path) -> set[str]:
         """Parse requirements.txt into normalized package names."""
         installed = set()
-        for line in path.read_text().splitlines():
+        for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
             line = line.strip()
             if not line or line.startswith("#"):
                 continue
@@ -353,7 +353,7 @@ class DockerDirectoryValidator(BaseValidator):
             if not dockerfile.exists():
                 return findings  # No Dockerfile, skip
 
-        content = dockerfile.read_text()
+        content = dockerfile.read_text(encoding="utf-8", errors="replace")
 
         # Normalize continuation lines
         normalized = content.replace("\\\n", " ")
@@ -630,7 +630,7 @@ class DeploymentAnalyzer:
     """
 
     id: str = "deployment"
-    version: str = "1.0.0"
+    version: str = "1.0.1"
 
     # Registry of built-in validators
     _BUILTIN_VALIDATORS: dict[str, type[BaseValidator]] = {

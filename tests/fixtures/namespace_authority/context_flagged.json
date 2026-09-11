@@ -1,0 +1,27 @@
+{
+  "schema_version": "namespace_authority_context_v1",
+  "change": {
+    "base_ref": "origin/main",
+    "candidate_ref": "feature/rival-geometry",
+    "namespace_changes": [
+      {
+        "namespace": "rival",
+        "path": "services/api/app/rival",
+        "change": "added",
+        "declared_domain": "geometry",
+        "declared_concept": "Rival"
+      }
+    ]
+  },
+  "topology": {
+    "domain_ownership": {
+      "geometry": {
+        "canonical_owner": "Geometry Layer",
+        "operational_owners": ["IBG", "Body Grid", "BOE"],
+        "authority_tier": 2
+      }
+    },
+    "chains": {}
+  },
+  "source_registry": "fixture:synthetic"
+}

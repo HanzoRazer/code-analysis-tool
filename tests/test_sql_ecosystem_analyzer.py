@@ -741,13 +741,11 @@ class TestEdgeCases:
         # Should not crash
         assert isinstance(findings, list)
 
-    @pytest.mark.skipif(
-        __import__("sys").platform == "win32",
-        reason="Unicode encoding issues on Windows cp1252"
-    )
     def test_unicode_content(self, tmp_path: Path):
         sql_file = tmp_path / "unicode.sql"
-        sql_file.write_text("SELECT * FROM users WHERE name = '中文';")
+        sql_file.write_text(
+            "SELECT * FROM users WHERE name = '中文';", encoding="utf-8"
+        )
 
         analyzer = SQLEcosystemAnalyzer.from_root(tmp_path)
         findings = analyzer.run(tmp_path, [sql_file])
