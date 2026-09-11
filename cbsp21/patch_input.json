@@ -1,56 +1,70 @@
 {
   "schema_version": "cbsp21_patch_manifest_v1",
-  "patch_id": "CAT-0023",
-  "title": "Fix pytest BOM manifest gate on Python 3.11",
-  "intent": "Restore the failing pytest BOM manifest gate by making BOM manifest paths platform-stable and regenerating the recorded AST hashes with the same Python 3.11 runtime used in GitHub Actions.",
+  "patch_id": "GATE-WRONG-ARTIFACT-001",
+  "title": "Gate-validates-wrong-artifact detector (Tier 1 #5)",
+  "intent": "Flag a validation gate that inspects something other than the artifact the function ships: green gate, wrong artifact shipped. Two shapes: a value validated and then modified before it is returned (the gate ran before the artifact was final), and a locally built value validated and then abandoned while a different local build is returned (the gate checked the wrong object).",
   "change_type": "code",
   "behavior_change": "compatible",
   "risk_level": "low",
   "scope": {
     "paths_in_scope": [
-      "scripts/",
+      "src/code_audit/analyzers/",
       "tests/contracts/"
     ],
     "files_expected_to_change": [
-      "scripts/refresh_bom_manifest.py",
-      "tests/contracts/bom_manifest.json"
+      "src/code_audit/analyzers/gate_wrong_artifact.py",
+      "tests/test_gate_wrong_artifact_analyzer.py",
+      "src/code_audit/api.py",
+      "src/code_audit/model/__init__.py",
+      "tests/contracts/confidence_golden_manifest.json",
+      "tests/contracts/confidence_policy_manifest.json",
+      "tests/contracts/logic_manifest.json"
     ],
-    "out_of_scope_notes": "No analyzer, schema, or workflow logic changes. The fix is limited to the BOM refresh utility and the generated BOM manifest artifact it owns."
+    "out_of_scope_notes": "Ship sites are return statements only; write/export sinks and derivation tracing (is the shipped value derived from the validated one?) are left to a v2 pass, flagged by Finding.metadata gate_covers_shipped_confirmed=False. Under-detection is the deliberate trade: the abandoned signal requires the validated name to be a local build (not a parameter) that is entirely unused after the check, so validate(input); return transform(input) is not flagged."
   },
   "diff_range": {
-    "base": "79f9947",
+    "base": "3a4717e",
     "head": "working-tree"
   },
-  "changed_files_count": 2,
+  "changed_files_count": 7,
   "changed_files_exact": [
-    "scripts/refresh_bom_manifest.py",
-    "tests/contracts/bom_manifest.json"
+    "src/code_audit/analyzers/gate_wrong_artifact.py",
+    "src/code_audit/api.py",
+    "src/code_audit/model/__init__.py",
+    "tests/contracts/confidence_golden_manifest.json",
+    "tests/contracts/confidence_policy_manifest.json",
+    "tests/contracts/logic_manifest.json",
+    "tests/test_gate_wrong_artifact_analyzer.py"
   ],
   "diff_articulation": {
     "what_changed": [
-      "Normalized refresh_bom_manifest.py relative-path serialization to POSIX form with as_posix(), preventing Windows-only backslashes from being written into the shared manifest",
-      "Kept the refresh utility lint-clean while preserving behavior by modernizing a few local type hints and using importlib for the existing dynamic helper import",
-      "Regenerated tests/contracts/bom_manifest.json under Python 3.11 so the recorded script AST hashes match the GitHub Actions runtime and the manifest uses stable forward-slash paths"
+      "Added src/code_audit/analyzers/gate_wrong_artifact.py (GateWrongArtifactAnalyzer 1.0.0) with two rules: GATE_WRONG_ARTIFACT_MODIFIED_001 (validated, then reassigned or mutated, then returned) and GATE_WRONG_ARTIFACT_ABANDONED_001 (validated local build unused after the check while a different local build is returned). Per-function AST facts, no descent into nested scopes. finding_id is the make_fingerprint value, never empty.",
+      "Added AnalyzerType.GATE_WRONG_ARTIFACT and registered the analyzer in api._DEFAULT_ANALYZERS (the registry contract test requires the exact set).",
+      "Refreshed confidence_policy, confidence_golden and logic manifests on Python 3.11. The enum value sits in the confidence closure, so the two confidence hashes move; this is a benign closure change, signal_logic_version stays signals_v5.",
+      "Merged current main (3a4717e) into the branch, which was cut from 3802ccf. api.py and model/__init__.py conflicted additively (main added four analyzers since); resolved as a union, main's entries first.",
+      "Cleared three debt-ratchet items in the new analyzer without touching the baseline: removed a dead snippet computation and the src_lines parameter that only fed it (long_parameter_list on _emit_abandoned), made _finding take a Location (long_parameter_list), and split _visit into _visit_assign/_record_mutations with a flat if-dispatch instead of an elif chain, which nests in the AST (deep_nesting). Behavior-preserving: the 12 analyzer tests pass unchanged and old/new produce identical findings over the repo's 337 .py files."
     ],
-    "why_not_redundant": "Refreshing the manifest alone would fix this checkout today but would allow a future Windows refresh to break Linux CI again. Normalizing the stored paths removes that portability trap while the regenerated Python 3.11 hashes address the current pytest failure."
+    "why_not_redundant": "No existing analyzer relates a validation call to the value that leaves the function. The shape is the scale-validation defect class from the roadmap: every check passes while the shipped artifact was never checked, so no test or gate observes it."
   },
   "verification": {
     "commands_run": [
-      "python3.11 scripts/refresh_bom_manifest.py",
-      "python3.11 -m ruff check scripts/refresh_bom_manifest.py",
-      "python3.11 -m pytest tests/test_bom_manifest_gate.py tests/test_bom_js_ts_surface.py tests/test_release_bom_contract.py::test_release_bom_is_buildable_and_self_consistent -q"
+      "py -3.11 scripts/refresh_confidence_policy_manifest.py; ... refresh_confidence_golden_manifest.py; ... refresh_logic_manifest.py",
+      "PYTHONPATH=<worktree>/src py -3.11 <dogfood: GateWrongArtifactAnalyzer over src/, scripts/, tests/fixtures/repos/*>",
+      "CI=true CONFIDENCE_ENTRYPOINTS=src/code_audit/insights/confidence.py PYTHONPATH=<worktree>/src;<worktree> py -3.11 -m pytest -o addopts=\"\" -q -p no:cacheprovider",
+      "CI=true PYTHONHASHSEED=0 CODE_AUDIT_DETERMINISTIC=1 code-audit debt snapshot . --ci --out artifacts/current.json && code-audit debt compare . --baseline baselines/main.json --current artifacts/current.json --ci --json  (0 new)"
     ],
     "test_results": [
-      "BOM manifest refreshed successfully under Python 3.11",
-      "Ruff passed for scripts/refresh_bom_manifest.py",
-      "10 targeted BOM and release-contract pytest checks passed"
+      "tests/test_gate_wrong_artifact_analyzer.py: 12 tests covering both bug shapes and the non-flagged validate(input); return transform(input) pattern",
+      "Dogfood: 0 findings over 54 validation-named calls in src/ (17) and scripts/ (37) of the merged tree",
+      "Fixture repos: 0 findings across tests/fixtures/repos/*, so scan goldens are unchanged",
+      "Full suite, after the ratchet refactor: 1229 passed, 6 skipped, 0 failed"
     ],
-    "notes": "I also inspected the failing GitHub Actions job logs for job 89640614655 before changing code. The original CI failure was an AST hash mismatch in tests/test_bom_manifest_gate.py for scripts/check_release_bom_consistency.py; local reproduction under Python 3.11 additionally exposed the manifest path separator portability problem that this patch closes. In this sandbox, the Python 3.11 commands were executed via a temporary local py311 environment."
+    "notes": "Collect-all run (addopts cleared), not maxfail-masked. PYTHONPATH pinned to the worktree so the installed checkout is not imported."
   },
   "file_context_coverage_percent": 100.0,
   "metadata": {
-    "author": "GitHub Copilot",
-    "created_at": "2026-07-25T04:45:25Z",
+    "author": "Claude Opus 5",
+    "created_at": "2026-09-11T00:00:00Z",
     "reviewers": []
   }
 }

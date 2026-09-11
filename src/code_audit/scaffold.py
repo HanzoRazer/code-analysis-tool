@@ -983,7 +983,7 @@ def scaffold_api(root: Path, level: int = 1, force: bool = False) -> Dict[str, s
         full_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Write file
-        full_path.write_text(content.lstrip())
+        full_path.write_text(content.lstrip(), encoding="utf-8")
         results[file_path] = "CREATED"
 
     return results
