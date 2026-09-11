@@ -54,6 +54,7 @@ from code_audit.analyzers.namespace_authority_drift import (
     NamespaceAuthorityDriftAnalyzer,
 )
 from code_audit.analyzers.pr_scope import PrScopeAnalyzer, ReviewContext
+from code_audit.analyzers.gate_wrong_artifact import GateWrongArtifactAnalyzer
 from code_audit.core.discover import discover_py_files
 from code_audit.core.runner import run_scan
 from code_audit.model.finding import Finding
@@ -96,6 +97,7 @@ _DEFAULT_ANALYZERS = (
     HollowGuaranteeAnalyzer,
     PrScopeAnalyzer,
     NamespaceAuthorityDriftAnalyzer,
+    GateWrongArtifactAnalyzer,
 )
 
 
