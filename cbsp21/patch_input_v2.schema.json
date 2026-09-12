@@ -70,6 +70,27 @@
           "maximum": 100,
           "default": 95,
           "description": "Minimum percentage of merge-base..HEAD changed files that must fall inside the declared scope. 95 is the acceptance-contract floor; this field may only raise the bar, never lower it, and fractional thresholds are not supported."
+        },
+        "dependency_changes": {
+          "type": "array",
+          "uniqueItems": true,
+          "description": "Dependencies whose version this change intentionally moves inside a declared package.json. This is the only declaration pr_scope accepts for rule pr_scope.undeclared_dependency_change; naming a dependency in diff_articulation prose is recorded on the finding but does not declare it.",
+          "items": {
+            "oneOf": [
+              { "type": "string", "minLength": 1 },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["name"],
+                "properties": {
+                  "name": { "type": "string", "minLength": 1 },
+                  "from": { "type": "string" },
+                  "to": { "type": "string" },
+                  "reason": { "type": "string" }
+                }
+              }
+            ]
+          }
         }
       }
     },
