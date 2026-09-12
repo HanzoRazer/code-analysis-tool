@@ -92,9 +92,9 @@
     },
     {
       "class_name": "PrScopeAnalyzer",
-      "logic_hash": "sha256:50db758b76c39975a06d9aa1a4b76ef2321317151dcce950f9893da4831dee0b",
+      "logic_hash": "sha256:d19925a96f23eeb65515e7fa9c28bf23f1aa220b8a0a2ff701e949577c35f493",
       "module": "code_audit.analyzers.pr_scope",
-      "version": "2.0.0"
+      "version": "2.1.0"
     },
     {
       "class_name": "RoutersAnalyzer",

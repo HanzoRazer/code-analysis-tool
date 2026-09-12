@@ -36,7 +36,10 @@ It diffs `merge-base..HEAD` and reports:
 - **head drift** (HIGH) — optional, when `diff_range.head_sha` is set and the head has moved;
 - **observed-file mismatch** (HIGH) — `changed_files_exact` / `changed_files_count` disagree with the real diff. These are cross-checks, never authorization;
 - **coverage** (HIGH below threshold, MEDIUM at it) — in-scope share of the diff, or the declared `file_context_coverage_percent`. `scope.min_coverage_percent` may raise the 95% floor but never lower it;
+- **undeclared dependency change** (HIGH for a downgrade or a revert of a version the merge-base landed, otherwise MEDIUM) — a dependency version that moved inside a *declared* `package.json` without being listed in `scope.dependency_changes`. Declaring the file is not declaring every change in it. Only `scope.dependency_changes` declares; naming the dependency in `diff_articulation` prose is recorded on the finding (`mentioned_in_diff_articulation`) but does not silence it;
 - **uncheckable** (CRITICAL) — missing/malformed/wrong-version manifest, empty declared scope, unresolved ref, shallow clone, git failure or timeout. The check never fails quiet.
+
+**Version specifiers the dependency check cannot order.** Direction (downgrade / upgrade / same) comes only from a bare version behind at most one of `^ ~ >= > =`. Everything else is reported with direction `unknown` at MEDIUM, never skipped: compound ranges (`>=4.4.3 <5`, `1.2.3 - 2.0.0`, `a || b`), upper bounds (`<5`), wildcards and tags (`*`, `1.2.x`, `latest`), prerelease or build suffixes (`1.0.0-rc.1`), and non-registry sources (git or URL specs, `github:`, `file:`, `workspace:`, `npm:` aliases). A real downgrade written as a compound range is therefore MEDIUM rather than HIGH.
 
 Because drift detection needs a full merge-base, CI must check out with `fetch-depth: 0`; a shallow clone is CRITICAL rather than a pass.
 

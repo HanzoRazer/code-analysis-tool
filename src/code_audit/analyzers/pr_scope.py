@@ -104,6 +104,85 @@ def _normalized_path(value: str) -> str | None:
     return path
 
 
+# ── sub-file dependency-direction helpers (v2.1.0) ──────────────────
+# package.json at any depth (root or a workspace package).
+_PACKAGE_JSON_RE = re.compile(r"(^|/)package\.json$")
+# Leading semver-range operators to strip before a numeric compare.
+# An orderable specifier: at most one pinned or lower-bound operator, then a bare
+# numeric version and nothing else. See _parse_version for what falls outside.
+_ORDERABLE_SPEC_RE = re.compile(r"(?:\^|~|>=|>|=)?\s*v?(\d+)(?:\.(\d+))?(?:\.(\d+))?")
+_DEP_KEYS = ("dependencies", "devDependencies", "peerDependencies", "optionalDependencies")
+
+
+def _is_package_json(path: str) -> bool:
+    return bool(_PACKAGE_JSON_RE.search(path))
+
+
+def _parse_version(spec: str) -> tuple[int, int, int] | None:
+    """Numeric (major, minor, patch) of a single orderable specifier, else None.
+
+    Orderable: a bare version, optionally behind ONE of ``^ ~ >= > =`` and an
+    optional ``v`` — ``^4.4.3`` → (4, 4, 3); ``~3.25`` → (3, 25, 0).
+
+    Deliberately NOT ordered (returns None, so the caller records direction
+    'unknown' at MEDIUM — the change is still reported, never silently passed):
+
+    * compound ranges — ``>=4.4.3 <5``, ``1.2.3 - 2.0.0``, ``1 || 2``
+    * upper bounds — ``<5``, ``<=4.9.0`` (the bound is not the version in use)
+    * wildcards and tags — ``*``, ``1.2.x``, ``latest``, ``next``
+    * prerelease / build suffixes — ``1.0.0-rc.1`` (semver orders rc below the
+      release; comparing only the numeric core would call a downgrade 'same')
+    * non-registry sources — git/URL/``github:``/``file:``/``workspace:`` specs
+      and ``npm:`` aliases
+    """
+    m = _ORDERABLE_SPEC_RE.fullmatch(spec.strip())
+    if not m:
+        return None
+    return tuple(int(g) if g else 0 for g in m.groups())  # type: ignore[return-value]
+
+
+def _version_direction(base_spec: str, head_spec: str) -> str:
+    """'downgrade' | 'upgrade' | 'same' | 'unknown' comparing head vs base."""
+    b = _parse_version(base_spec)
+    h = _parse_version(head_spec)
+    if b is None or h is None:
+        return "unknown"
+    if h < b:
+        return "downgrade"
+    if h > b:
+        return "upgrade"
+    return "same"
+
+
+def _read_package_deps(root: Path, ref: str, path: str, timeout: float):
+    """Return (deps_dict, status). status ∈ {'ok','absent','malformed','git_error'}.
+
+    Reads the REAL git surface (``git show <ref>:<path>``) — never a caller-supplied
+    diff, preserving the no-injection guarantee. 'absent' (file not at that ref) is
+    treated as no-deps so an added/removed package.json is not mistaken for a change;
+    'malformed' (present but not JSON) is uncheckable.
+    """
+    res = _git(root, timeout, "show", f"{ref}:{path}")
+    if res.returncode != 0:
+        # Path not present at ref, or a git error. Either way there is no baseline
+        # dependency map on this side to compare against — treat as absent.
+        return {}, "absent"
+    try:
+        data = json.loads(res.stdout)
+    except (json.JSONDecodeError, ValueError):
+        return None, "malformed"
+    if not isinstance(data, dict):
+        return None, "malformed"
+    deps: dict[str, str] = {}
+    for key in _DEP_KEYS:
+        section = data.get(key)
+        if isinstance(section, dict):
+            for name, ver in section.items():
+                if isinstance(name, str) and isinstance(ver, str):
+                    deps[name] = ver
+    return deps, "ok"
+
+
 def _manifest_location(root: Path, path: Path) -> str:
     try:
         return path.resolve().relative_to(root.resolve()).as_posix()
@@ -129,7 +208,7 @@ class PrScopeAnalyzer:
     """Compare a branch diff with a CBSP21-declared file scope."""
 
     id: str = "pr_scope"
-    version: str = "2.0.0"
+    version: str = "2.1.0"
 
     def __init__(
         self,
@@ -488,6 +567,17 @@ class PrScopeAnalyzer:
                     ) + (["file_context_coverage"] if context_short else []),
                 },
             ))
+
+        # v2.1.0: sub-file dependency-direction check. File-level scope catches an
+        # undeclared *file*; it cannot see an undeclared *change inside a declared
+        # file* — the #296 shape, where a legitimately-declared package.json carried
+        # a second, undeclared zod downgrade. This looks INSIDE each declared
+        # package.json at dependency direction.
+        findings.extend(
+            _DependencyDirectionCheck(
+                self, root, merge_base, resolved["head"], declared, prefixes,
+            ).run(changed, manifest, scope)
+        )
         return findings
 
     # ── manifest helpers ────────────────────────────────────────────
@@ -580,6 +670,171 @@ class PrScopeAnalyzer:
             location=Location(path=path, line_start=1, line_end=1),
             fingerprint=fingerprint,
             metadata=finding_metadata,
+        )
+
+
+# ── sub-file dependency-direction check (v2.1.0) ────────────────────
+
+
+def _declared_dependency_names(
+    scope: dict[str, Any], manifest: dict[str, Any]
+) -> tuple[set[str], str]:
+    """Dependency names the manifest declares as intentionally changed, plus the
+    ``diff_articulation`` text.
+
+    Only ``scope.dependency_changes`` (a list of names or ``{name, ...}``
+    objects) declares a change. The articulation text is returned so a mention
+    can be *recorded* on the finding, but prose never declares: substring
+    matching is fuzzy, and a sentence such as "zod is untouched" would
+    otherwise silence exactly the zod downgrade this rule exists to catch.
+    """
+    names: set[str] = set()
+    dc = scope.get("dependency_changes")
+    if isinstance(dc, list):
+        for item in dc:
+            if isinstance(item, str):
+                names.add(item)
+            elif isinstance(item, dict) and isinstance(item.get("name"), str):
+                names.add(item["name"])
+    da = manifest.get("diff_articulation")
+    da_text = json.dumps(da) if da is not None else ""
+    return names, da_text
+
+
+def _mentioned_in(dep: str, text: str) -> bool:
+    """Whole-name mention of *dep* in *text*: ``react`` does not match
+    ``react-dom`` or ``preact``, and ``node`` does not match ``@types/node``."""
+    pattern = rf"(?<![\w@/.-]){re.escape(dep)}(?![\w/-]|\.\w)"
+    return re.search(pattern, text) is not None
+
+
+@dataclass(frozen=True, slots=True)
+class _DependencyDirectionCheck:
+    """Looks inside each declared, changed package.json for undeclared
+    dependency-version changes, between the merge-base and head.
+
+    Carries the resolved review context so the per-file and per-dependency
+    steps don't thread it through long argument lists. Findings are built with
+    the owning analyzer's constructors so rule ids, fingerprints and severities
+    stay identical to the rest of pr_scope.
+    """
+
+    analyzer: PrScopeAnalyzer
+    root: Path
+    merge_base: str
+    head: str
+    declared: list[str]
+    prefixes: list[str]
+
+    def run(
+        self, changed: list[str], manifest: dict[str, Any], scope: dict[str, Any]
+    ) -> list[Finding]:
+        # Every failure mode is a Finding — an exception escaping here would abort the
+        # scan, i.e. the silent pass this check exists to prevent. Belt-and-suspenders
+        # around the whole body.
+        try:
+            declared_deps, da_text = _declared_dependency_names(scope, manifest)
+            findings: list[Finding] = []
+            for path in changed:
+                # Sub-file rule applies to DECLARED package.json — an *undeclared*
+                # package.json is already flagged by pr_scope.undeclared_file.
+                if _is_package_json(path) and _is_declared(path, self.declared, self.prefixes):
+                    findings.extend(self._file_findings(path, declared_deps, da_text))
+            return findings
+        except Exception as exc:  # noqa: BLE001 — fail loud as a finding, never raise
+            return [self.analyzer._uncheckable(
+                f"Dependency-direction check raised {type(exc).__name__}: {exc}.",
+                ".", symbol="dependency_check", rule="pr_scope.dependency_check_error",
+            )]
+
+    def _read(self, ref: str, path: str):
+        return _read_package_deps(self.root, ref, path, self.analyzer.git_timeout)
+
+    def _file_findings(
+        self, path: str, declared_deps: set[str], da_text: str
+    ) -> list[Finding]:
+        base_deps, base_status = self._read(self.merge_base, path)
+        head_deps, head_status = self._read(self.head, path)
+
+        if base_status == "malformed" or head_status == "malformed":
+            return [self.analyzer._uncheckable(
+                f"'{path}' is not valid JSON at "
+                f"{'merge-base' if base_status == 'malformed' else 'head'}; "
+                "its dependency changes cannot be verified.",
+                path, symbol=path, rule="pr_scope.dependency_check_uncheckable",
+            )]
+        if base_deps is None or head_deps is None:  # defensive; malformed handled above
+            return []
+
+        findings: list[Finding] = []
+        for dep in sorted(set(base_deps) & set(head_deps)):
+            base_ver, head_ver = base_deps[dep], head_deps[dep]
+            if base_ver == head_ver:
+                continue  # unchanged
+            if dep in declared_deps:
+                continue  # declared in scope.dependency_changes — legitimate
+            findings.append(self._dependency_finding(
+                path, dep, base_ver, head_ver, _mentioned_in(dep, da_text)))
+        return findings
+
+    def _dependency_finding(
+        self, path: str, dep: str, base_ver: str, head_ver: str, mentioned: bool
+    ) -> Finding:
+        direction = _version_direction(base_ver, head_ver)
+        reverts = self._reverts_base_landing(path, dep, head_ver)
+
+        # A downgrade or an undone landing is HIGH; an upgrade, a version that is
+        # the same after normalization, or an 'unknown' range is MEDIUM.
+        severity = Severity.HIGH if direction == "downgrade" or reverts else Severity.MEDIUM
+
+        revert_note = (
+            " It reverts a dependency version the merge-base itself just "
+            "landed — silently undoing committed work."
+            if reverts else ""
+        )
+        mention_note = (
+            f" '{dep}' is mentioned in diff_articulation, but prose is not a "
+            f"declaration — list it in scope.dependency_changes."
+            if mentioned else ""
+        )
+        return self.analyzer._finding(
+            severity,
+            0.9,
+            f"Undeclared dependency change in declared file '{path}': "
+            f"{dep} {base_ver} → {head_ver} ({direction}). The file is in "
+            f"scope but this dependency change is not declared in "
+            f"scope.dependency_changes.{revert_note}{mention_note}",
+            path,
+            symbol=dep,
+            rule="pr_scope.undeclared_dependency_change",
+            metadata={
+                "dependency": dep,
+                "base_version": base_ver,
+                "head_version": head_ver,
+                "direction": direction,
+                "reverts_base_landing": reverts,
+                "mentioned_in_diff_articulation": mentioned,
+            },
+        )
+
+    def _reverts_base_landing(self, path: str, dep: str, head_ver: str) -> bool:
+        """True if the merge-base commit itself changed ``dep`` and the branch sets
+        it back to the pre-merge-base value — i.e. the branch undoes a landing.
+        Best-effort: any read failure returns False (never a raised exception)."""
+        parent_deps, status = self._read(f"{self.merge_base}~1", path)
+        if status != "ok" or parent_deps is None:
+            return False
+        base_deps, base_status = self._read(self.merge_base, path)
+        if base_status != "ok" or base_deps is None:
+            return False
+        parent_ver = parent_deps.get(dep)
+        base_ver = base_deps.get(dep)
+        # merge-base changed dep (parent != base), and the branch restores parent.
+        return (
+            parent_ver is not None
+            and base_ver is not None
+            and parent_ver != base_ver
+            and head_ver == parent_ver
         )
 
 
