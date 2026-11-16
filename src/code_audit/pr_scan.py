@@ -1,10 +1,21 @@
-"""Read-only pull-request scan orchestration.
+"""Pull-request scan orchestration that leaves the caller's checkout untouched.
 
 This module makes a GitHub pull request a first-class scan target without
 mutating the caller's checkout.  It resolves PR metadata with ``gh``, fetches
-the exact PR head into the local repository, materializes that commit in a
-temporary detached worktree, and runs the existing ``scan_project`` pipeline
-against the resulting tree.
+the exact PR head *and* the exact captured base commit into a private,
+per-run ref namespace, materializes the head in a temporary detached
+worktree, and runs the existing ``scan_project`` pipeline against that tree.
+
+Mutation guarantees (reported explicitly under ``execution`` rather than as a
+single ``read_only`` boolean):
+
+* target source files: never modified
+* caller checkout: branch, index and tracked files unchanged
+* Git administrative metadata: *temporarily* modified (fetched objects,
+  ``refs/code-audit/run/<token>/...`` refs, one worktree registration)
+* cleanup: the worktree registration and the private refs are removed and
+  the removal is verified; an unverified cleanup fails the scan (exit 2)
+  instead of reporting success
 
 V1 is deliberately observation-only:
 
@@ -18,30 +29,50 @@ Usage::
     python -m code_audit.pr_scan 296 --repo-root . --json
     python -m code_audit.pr_scan https://github.com/OWNER/REPO/pull/296 --repo-root .
 
+A URL target must name the same repository as ``--repo-root``; a mismatch is
+refused rather than silently scanning the same-numbered PR of the local repo.
+
 An optional ``--pr-scope-manifest`` path is interpreted relative to the PR
-worktree and activates the existing ``pr_scope`` analyzer during the scan.
+worktree (and must resolve inside it) and activates the existing ``pr_scope``
+analyzer during the scan.
 """
 from __future__ import annotations
 
 import argparse
+from collections.abc import Sequence
+from dataclasses import asdict, dataclass, field
 import json
+import math
+from pathlib import Path
 import re
 import subprocess
 import sys
 import tempfile
-from dataclasses import asdict, dataclass
-from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
+import uuid
 
 from code_audit.api import scan_project
 from code_audit.utils.json_norm import stable_json_dump
 
 _DEFAULT_TIMEOUT_SECONDS = 30.0
-_PR_URL_RE = re.compile(r"https://github\.com/[^/]+/[^/]+/pull/(?P<number>[1-9][0-9]*)(?:/.*)?$")
+_PR_URL_RE = re.compile(
+    r"https://github\.com/(?P<owner>[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)"
+    r"/(?P<repo>[A-Za-z0-9._-]+)/pull/(?P<number>[1-9][0-9]*)(?:/.*)?$"
+)
+_REMOTE_REPO_RE = re.compile(r"github\.com[:/](?P<owner>[^/:]+)/(?P<repo>[^/]+?)(?:\.git)?/*$")
+_SHA_RE = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?")
 
 
 class PrScanError(RuntimeError):
     """Raised when PR resolution/materialization cannot be completed safely."""
+
+
+@dataclass(frozen=True, slots=True)
+class PrSpec:
+    """A parsed PR target.  ``repository`` is set only for URL input."""
+
+    number: int
+    repository: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,6 +85,35 @@ class PullRequestTarget:
     base_sha: str
     head_ref: str
     head_sha: str
+
+
+@dataclass(slots=True)
+class MaterializedPr:
+    """Git administrative state created by one run, tracked for verified cleanup."""
+
+    worktree: Path
+    ref_prefix: str = ""
+    head_ref_local: str = ""
+    base_ref_local: str = ""
+    refs_created: list[str] = field(default_factory=list)
+    worktree_registered: bool = False
+
+
+def _validate_timeout(timeout: Any) -> float:
+    try:
+        value = float(timeout)
+    except (TypeError, ValueError) as exc:
+        raise PrScanError(f"timeout must be a number of seconds, got {timeout!r}") from exc
+    if not math.isfinite(value) or value <= 0:
+        raise PrScanError(
+            f"timeout must be a finite positive number of seconds, got {timeout!r}"
+        )
+    return value
+
+
+def _same_repo(a: str, b: str) -> bool:
+    # GitHub owner/repo names are case-insensitive.
+    return a.casefold() == b.casefold()
 
 
 def _run(
@@ -73,7 +133,7 @@ def _run(
             errors="strict",
             timeout=timeout,
         )
-    except (OSError, subprocess.TimeoutExpired, UnicodeError) as exc:
+    except (OSError, ValueError, subprocess.TimeoutExpired, UnicodeError) as exc:
         raise PrScanError(f"command failed to execute: {' '.join(args)}: {exc}") from exc
 
     if completed.returncode != 0:
@@ -85,17 +145,28 @@ def _run(
     return completed
 
 
-def _parse_pr_number(value: str) -> int:
+def _parse_pr_target(value: str) -> PrSpec:
     raw = value.strip()
-    if raw.isdigit() and int(raw) > 0:
-        return int(raw)
+    if raw.isascii() and raw.isdigit() and int(raw) > 0:
+        return PrSpec(number=int(raw))
     match = _PR_URL_RE.fullmatch(raw)
     if match:
-        return int(match.group("number"))
+        repo = match.group("repo")
+        if repo.endswith(".git"):
+            repo = repo[: -len(".git")]
+        return PrSpec(
+            number=int(match.group("number")),
+            repository=f"{match.group('owner')}/{repo}",
+        )
     raise PrScanError(
         "PR target must be a positive pull-request number or a canonical "
         "https://github.com/OWNER/REPO/pull/NUMBER URL"
     )
+
+
+def _parse_pr_number(value: str) -> int:
+    """PR number only.  Callers that accept URLs must use ``_parse_pr_target``."""
+    return _parse_pr_target(value).number
 
 
 def _require_repo_root(repo_root: Path, *, timeout: float) -> Path:
@@ -126,16 +197,46 @@ def _repo_name(root: Path, *, timeout: float) -> str:
     return result
 
 
+def _origin_repo_name(root: Path, *, timeout: float) -> str:
+    url = _run(
+        ["git", "remote", "get-url", "origin"], cwd=root, timeout=timeout
+    ).stdout.strip()
+    match = _REMOTE_REPO_RE.search(url)
+    if not match:
+        raise PrScanError(f"origin remote is not a GitHub repository URL: {url!r}")
+    return f"{match.group('owner')}/{match.group('repo')}"
+
+
 def resolve_pull_request(
     repo_root: Path,
     pr: str | int,
     *,
     timeout: float = _DEFAULT_TIMEOUT_SECONDS,
 ) -> PullRequestTarget:
-    """Resolve immutable PR refs from GitHub using the authenticated ``gh`` CLI."""
+    """Resolve immutable PR refs from GitHub using the authenticated ``gh`` CLI.
+
+    Fails closed when the PR cannot be attributed to the local repository: a
+    URL naming another repository, ``gh``'s repository differing from
+    ``origin`` (the remote commits are fetched from), or GitHub returning
+    metadata for a different PR number or repository.
+    """
+    timeout = _validate_timeout(timeout)
     root = _require_repo_root(repo_root, timeout=timeout)
-    number = _parse_pr_number(str(pr))
+    spec = _parse_pr_target(str(pr))
+    number = spec.number
     repository = _repo_name(root, timeout=timeout)
+
+    if spec.repository is not None and not _same_repo(spec.repository, repository):
+        raise PrScanError(
+            f"PR URL names repository {spec.repository} but --repo-root is a checkout "
+            f"of {repository}; refusing to scan PR #{number} of a different repository"
+        )
+    origin_repository = _origin_repo_name(root, timeout=timeout)
+    if not _same_repo(repository, origin_repository):
+        raise PrScanError(
+            f"gh resolves this checkout to {repository} but origin is "
+            f"{origin_repository}; refusing to fetch commits from a different repository"
+        )
 
     fields = "number,url,title,baseRefName,baseRefOid,headRefName,headRefOid"
     raw = _run(
@@ -156,6 +257,8 @@ def resolve_pull_request(
         data = json.loads(raw)
     except json.JSONDecodeError as exc:
         raise PrScanError(f"gh returned invalid PR metadata JSON: {exc}") from exc
+    if not isinstance(data, dict):
+        raise PrScanError("gh returned PR metadata that is not a JSON object")
 
     required = {
         "number": int,
@@ -168,11 +271,26 @@ def resolve_pull_request(
     }
     for key, expected_type in required.items():
         value = data.get(key)
-        if not isinstance(value, expected_type) or (isinstance(value, str) and not value):
+        if (
+            not isinstance(value, expected_type)
+            or isinstance(value, bool)
+            or (isinstance(value, str) and not value)
+        ):
             raise PrScanError(f"gh PR metadata missing/invalid field: {key}")
 
+    if data["number"] != number:
+        raise PrScanError(f"gh returned PR #{data['number']} when PR #{number} was requested")
+    expected_url = f"https://github.com/{repository}/pull/{number}"
+    if not _same_repo(data["url"], expected_url):
+        raise PrScanError(
+            f"gh returned PR URL {data['url']!r}; expected canonical {expected_url!r}"
+        )
+    for key in ("baseRefOid", "headRefOid"):
+        if not _SHA_RE.fullmatch(data[key]):
+            raise PrScanError(f"gh PR metadata field {key} is not a full commit SHA")
+
     return PullRequestTarget(
-        number=int(data["number"]),
+        number=number,
         url=data["url"],
         title=data["title"],
         repository=repository,
@@ -183,50 +301,188 @@ def resolve_pull_request(
     )
 
 
+def _fetch_and_verify(
+    root: Path,
+    refspec_src: str,
+    local_ref: str,
+    expected_sha: str,
+    label: str,
+    state: MaterializedPr,
+    *,
+    timeout: float,
+) -> None:
+    # Record before fetching: a fetch that times out mid-way may still have
+    # written the ref, and cleanup must cover it.
+    state.refs_created.append(local_ref)
+    _run(
+        [
+            "git",
+            "fetch",
+            "--no-tags",
+            "--no-write-fetch-head",
+            "origin",
+            f"+{refspec_src}:{local_ref}",
+        ],
+        cwd=root,
+        timeout=timeout,
+    )
+    resolved = _run(
+        ["git", "rev-parse", "--verify", f"{local_ref}^{{commit}}"],
+        cwd=root,
+        timeout=timeout,
+    ).stdout.strip()
+    if resolved != expected_sha:
+        raise PrScanError(
+            f"PR {label} mismatch while materializing: "
+            f"GitHub reported {expected_sha}, fetched {resolved}"
+        )
+
+
 def _materialize_pr_head(
     root: Path,
     target: PullRequestTarget,
     worktree: Path,
     *,
     timeout: float,
-) -> None:
-    # GitHub exposes PR heads under refs/pull/<n>/head even for fork PRs. Fetch
-    # into a private code-audit namespace so the caller's branches are untouched.
-    local_ref = f"refs/code-audit/pr/{target.number}/head"
-    _run(
-        [
-            "git",
-            "fetch",
-            "--no-tags",
-            "origin",
-            f"refs/pull/{target.number}/head:{local_ref}",
-        ],
-        cwd=root,
+    state: MaterializedPr | None = None,
+) -> MaterializedPr:
+    """Fetch the exact captured head *and* base commits; add a detached worktree.
+
+    Refs live under a per-run ``refs/code-audit/run/<token>/`` namespace so
+    concurrent runs never collide and the caller's branches, remote-tracking
+    refs and FETCH_HEAD are untouched.  Pass ``state`` to have it populated
+    incrementally so the caller can clean up after a partial failure; then
+    release everything with ``_cleanup_materialized``.
+    """
+    if state is None:
+        state = MaterializedPr(worktree=worktree)
+    state.worktree = worktree
+    state.ref_prefix = f"refs/code-audit/run/{uuid.uuid4().hex}"
+    state.head_ref_local = f"{state.ref_prefix}/pr-{target.number}/head"
+    state.base_ref_local = f"{state.ref_prefix}/pr-{target.number}/base"
+
+    # GitHub exposes PR heads under refs/pull/<n>/head even for fork PRs.
+    _fetch_and_verify(
+        root,
+        f"refs/pull/{target.number}/head",
+        state.head_ref_local,
+        target.head_sha,
+        "head",
+        state,
+        timeout=timeout,
+    )
+    # Materialize the *captured* base commit rather than the base branch's
+    # current tip, so base/head comparisons are attributable to the exact
+    # pair GitHub reported.
+    _fetch_and_verify(
+        root,
+        target.base_sha,
+        state.base_ref_local,
+        target.base_sha,
+        "base",
+        state,
         timeout=timeout,
     )
 
-    resolved = _run(
-        ["git", "rev-parse", local_ref],
-        cwd=root,
-        timeout=timeout,
-    ).stdout.strip()
-    if resolved != target.head_sha:
-        raise PrScanError(
-            "PR head moved while materializing: "
-            f"GitHub reported {target.head_sha}, fetched {resolved}"
-        )
-
-    # Fetch the base branch as remote-tracking context for diff-aware analyzers.
-    _run(
-        ["git", "fetch", "--no-tags", "origin", target.base_ref],
-        cwd=root,
-        timeout=timeout,
-    )
+    # Mark before the call: a partially-completed add still needs removal.
+    state.worktree_registered = True
     _run(
         ["git", "worktree", "add", "--detach", str(worktree), target.head_sha],
         cwd=root,
         timeout=timeout,
     )
+    return state
+
+
+def _cleanup_materialized(
+    root: Path, state: MaterializedPr, *, timeout: float
+) -> dict[str, Any]:
+    """Remove the run's worktree registration and private refs, then verify.
+
+    Never raises.  The returned report's ``verified`` flag is False whenever
+    any administrative state created by the run is still present (or its
+    absence could not be confirmed).
+    """
+    errors: list[str] = []
+
+    def attempt(args: list[str]) -> bool:
+        try:
+            _run(args, cwd=root, timeout=timeout)
+            return True
+        except PrScanError as exc:
+            errors.append(str(exc))
+            return False
+
+    worktree_removed = True
+    if state.worktree_registered:
+        if not attempt(["git", "worktree", "remove", "--force", str(state.worktree)]):
+            attempt(["git", "worktree", "prune"])
+        try:
+            listing = _run(
+                ["git", "worktree", "list", "--porcelain"], cwd=root, timeout=timeout
+            ).stdout
+        except PrScanError as exc:
+            errors.append(f"could not verify worktree removal: {exc}")
+            worktree_removed = False
+        else:
+            target = state.worktree.resolve()
+            registered = {
+                Path(line[len("worktree "):]).resolve()
+                for line in listing.splitlines()
+                if line.startswith("worktree ")
+            }
+            worktree_removed = target not in registered
+            if not worktree_removed:
+                errors.append(f"worktree still registered after cleanup: {state.worktree}")
+
+    refs_remaining: list[str] = []
+    if state.refs_created:
+        for ref in state.refs_created:
+            # A ref that was never written makes update-ref fail; the
+            # for-each-ref listing below is the authority on what remains.
+            try:
+                _run(["git", "update-ref", "-d", ref], cwd=root, timeout=timeout)
+            except PrScanError:
+                pass
+        try:
+            listing = _run(
+                ["git", "for-each-ref", "--format=%(refname)", state.ref_prefix],
+                cwd=root,
+                timeout=timeout,
+            ).stdout
+        except PrScanError as exc:
+            errors.append(f"could not verify ref removal: {exc}")
+            refs_remaining = list(state.refs_created)
+        else:
+            refs_remaining = [line for line in listing.splitlines() if line]
+            if refs_remaining:
+                errors.append(f"private refs still present after cleanup: {refs_remaining}")
+
+    return {
+        "worktree_removed": worktree_removed,
+        "refs_removed": not refs_remaining,
+        "verified": worktree_removed and not refs_remaining,
+        "errors": errors,
+    }
+
+
+def _resolve_manifest(worktree: Path, requested: Path) -> Path:
+    if requested.is_absolute() or requested.drive or ".." in requested.parts:
+        raise PrScanError("--pr-scope-manifest must be a safe path relative to the PR root")
+    root_resolved = worktree.resolve()
+    candidate = (worktree / requested).resolve()
+    # The lexical check above is not sufficient: a symlink committed in the PR
+    # tree can point anywhere.  Containment is enforced on the resolved path.
+    if not candidate.is_relative_to(root_resolved):
+        raise PrScanError(
+            "--pr-scope-manifest resolves outside the PR worktree: "
+            f"{requested.as_posix()}"
+        )
+    if not candidate.is_file():
+        raise PrScanError(
+            f"PR scope manifest does not exist in PR head: {requested.as_posix()}"
+        )
+    return candidate
 
 
 def scan_pull_request(
@@ -240,31 +496,24 @@ def scan_pull_request(
 ) -> dict[str, Any]:
     """Scan the exact head tree of a GitHub pull request.
 
-    The caller's working tree is never checked out or reset.  A temporary
-    detached worktree is always removed before return/raise.
+    The caller's working tree is never checked out or reset.  The temporary
+    worktree and private refs are removed before return/raise and the removal
+    is verified; if it cannot be verified this raises ``PrScanError`` instead
+    of returning a result.
     """
+    timeout = _validate_timeout(timeout)
     root = _require_repo_root(Path(repo_root), timeout=timeout)
     target = resolve_pull_request(root, pr, timeout=timeout)
 
     with tempfile.TemporaryDirectory(prefix="code-audit-pr-scan-") as temp_dir:
         worktree = Path(temp_dir) / "worktree"
-        materialized = False
+        state = MaterializedPr(worktree=worktree)
         try:
-            _materialize_pr_head(root, target, worktree, timeout=timeout)
-            materialized = True
+            _materialize_pr_head(root, target, worktree, timeout=timeout, state=state)
 
             manifest: Path | None = None
             if pr_scope_manifest is not None:
-                requested = Path(pr_scope_manifest)
-                if requested.is_absolute() or ".." in requested.parts:
-                    raise PrScanError(
-                        "--pr-scope-manifest must be a safe path relative to the PR root"
-                    )
-                manifest = worktree / requested
-                if not manifest.is_file():
-                    raise PrScanError(
-                        f"PR scope manifest does not exist in PR head: {requested.as_posix()}"
-                    )
+                manifest = _resolve_manifest(worktree, Path(pr_scope_manifest))
 
             _result, result_dict = scan_project(
                 worktree,
@@ -273,51 +522,63 @@ def scan_pull_request(
                 enable_js_ts=enable_js_ts,
                 pr_scope_manifest=manifest,
             )
-
-            return {
-                "schema_version": "pr_scan_v1",
-                "pull_request": asdict(target),
-                "execution": {
-                    "mode": "temporary_detached_worktree",
-                    "read_only": True,
-                    "caller_checkout_mutated": False,
-                    "pr_scope_manifest": (
-                        Path(pr_scope_manifest).as_posix()
-                        if pr_scope_manifest is not None
-                        else None
-                    ),
-                },
-                "run_result": result_dict,
-            }
-        finally:
-            if materialized:
-                cleanup = subprocess.run(
-                    ["git", "worktree", "remove", "--force", str(worktree)],
-                    cwd=root,
-                    check=False,
-                    capture_output=True,
-                    text=True,
-                    encoding="utf-8",
-                    errors="replace",
+        except BaseException as exc:
+            report = _cleanup_materialized(root, state, timeout=timeout)
+            if not report["verified"]:
+                # Never mask the primary failure, but never hide cleanup either.
+                exc.add_note(
+                    "pr_scan cleanup also failed; stale Git metadata may remain: "
+                    + "; ".join(report["errors"])
                 )
-                if cleanup.returncode != 0:
-                    # Best-effort prune keeps stale administrative entries from
-                    # accumulating; scan results must never pretend cleanup was clean.
-                    subprocess.run(
-                        ["git", "worktree", "prune"],
-                        cwd=root,
-                        check=False,
-                        capture_output=True,
-                        text=True,
-                        encoding="utf-8",
-                        errors="replace",
-                    )
+            raise
+
+        report = _cleanup_materialized(root, state, timeout=timeout)
+        if not report["verified"]:
+            raise PrScanError(
+                "scan completed but cleanup could not be verified; refusing to report "
+                "success. Stale Git metadata may remain: " + "; ".join(report["errors"])
+            )
+
+    return {
+        "schema_version": "pr_scan_v1",
+        "pull_request": asdict(target),
+        "execution": {
+            "mode": "temporary_detached_worktree",
+            "source_files_modified": False,
+            "caller_checkout_mutated": False,
+            "git_admin_metadata": {
+                "temporarily_modified": True,
+                "fetched_commits": {"head": target.head_sha, "base": target.base_sha},
+                "private_ref_count": len(state.refs_created),
+                "worktree_registered": state.worktree_registered,
+            },
+            "cleanup": {
+                "worktree_removed": report["worktree_removed"],
+                "refs_removed": report["refs_removed"],
+                "verified": report["verified"],
+            },
+            "pr_scope_manifest": (
+                Path(pr_scope_manifest).as_posix() if pr_scope_manifest is not None else None
+            ),
+        },
+        "run_result": result_dict,
+    }
+
+
+def _timeout_arg(value: str) -> float:
+    try:
+        return _validate_timeout(value)
+    except PrScanError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
 
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m code_audit.pr_scan",
-        description="Scan the exact head tree of a GitHub pull request without changing your checkout.",
+        description=(
+            "Scan the exact head tree of a GitHub pull request "
+            "without changing your checkout."
+        ),
     )
     parser.add_argument("pr", help="PR number or canonical GitHub pull-request URL")
     parser.add_argument("--repo-root", type=Path, default=Path("."))
@@ -330,7 +591,12 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--json", action="store_true", dest="json_out")
     parser.add_argument("--no-ci", action="store_false", dest="ci_mode", default=True)
     parser.add_argument("--disable-js-ts", action="store_false", dest="enable_js_ts", default=True)
-    parser.add_argument("--timeout", type=float, default=_DEFAULT_TIMEOUT_SECONDS)
+    parser.add_argument(
+        "--timeout",
+        type=_timeout_arg,
+        default=_DEFAULT_TIMEOUT_SECONDS,
+        help="Per-command timeout in seconds (finite, > 0).",
+    )
     return parser
 
 
@@ -347,6 +613,8 @@ def main(argv: list[str] | None = None) -> int:
         )
     except PrScanError as exc:
         print(f"error: {exc}", file=sys.stderr)
+        for note in getattr(exc, "__notes__", ()):
+            print(f"note: {note}", file=sys.stderr)
         return 2
 
     if args.json_out:
