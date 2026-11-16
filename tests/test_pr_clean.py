@@ -24,11 +24,16 @@ def _assessment(*claims: dict) -> dict:
     return {"schema_version": "pr_clean_assessment_v1", "source": "test", "claims": list(claims)}
 
 
-def _finding(rule: str, path: str, fp: str | None = None) -> dict:
-    f = {"metadata": {"rule_id": rule}, "location": {"path": path}}
-    if fp:
-        f["fingerprint"] = fp
-    return f
+def _finding(rule: str, path: str, fp: str, line: int = 1, end: int | None = None) -> dict:
+    return {
+        "fingerprint": fp,
+        "metadata": {"rule_id": rule},
+        "location": {"path": path, "line_start": line, "line_end": end},
+    }
+
+
+def _result(*findings: dict) -> dict:
+    return {"schema_version": "run_result_v1", "findings_raw": list(findings)}
 
 
 @pytest.fixture
@@ -46,7 +51,7 @@ def wired(pr_repo, monkeypatch: pytest.MonkeyPatch):  # noqa: F811
             "manifest": kwargs.get("pr_scope_manifest"),
         }
         findings = [_finding("R1", "feature.py", "fp-new")] if kind == "pr-head" else []
-        return object(), {"findings": findings}
+        return object(), _result(*findings)
 
     monkeypatch.setattr(pr_clean, "scan_project", fake_scan)
     return caller, target, seen
@@ -182,6 +187,9 @@ def test_manifest_resolved_inside_head_worktree(wired):
     caller, _target, seen = wired
     report = build_plan(caller, 7, assessment=_assessment(), pr_scope_manifest="feature.py")
     assert seen["pr-head"]["manifest"].name == "feature.py"
+    # Same scan configuration on base: the identical manifest is applied there too.
+    assert seen["pr-base"]["manifest"] == seen["pr-head"]["manifest"]
+    assert report["comparability"]["pr_scope_manifest_applied_to"] == ["head", "base"]
     assert report["scope"]["pr_scope_manifest"] == "feature.py"
 
 
@@ -207,7 +215,6 @@ def test_cli_rejects_bad_timeout(tmp_path, capsys):
         ({"rule_id": "R1"}, [_finding("R1", "a.py", "x")], [], "pr_introduced"),
         ({"rule_id": "R1"}, [_finding("R1", "a.py", "x")], [_finding("R1", "a.py", "x")],
          "pre_existing"),
-        ({"rule_id": "R1"}, [_finding("R1", "a.py")], [_finding("R1", "a.py")], "pre_existing"),
         ({"rule_id": "R1"}, [_finding("R1", "a.py", "x")], [_finding("R1", "a.py", "y")],
          "needs_human_decision"),
         ({"rule_id": "R1"}, [], [_finding("R1", "a.py", "x")], "unsupported_by_tool"),
@@ -216,14 +223,39 @@ def test_cli_rejects_bad_timeout(tmp_path, capsys):
         ({"rule_id": "R1", "path": "sub\\a.py"}, [_finding("R1", "sub/a.py", "x")], [],
          "pr_introduced"),
         ({}, [_finding("R1", "a.py", "x")], [], "needs_human_decision"),
+        # Base has A; head has A plus a new B. An unlocated claim is ambiguous,
+        # never silently pre_existing.
+        ({"rule_id": "R1", "path": "a.py"},
+         [_finding("R1", "a.py", "A", 3), _finding("R1", "a.py", "B", 9)],
+         [_finding("R1", "a.py", "A", 3)], "needs_human_decision"),
+        # ...the claim's line pins B, which is new while A persists.
+        ({"rule_id": "R1", "path": "a.py", "line": 9},
+         [_finding("R1", "a.py", "A", 3), _finding("R1", "a.py", "B", 9)],
+         [_finding("R1", "a.py", "A", 3)], "pr_introduced"),
+        # ...the claim's line pins A, which exists on base.
+        ({"rule_id": "R1", "path": "a.py", "line": 3},
+         [_finding("R1", "a.py", "A", 3), _finding("R1", "a.py", "B", 9)],
+         [_finding("R1", "a.py", "A", 3)], "pre_existing"),
+        # Line inside a multi-line finding span.
+        ({"rule_id": "R1", "path": "a.py", "line": 5},
+         [_finding("R1", "a.py", "B", 4, 6)], [], "pr_introduced"),
+        # Rule/path reproduced, but nothing at the claimed line.
+        ({"rule_id": "R1", "path": "a.py", "line": 50},
+         [_finding("R1", "a.py", "B", 9)], [], "needs_human_decision"),
+        # A line without a path cannot be located.
+        ({"rule_id": "R1", "line": 9}, [_finding("R1", "a.py", "B", 9)], [],
+         "needs_human_decision"),
+        # Base finding gone while a new one appeared: identity may have changed.
+        ({"rule_id": "R1", "path": "a.py", "line": 9}, [_finding("R1", "a.py", "B", 9)],
+         [_finding("R1", "a.py", "A", 3)], "needs_human_decision"),
     ],
 )
 def test_classification(claim, head, base, status):
     claim = {"claim_id": "C1", "summary": "s", **claim}
     out = verify_assessment(
         _assessment(claim),
-        base_run_result={"findings": base},
-        head_run_result={"findings": head},
+        base_run_result=_result(*base),
+        head_run_result=_result(*head),
     )
     assert out["claims"][0]["status"] == status
     assert out["counts"][status] == 1
@@ -248,3 +280,82 @@ def test_assessment_validation(assessment, match, tmp_path):
     path.write_text(json.dumps(assessment), encoding="utf-8")
     with pytest.raises(PrCleanError, match=match):
         pr_clean._load_assessment(path)
+
+
+# ------------------------------------------------ scan-result integrity
+
+
+@pytest.mark.parametrize(
+    ("result", "match"),
+    [
+        ({"findings": []}, "findings_raw"),
+        ({"findings_raw": {}}, "findings_raw"),
+        ({"findings_raw": ["x"]}, "must be an object"),
+        ({"findings_raw": [{"location": {"path": "a.py"}}]}, "fingerprint"),
+        ({"findings_raw": [{"fingerprint": "f"}]}, "location"),
+        ({"findings_raw": [{"fingerprint": "f", "location": {"path": ""}}]}, "path"),
+        ({"findings_raw": [{"fingerprint": "f", "location": {"path": "a", "line_start": True}}]},
+         "line_start"),
+    ],
+)
+def test_malformed_scan_result_is_rejected_not_read_as_empty(result, match):
+    good = _result()
+    with pytest.raises(PrCleanError, match=match):
+        verify_assessment(_assessment(), base_run_result=good, head_run_result=result)
+    with pytest.raises(PrCleanError, match=match):
+        verify_assessment(_assessment(), base_run_result=result, head_run_result=good)
+
+
+def test_verifies_against_real_scanner_output(tmp_path):
+    """Real scan_project output (run_result_v1 findings_raw) is what gets compared."""
+    from code_audit.api import scan_project
+
+    base = tmp_path / "base"
+    head = tmp_path / "head"
+    base.mkdir()
+    head.mkdir()
+    (base / "a.py").write_text("def f():\n    return 1\n", encoding="utf-8")
+    (head / "a.py").write_text(
+        "def f():\n    try:\n        pass\n    except:\n        pass\n", encoding="utf-8"
+    )
+    _rr, base_result = scan_project(base, ci_mode=True)
+    _rr, head_result = scan_project(head, ci_mode=True)
+    out = verify_assessment(
+        _assessment({"claim_id": "C1", "summary": "bare except", "rule_id": "EXC-BARE-001",
+                     "path": "a.py", "line": 4}),
+        base_run_result=base_result,
+        head_run_result=head_result,
+    )
+    assert out["claims"][0]["status"] == "pr_introduced"
+
+
+def test_skipped_analyzer_fails_closed_and_cleans_up(wired, monkeypatch):
+    """A scan in which the runner skipped an analyzer is not comparable."""
+    import logging
+
+    caller, _target, _seen = wired
+    before = _caller_snapshot(caller)
+
+    def partial_scan(root, **kwargs):
+        if kwargs["project_id"].startswith("pr-base:"):
+            logging.getLogger("code_audit.core.runner").warning(
+                "Analyzer '%s' raised an exception — skipped", "exceptions"
+            )
+        return object(), _result()
+
+    monkeypatch.setattr(pr_clean, "scan_project", partial_scan)
+    with pytest.raises(PrCleanError, match="pr-base:.*scan incomplete"):
+        build_plan(caller, 7, assessment=_assessment())
+    assert _caller_snapshot(caller) == before
+    assert _git(caller, "for-each-ref", "refs/code-audit") == ""
+
+
+def test_report_states_comparability(wired):
+    caller, _target, _seen = wired
+    report = build_plan(caller, 7, assessment=_assessment())
+    assert report["comparability"] == {
+        "scans_completed": True,
+        "analyzers_skipped": 0,
+        "identical_scan_configuration": True,
+        "pr_scope_manifest_applied_to": [],
+    }

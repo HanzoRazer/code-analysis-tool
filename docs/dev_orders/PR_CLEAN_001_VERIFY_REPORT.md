@@ -82,14 +82,34 @@ python -m code_audit.pr_clean 296 \
 ## Verification semantics
 
 The tool scans the exact PR head and exact recorded base SHA independently.
-For claims with a suite `rule_id`, rule/path matches are compared between the
-two scans. Fingerprint identity is used when available.
 
-The algorithm is intentionally conservative. If the same rule/path appears on
-base but finding identity changes, the claim is routed to human adjudication
-instead of being called PR-introduced.
+**Comparability first.** Both scans use identical analyzer configuration,
+including the `--pr-scope-manifest` (resolved inside the head and applied to
+both sides). The runner skips an analyzer that raises or times out; any such
+skip on either side fails the run (exit 2), because "absent on base" means
+nothing if the base scan was incomplete. Each scan's `findings_raw` must be a
+well-formed `run_result_v1` array (object entries with a fingerprint and a
+location path); malformed output is an error, never "no findings". The report's
+`comparability` block records this.
 
-Claims without an independently checkable rule ID are also routed to human
+**Matching.** A claim with a suite `rule_id` is matched by rule and, when given,
+by `path`. When a `line` is also given, the claimed findings are those on head
+whose `line_start..line_end` span covers it. Findings are then compared by
+fingerprint (required on every finding):
+
+| Head (claimed) vs base | Status |
+|---|---|
+| rule/path not reproduced on head | `unsupported_by_tool` |
+| reproduced on head but not at the claimed line | `needs_human_decision` |
+| rule/path absent on base | `pr_introduced` |
+| every claimed fingerprint present on base | `pre_existing` |
+| claimed set mixes base and new fingerprints (e.g. base has A, head has A and B, claim does not pin B) | `needs_human_decision` |
+| a base fingerprint disappeared while a new one appeared (identity may have shifted) | `needs_human_decision` |
+| claimed fingerprints new, every base fingerprint still on head | `pr_introduced` |
+
+A shared fingerprint therefore never downgrades a new finding to
+`pre_existing`: ambiguity goes to a human. A `line` without a `path`, and claims
+without an independently checkable rule ID, are also routed to human
 adjudication. This is intentional: review prose is not executable authority.
 
 ## Acquisition and cleanup contract
