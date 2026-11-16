@@ -16,6 +16,7 @@ import pytest
 from code_audit import pr_scan
 from code_audit.pr_scan import (
     PrScanError,
+    PrScanOptions,
     PullRequestTarget,
     _parse_pr_number,
     _parse_pr_target,
@@ -246,7 +247,7 @@ def test_returned_metadata_must_match_request(
 @pytest.mark.parametrize("bad", [0, -1, float("nan"), float("inf"), "abc"])
 def test_timeout_must_be_finite_positive(tmp_path: Path, bad):
     with pytest.raises(PrScanError, match="timeout"):
-        scan_pull_request(tmp_path, 1, timeout=bad)
+        scan_pull_request(tmp_path, 1, PrScanOptions(timeout=bad))
 
 
 @pytest.mark.parametrize("bad", ["0", "-5", "nan", "inf"])
@@ -401,7 +402,7 @@ def test_pr_scope_manifest_rejects_lexical_escape(pr_repo, monkeypatch: pytest.M
     _stub_scan(monkeypatch)
 
     with pytest.raises(PrScanError, match="safe path"):
-        scan_pull_request(caller, 7, pr_scope_manifest=Path("../manifest.json"))
+        scan_pull_request(caller, 7, PrScanOptions(pr_scope_manifest=Path("../manifest.json")))
     assert _caller_snapshot(caller) == before
 
 
@@ -411,7 +412,7 @@ def test_pr_scope_manifest_resolved_inside_worktree(pr_repo, monkeypatch: pytest
     seen: dict = {}
     _stub_scan(monkeypatch, seen)
 
-    payload = scan_pull_request(caller, 7, pr_scope_manifest="app.py")
+    payload = scan_pull_request(caller, 7, PrScanOptions(pr_scope_manifest="app.py"))
     assert seen["manifest"].name == "app.py"
     assert payload["execution"]["pr_scope_manifest"] == "app.py"
 
