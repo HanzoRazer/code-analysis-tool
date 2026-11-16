@@ -92,6 +92,38 @@ instead of being called PR-introduced.
 Claims without an independently checkable rule ID are also routed to human
 adjudication. This is intentional: review prose is not executable authority.
 
+## Acquisition and cleanup contract
+
+PR-CLEAN-001 reuses the PR-SCAN v1 acquisition contract (`code_audit.pr_scan`):
+
+- the assessment is validated **before** any Git activity;
+- the exact PR head and the exact captured base commit are fetched into
+  private per-run refs (`refs/code-audit/run/<token>/…`) and their SHAs
+  verified; the caller's branches, remote-tracking refs and `FETCH_HEAD`
+  are never touched;
+- head and base are scanned in temporary detached worktrees;
+- both worktree registrations and all private refs are removed and the
+  removal is **verified**. An unverified cleanup fails the run (exit 2)
+  instead of producing a report, and a primary failure carries any cleanup
+  failure as an exception note rather than hiding it;
+- `--pr-scope-manifest` must resolve (symlinks included) inside the PR head;
+- `--timeout` must be finite and > 0.
+
+The report's `execution` block states this explicitly
+(`source_files_modified: false`, `caller_checkout_mutated: false`,
+`git_admin_metadata.temporarily_modified: true`, `cleanup.verified: true`)
+in place of a single `mutations_performed` flag.
+
+### Open question: base commit vs. merge-base
+
+`base_sha` is GitHub's `baseRefOid`, i.e. the base branch tip when the PR
+was resolved. If the base branch advanced after the PR branched, comparing
+head against that tip (rather than against the merge-base) can mislabel a
+finding as `pr_introduced` when the base merely fixed it later, and
+`changed_files` can include base-side changes. Whether to compare against
+the merge-base is a semantic decision deferred to review; the current
+behaviour is the documented "exact recorded base SHA".
+
 ## Repair plan semantics
 
 `repair_plan` is a list of *human repair candidates*. Every entry contains

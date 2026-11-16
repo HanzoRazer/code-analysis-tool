@@ -1,9 +1,18 @@
 """PR-CLEAN-001: verify-and-report planning for pull requests.
 
-This increment is deliberately non-mutating. It combines an exact PR scan,
-a baseline scan of the PR base SHA, and a normalized external assessment to
-produce a conservative verification report. It never edits files, pushes
-commits, comments on the PR, or declares a pull request mergeable.
+This increment is deliberately non-mutating with respect to source: it never
+edits files, pushes commits, comments on the PR, or declares a pull request
+mergeable.  It combines an exact PR head scan, a scan of the exact captured
+base commit, and a normalized external assessment to produce a conservative
+verification report.
+
+Acquisition and cleanup reuse the PR-SCAN v1 contract (``code_audit.pr_scan``):
+the head and the captured base commit are fetched into private per-run refs,
+both trees are materialized as temporary detached worktrees, and every piece
+of Git administrative state created by the run is removed and the removal is
+verified.  An unverified cleanup fails the run (exit 2) instead of producing a
+report.  The caller's branches, remote-tracking refs and FETCH_HEAD are never
+touched.
 
 Assessment claims are evidence, not authority. Automatic confirmation is only
 allowed when a claim names a rule_id that the code-analysis suite independently
@@ -13,26 +22,33 @@ NEEDS_HUMAN_DECISION instead of being guessed at.
 from __future__ import annotations
 
 import argparse
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 import json
-import subprocess
+from pathlib import Path
 import sys
 import tempfile
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any
 
 from code_audit.api import scan_project
 from code_audit.pr_scan import (
+    MaterializedPr,
     PrScanError,
+    PullRequestTarget,
+    _cleanup_materialized,
     _materialize_pr_head,
     _require_repo_root,
+    _resolve_manifest,
     _run,
+    _timeout_arg,
+    _validate_timeout,
     resolve_pull_request,
 )
 from code_audit.utils.json_norm import stable_json_dump
 
 _SCHEMA_VERSION = "pr_clean_plan_v1"
 _ASSESSMENT_VERSION = "pr_clean_assessment_v1"
+_DEFAULT_TIMEOUT_SECONDS = 30.0
 
 
 class PrCleanError(RuntimeError):
@@ -50,6 +66,31 @@ class Claim:
     evidence: str | None = None
 
 
+def _require_optional_str(raw: Mapping[str, Any], key: str, index: int) -> None:
+    value = raw.get(key)
+    if value is not None and (not isinstance(value, str) or not value.strip()):
+        raise PrCleanError(f"assessment.claims[{index}].{key} must be non-empty when present")
+
+
+def _validate_claim(raw: Any, index: int, seen: set[str]) -> None:
+    if not isinstance(raw, dict):
+        raise PrCleanError(f"assessment.claims[{index}] must be an object")
+    cid = raw.get("claim_id")
+    if not isinstance(cid, str) or not cid.strip():
+        raise PrCleanError(f"assessment.claims[{index}].claim_id must be non-empty")
+    if cid in seen:
+        raise PrCleanError(f"duplicate assessment claim_id: {cid}")
+    seen.add(cid)
+    summary = raw.get("summary")
+    if not isinstance(summary, str) or not summary.strip():
+        raise PrCleanError(f"assessment.claims[{index}].summary must be non-empty")
+    _require_optional_str(raw, "rule_id", index)
+    _require_optional_str(raw, "path", index)
+    line = raw.get("line")
+    if line is not None and (isinstance(line, bool) or not isinstance(line, int) or line < 1):
+        raise PrCleanError(f"assessment.claims[{index}].line must be a positive integer")
+
+
 def _load_assessment(source: str | Path | Mapping[str, Any]) -> dict[str, Any]:
     if isinstance(source, Mapping):
         data = dict(source)
@@ -57,13 +98,13 @@ def _load_assessment(source: str | Path | Mapping[str, Any]) -> dict[str, Any]:
         path = Path(source)
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
             raise PrCleanError(f"cannot load assessment {path}: {exc}") from exc
+    if not isinstance(data, dict):
+        raise PrCleanError("assessment must be a JSON object")
 
     if data.get("schema_version") != _ASSESSMENT_VERSION:
-        raise PrCleanError(
-            f"assessment.schema_version must be {_ASSESSMENT_VERSION!r}"
-        )
+        raise PrCleanError(f"assessment.schema_version must be {_ASSESSMENT_VERSION!r}")
     source_name = data.get("source")
     if not isinstance(source_name, str) or not source_name.strip():
         raise PrCleanError("assessment.source must be a non-empty string")
@@ -73,26 +114,7 @@ def _load_assessment(source: str | Path | Mapping[str, Any]) -> dict[str, Any]:
 
     seen: set[str] = set()
     for index, raw in enumerate(claims):
-        if not isinstance(raw, dict):
-            raise PrCleanError(f"assessment.claims[{index}] must be an object")
-        cid = raw.get("claim_id")
-        summary = raw.get("summary")
-        if not isinstance(cid, str) or not cid.strip():
-            raise PrCleanError(f"assessment.claims[{index}].claim_id must be non-empty")
-        if cid in seen:
-            raise PrCleanError(f"duplicate assessment claim_id: {cid}")
-        seen.add(cid)
-        if not isinstance(summary, str) or not summary.strip():
-            raise PrCleanError(f"assessment.claims[{index}].summary must be non-empty")
-        rule_id = raw.get("rule_id")
-        if rule_id is not None and (not isinstance(rule_id, str) or not rule_id.strip()):
-            raise PrCleanError(f"assessment.claims[{index}].rule_id must be non-empty when present")
-        path = raw.get("path")
-        if path is not None and (not isinstance(path, str) or not path.strip()):
-            raise PrCleanError(f"assessment.claims[{index}].path must be non-empty when present")
-        line = raw.get("line")
-        if line is not None and (not isinstance(line, int) or line < 1):
-            raise PrCleanError(f"assessment.claims[{index}].line must be a positive integer")
+        _validate_claim(raw, index, seen)
     return data
 
 
@@ -133,18 +155,66 @@ def _matching_findings(
         return []
     requested_path = claim.get("path")
     requested_path = (
-        requested_path.replace("\\", "/")
-        if isinstance(requested_path, str)
-        else None
+        requested_path.replace("\\", "/") if isinstance(requested_path, str) else None
     )
-    matches = []
-    for finding in findings:
-        if _rule_id(finding) != rule_id:
-            continue
-        if requested_path is not None and _path(finding) != requested_path:
-            continue
-        matches.append(finding)
-    return matches
+    return [
+        finding
+        for finding in findings
+        if _rule_id(finding) == rule_id
+        and (requested_path is None or _path(finding) == requested_path)
+    ]
+
+
+def _classify_matches(
+    head_matches: Sequence[Mapping[str, Any]], base_matches: Sequence[Mapping[str, Any]]
+) -> tuple[str, str]:
+    if not head_matches:
+        return (
+            "unsupported_by_tool",
+            "the current suite did not reproduce the claimed rule/path on the PR head",
+        )
+    if not base_matches:
+        return "pr_introduced", "the suite reproduces the claim on head and not on base"
+    head_fps = {fp for f in head_matches if (fp := _fingerprint(f))}
+    base_fps = {fp for f in base_matches if (fp := _fingerprint(f))}
+    if not head_fps or not base_fps or head_fps & base_fps:
+        return (
+            "pre_existing",
+            "the independently reproduced finding is also present on the PR base",
+        )
+    # Rule/path existed on base but identity changed. Conservatively avoid
+    # claiming the PR introduced it without human adjudication.
+    return "needs_human_decision", "same rule/path exists on base but finding identity changed"
+
+
+def _verify_claim(
+    claim: Mapping[str, Any],
+    base_findings: Sequence[Mapping[str, Any]],
+    head_findings: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    rule_id = claim.get("rule_id")
+    if not isinstance(rule_id, str) or not rule_id:
+        head_matches: list[Mapping[str, Any]] = []
+        base_matches: list[Mapping[str, Any]] = []
+        status, reason = "needs_human_decision", "claim has no independently checkable rule_id"
+    else:
+        head_matches = _matching_findings(claim, head_findings)
+        base_matches = _matching_findings(claim, base_findings)
+        status, reason = _classify_matches(head_matches, base_matches)
+    return {
+        "claim_id": claim["claim_id"],
+        "summary": claim["summary"],
+        "source_severity": claim.get("severity"),
+        "rule_id": claim.get("rule_id"),
+        "path": claim.get("path"),
+        "status": status,
+        "reason": reason,
+        "head_match_count": len(head_matches),
+        "base_match_count": len(base_matches),
+        "repair_disposition": (
+            "human_repair_candidate" if status == "pr_introduced" else "no_automatic_repair"
+        ),
+    }
 
 
 def verify_assessment(
@@ -158,170 +228,134 @@ def verify_assessment(
     base_findings = _findings(base_run_result)
     head_findings = _findings(head_run_result)
 
-    verified: list[dict[str, Any]] = []
+    verified = [_verify_claim(c, base_findings, head_findings) for c in data["claims"]]
     counts = {
         "pr_introduced": 0,
         "pre_existing": 0,
         "unsupported_by_tool": 0,
         "needs_human_decision": 0,
     }
-
-    for claim in data["claims"]:
-        rule_id = claim.get("rule_id")
-        if not isinstance(rule_id, str) or not rule_id:
-            status = "needs_human_decision"
-            reason = "claim has no independently checkable rule_id"
-            head_matches: list[Mapping[str, Any]] = []
-            base_matches: list[Mapping[str, Any]] = []
-        else:
-            head_matches = _matching_findings(claim, head_findings)
-            base_matches = _matching_findings(claim, base_findings)
-            if not head_matches:
-                status = "unsupported_by_tool"
-                reason = "the current suite did not reproduce the claimed rule/path on the PR head"
-            else:
-                head_fps = {_fingerprint(f) for f in head_matches if _fingerprint(f)}
-                base_fps = {_fingerprint(f) for f in base_matches if _fingerprint(f)}
-                if base_matches and (not head_fps or not base_fps or head_fps & base_fps):
-                    status = "pre_existing"
-                    reason = "the independently reproduced finding is also present on the PR base"
-                elif base_matches:
-                    # Rule/path existed on base but identity changed. Conservatively
-                    # avoid claiming the PR introduced it without human adjudication.
-                    status = "needs_human_decision"
-                    reason = "same rule/path exists on base but finding identity changed"
-                else:
-                    status = "pr_introduced"
-                    reason = "the suite reproduces the claim on head and not on base"
-
-        counts[status] += 1
-        verified.append(
-            {
-                "claim_id": claim["claim_id"],
-                "summary": claim["summary"],
-                "source_severity": claim.get("severity"),
-                "rule_id": claim.get("rule_id"),
-                "path": claim.get("path"),
-                "status": status,
-                "reason": reason,
-                "head_match_count": len(head_matches),
-                "base_match_count": len(base_matches),
-                "repair_disposition": (
-                    "human_repair_candidate"
-                    if status == "pr_introduced"
-                    else "no_automatic_repair"
-                ),
-            }
-        )
-
-    return {
-        "source": data["source"],
-        "counts": counts,
-        "claims": verified,
-    }
+    for entry in verified:
+        counts[entry["status"]] += 1
+    return {"source": data["source"], "counts": counts, "claims": verified}
 
 
-def _scan_base(
+@dataclass(slots=True)
+class _Workspace:
+    """Git administrative state created by one run (head + base worktrees)."""
+
+    head: MaterializedPr
+    base: MaterializedPr
+
+
+@dataclass(frozen=True, slots=True)
+class _Evidence:
+    head_result: dict[str, Any]
+    base_result: dict[str, Any]
+    changed_files: list[str]
+
+
+def _collect_evidence(
     root: Path,
-    *,
-    base_sha: str,
-    repository: str,
-    pr_number: int,
+    target: PullRequestTarget,
+    ws: _Workspace,
+    pr_scope_manifest: str | Path | None,
     timeout: float,
-) -> dict[str, Any]:
-    with tempfile.TemporaryDirectory(prefix="code-audit-pr-clean-base-") as temp_dir:
-        worktree = Path(temp_dir) / "base"
-        materialized = False
-        try:
-            _run(["git", "worktree", "add", "--detach", str(worktree), base_sha], cwd=root, timeout=timeout)
-            materialized = True
-            _result, result_dict = scan_project(
-                worktree,
-                project_id=f"pr-base:{repository}#{pr_number}",
-                ci_mode=True,
-            )
-            return result_dict
-        finally:
-            if materialized:
-                subprocess.run(
-                    ["git", "worktree", "remove", "--force", str(worktree)],
-                    cwd=root,
-                    check=False,
-                    capture_output=True,
-                    text=True,
-                    encoding="utf-8",
-                    errors="replace",
-                )
-
-
-def build_plan(
-    repo_root: str | Path,
-    pr: str | int,
-    *,
-    assessment: str | Path | Mapping[str, Any],
-    pr_scope_manifest: str | Path | None = None,
-    timeout: float = 30.0,
-) -> dict[str, Any]:
-    """Build a non-mutating PR remediation plan from independent evidence."""
-    root = _require_repo_root(Path(repo_root), timeout=timeout)
-    target = resolve_pull_request(root, pr, timeout=timeout)
-
-    # Ensure the exact base and PR head are locally available before either scan.
-    _run(["git", "fetch", "--no-tags", "origin", target.base_ref], cwd=root, timeout=timeout)
-
-    with tempfile.TemporaryDirectory(prefix="code-audit-pr-clean-head-") as temp_dir:
-        head_worktree = Path(temp_dir) / "head"
-        materialized = False
-        try:
-            _materialize_pr_head(root, target, head_worktree, timeout=timeout)
-            materialized = True
-            manifest: Path | None = None
-            if pr_scope_manifest is not None:
-                relative = Path(pr_scope_manifest)
-                if relative.is_absolute() or ".." in relative.parts:
-                    raise PrCleanError("pr_scope_manifest must be relative to the PR root")
-                manifest = head_worktree / relative
-                if not manifest.is_file():
-                    raise PrCleanError(f"PR scope manifest not found in head: {relative.as_posix()}")
-            _head_result, head_result = scan_project(
-                head_worktree,
-                project_id=f"pr-head:{target.repository}#{target.number}",
-                ci_mode=True,
-                pr_scope_manifest=manifest,
-            )
-        finally:
-            if materialized:
-                subprocess.run(
-                    ["git", "worktree", "remove", "--force", str(head_worktree)],
-                    cwd=root,
-                    check=False,
-                    capture_output=True,
-                    text=True,
-                    encoding="utf-8",
-                    errors="replace",
-                )
-
-    base_result = _scan_base(
-        root,
-        base_sha=target.base_sha,
-        repository=target.repository,
-        pr_number=target.number,
+) -> _Evidence:
+    """Materialize exact head + captured base, scan both, and diff them."""
+    # Fetches and verifies BOTH head_sha and base_sha into private refs; the
+    # caller's remote-tracking refs and FETCH_HEAD are not touched.
+    _materialize_pr_head(root, target, ws.head.worktree, timeout=timeout, state=ws.head)
+    # Mark before the call: a partially-completed add still needs removal.
+    ws.base.worktree_registered = True
+    _run(
+        ["git", "worktree", "add", "--detach", str(ws.base.worktree), target.base_sha],
+        cwd=root,
         timeout=timeout,
     )
-    verification = verify_assessment(
-        _load_assessment(assessment),
-        base_run_result=base_result,
-        head_run_result=head_result,
-    )
 
+    manifest = (
+        _resolve_manifest(ws.head.worktree, Path(pr_scope_manifest))
+        if pr_scope_manifest is not None
+        else None
+    )
+    _head, head_result = scan_project(
+        ws.head.worktree,
+        project_id=f"pr-head:{target.repository}#{target.number}",
+        ci_mode=True,
+        pr_scope_manifest=manifest,
+    )
+    _base, base_result = scan_project(
+        ws.base.worktree,
+        project_id=f"pr-base:{target.repository}#{target.number}",
+        ci_mode=True,
+    )
     changed = _run(
         ["git", "diff", "--name-only", "-z", target.base_sha, target.head_sha, "--"],
         cwd=root,
         timeout=timeout,
     ).stdout
-    changed_files = sorted({p for p in changed.split("\0") if p})
+    return _Evidence(head_result, base_result, sorted({p for p in changed.split("\0") if p}))
 
-    repair_candidates = [
+
+def _cleanup_workspace(root: Path, ws: _Workspace, *, timeout: float) -> dict[str, Any]:
+    """Release head and base state; never raises; ``verified`` only if all gone."""
+    head = _cleanup_materialized(root, ws.head, timeout=timeout)
+    base = _cleanup_materialized(root, ws.base, timeout=timeout)
+    return {
+        "worktrees_removed": head["worktree_removed"] and base["worktree_removed"],
+        "refs_removed": head["refs_removed"] and base["refs_removed"],
+        "verified": head["verified"] and base["verified"],
+        "errors": head["errors"] + base["errors"],
+    }
+
+
+def _build_report(
+    target: PullRequestTarget,
+    evidence: _Evidence,
+    verification: dict[str, Any],
+    cleanup: dict[str, Any],
+    pr_scope_manifest: str | Path | None,
+) -> dict[str, Any]:
+    return {
+        "schema_version": _SCHEMA_VERSION,
+        "mode": "verify_and_report_only",
+        "merge_decision_performed": False,
+        "execution": {
+            "source_files_modified": False,
+            "caller_checkout_mutated": False,
+            "git_admin_metadata": {
+                "temporarily_modified": True,
+                "fetched_commits": {"head": target.head_sha, "base": target.base_sha},
+            },
+            "cleanup": {k: cleanup[k] for k in ("worktrees_removed", "refs_removed", "verified")},
+        },
+        "pull_request": {
+            "number": target.number,
+            "url": target.url,
+            "title": target.title,
+            "repository": target.repository,
+            "base_ref": target.base_ref,
+            "base_sha": target.base_sha,
+            "head_ref": target.head_ref,
+            "head_sha": target.head_sha,
+        },
+        "scope": {
+            "changed_file_count": len(evidence.changed_files),
+            "changed_files": evidence.changed_files,
+            "pr_scope_manifest": (
+                Path(pr_scope_manifest).as_posix() if pr_scope_manifest is not None else None
+            ),
+        },
+        "assessment_verification": verification,
+        "repair_plan": _repair_plan(verification),
+        "disposition": _disposition(verification["counts"]),
+    }
+
+
+def _repair_plan(verification: dict[str, Any]) -> list[dict[str, Any]]:
+    """Human repair candidates only; nothing is ever applied automatically."""
+    return [
         {
             "claim_id": c["claim_id"],
             "summary": c["summary"],
@@ -334,37 +368,65 @@ def build_plan(
         if c["status"] == "pr_introduced"
     ]
 
+
+def _disposition(counts: dict[str, int]) -> dict[str, Any]:
     return {
-        "schema_version": _SCHEMA_VERSION,
-        "mode": "verify_and_report_only",
-        "mutations_performed": False,
-        "merge_decision_performed": False,
-        "pull_request": {
-            "number": target.number,
-            "url": target.url,
-            "title": target.title,
-            "repository": target.repository,
-            "base_ref": target.base_ref,
-            "base_sha": target.base_sha,
-            "head_ref": target.head_ref,
-            "head_sha": target.head_sha,
-        },
-        "scope": {
-            "changed_file_count": len(changed_files),
-            "changed_files": changed_files,
-            "pr_scope_manifest": Path(pr_scope_manifest).as_posix() if pr_scope_manifest else None,
-        },
-        "assessment_verification": verification,
-        "repair_plan": repair_candidates,
-        "disposition": {
-            "technical_claims_verified": verification["counts"]["pr_introduced"],
-            "pre_existing": verification["counts"]["pre_existing"],
-            "unsupported": verification["counts"]["unsupported_by_tool"],
-            "needs_human_decision": verification["counts"]["needs_human_decision"],
-            "merge_worthy": None,
-            "statement": "No merge-readiness decision is made by PR-CLEAN-001.",
-        },
+        "technical_claims_verified": counts["pr_introduced"],
+        "pre_existing": counts["pre_existing"],
+        "unsupported": counts["unsupported_by_tool"],
+        "needs_human_decision": counts["needs_human_decision"],
+        "merge_worthy": None,
+        "statement": "No merge-readiness decision is made by PR-CLEAN-001.",
     }
+
+
+def build_plan(
+    repo_root: str | Path,
+    pr: str | int,
+    *,
+    assessment: str | Path | Mapping[str, Any],
+    pr_scope_manifest: str | Path | None = None,
+    timeout: float = _DEFAULT_TIMEOUT_SECONDS,
+) -> dict[str, Any]:
+    """Build a non-mutating PR remediation plan from independent evidence.
+
+    Raises ``PrCleanError`` when cleanup of the run's Git administrative state
+    cannot be verified; a primary failure carries any cleanup failure as a note.
+    """
+    timeout = _validate_timeout(timeout)
+    # Validate the assessment before touching Git at all.
+    data = _load_assessment(assessment)
+    root = _require_repo_root(Path(repo_root), timeout=timeout)
+    target = resolve_pull_request(root, pr, timeout=timeout)
+
+    with tempfile.TemporaryDirectory(prefix="code-audit-pr-clean-") as temp_dir:
+        ws = _Workspace(
+            head=MaterializedPr(worktree=Path(temp_dir) / "head"),
+            base=MaterializedPr(worktree=Path(temp_dir) / "base"),
+        )
+        try:
+            evidence = _collect_evidence(root, target, ws, pr_scope_manifest, timeout)
+        except BaseException as exc:
+            cleanup = _cleanup_workspace(root, ws, timeout=timeout)
+            if not cleanup["verified"]:
+                exc.add_note(
+                    "pr_clean cleanup also failed; stale Git metadata may remain: "
+                    + "; ".join(cleanup["errors"])
+                )
+            raise
+        cleanup = _cleanup_workspace(root, ws, timeout=timeout)
+        if not cleanup["verified"]:
+            raise PrCleanError(
+                "scans completed but cleanup could not be verified; refusing to report. "
+                "Stale Git metadata may remain: " + "; ".join(cleanup["errors"])
+            )
+
+    verification = verify_assessment(
+        data,
+        base_run_result=evidence.base_result,
+        head_run_result=evidence.head_result,
+    )
+    return _build_report(target, evidence, verification, cleanup, pr_scope_manifest)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -377,7 +439,12 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--assessment", type=Path, required=True)
     parser.add_argument("--pr-scope-manifest", type=Path, default=None)
     parser.add_argument("--json", action="store_true", dest="json_out")
-    parser.add_argument("--timeout", type=float, default=30.0)
+    parser.add_argument(
+        "--timeout",
+        type=_timeout_arg,
+        default=_DEFAULT_TIMEOUT_SECONDS,
+        help="Per-command timeout in seconds (finite, > 0).",
+    )
     return parser
 
 
@@ -393,6 +460,8 @@ def main(argv: list[str] | None = None) -> int:
         )
     except (PrCleanError, PrScanError) as exc:
         print(f"error: {exc}", file=sys.stderr)
+        for note in getattr(exc, "__notes__", ()):
+            print(f"note: {note}", file=sys.stderr)
         return 2
 
     if args.json_out:
