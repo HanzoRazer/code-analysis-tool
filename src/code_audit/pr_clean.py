@@ -2,9 +2,11 @@
 
 This increment is deliberately non-mutating with respect to source: it never
 edits files, pushes commits, comments on the PR, or declares a pull request
-mergeable.  It combines an exact PR head scan, a scan of the exact captured
-base commit, and a normalized external assessment to produce a conservative
-verification report.
+mergeable.  It combines an exact PR head scan, a scan of the PR's verified
+merge-base with the captured base-branch tip (its branch point), and a
+normalized external assessment to produce a conservative verification report.
+The captured base-branch tip is recorded as context but is not the
+classification baseline.
 
 Acquisition and cleanup reuse the PR-SCAN v1 contract (``code_audit.pr_scan``):
 the head and the captured base commit are fetched into private per-run refs,
@@ -33,6 +35,7 @@ from typing import Any
 
 from code_audit.api import scan_project
 from code_audit.pr_scan import (
+    _SHA_RE,
     MaterializedPr,
     PrScanError,
     PullRequestTarget,
@@ -320,6 +323,40 @@ class _Evidence:
     head_result: dict[str, Any]
     base_result: dict[str, Any]
     changed_files: list[str]
+    comparison_base_sha: str
+
+
+def _resolve_merge_base(root: Path, target: PullRequestTarget, *, timeout: float) -> str:
+    """The unique merge-base of the captured target-base tip and PR head.
+
+    Both commits were already fetched (and verified) into private refs, so
+    their full ancestry is local.  No merge-base, several (criss-cross), or
+    malformed output all fail closed.
+    """
+    problem = f"cannot establish merge-base of {target.base_sha} and {target.head_sha}"
+    try:
+        out = _run(
+            ["git", "merge-base", "--all", target.base_sha, target.head_sha],
+            cwd=root,
+            timeout=timeout,
+        ).stdout.split()
+    except PrScanError as exc:
+        raise PrCleanError(f"{problem}; refusing to compare") from exc
+    if len(out) != 1 or not _SHA_RE.fullmatch(out[0]):
+        raise PrCleanError(f"{problem}: expected exactly one commit, got {out!r}")
+    return out[0]
+
+
+def _add_base_worktree(root: Path, ws: _Workspace, sha: str, *, timeout: float) -> None:
+    # Mark before the call: a partially-completed add still needs removal.
+    ws.base.worktree_registered = True
+    _run(["git", "worktree", "add", "--detach", str(ws.base.worktree), sha], cwd=root,
+         timeout=timeout)
+    actual = _run(["git", "rev-parse", "HEAD"], cwd=ws.base.worktree, timeout=timeout)
+    if actual.stdout.strip() != sha:
+        raise PrCleanError(
+            f"comparison base worktree is at {actual.stdout.strip()!r}, expected {sha}"
+        )
 
 
 def _collect_evidence(
@@ -329,17 +366,14 @@ def _collect_evidence(
     pr_scope_manifest: str | Path | None,
     timeout: float,
 ) -> _Evidence:
-    """Materialize exact head + captured base, scan both, and diff them."""
+    """Materialize exact head + PR merge-base, scan both, and diff them."""
     # Fetches and verifies BOTH head_sha and base_sha into private refs; the
     # caller's remote-tracking refs and FETCH_HEAD are not touched.
     _materialize_pr_head(root, target, ws.head.worktree, timeout=timeout, state=ws.head)
-    # Mark before the call: a partially-completed add still needs removal.
-    ws.base.worktree_registered = True
-    _run(
-        ["git", "worktree", "add", "--detach", str(ws.base.worktree), target.base_sha],
-        cwd=root,
-        timeout=timeout,
-    )
+    # Classify against the PR's branch point, not the target branch's tip:
+    # later fixes on the target branch must not look PR-introduced.
+    comparison_base = _resolve_merge_base(root, target, timeout=timeout)
+    _add_base_worktree(root, ws, comparison_base, timeout=timeout)
 
     manifest = (
         _resolve_manifest(ws.head.worktree, Path(pr_scope_manifest))
@@ -352,11 +386,16 @@ def _collect_evidence(
     head_result = _complete_scan(ws.head.worktree, f"pr-head:{ident}", manifest)
     base_result = _complete_scan(ws.base.worktree, f"pr-base:{ident}", manifest)
     changed = _run(
-        ["git", "diff", "--name-only", "-z", target.base_sha, target.head_sha, "--"],
+        ["git", "diff", "--name-only", "-z", comparison_base, target.head_sha, "--"],
         cwd=root,
         timeout=timeout,
     ).stdout
-    return _Evidence(head_result, base_result, sorted({p for p in changed.split("\0") if p}))
+    return _Evidence(
+        head_result,
+        base_result,
+        sorted({p for p in changed.split("\0") if p}),
+        comparison_base,
+    )
 
 
 class _SkippedAnalyzerProbe(logging.Handler):
@@ -427,20 +466,11 @@ def _build_report(
             "caller_checkout_mutated": False,
             "git_admin_metadata": {
                 "temporarily_modified": True,
-                "fetched_commits": {"head": target.head_sha, "base": target.base_sha},
+                "fetched_commits": {"head": target.head_sha, "target_base": target.base_sha},
             },
             "cleanup": {k: cleanup[k] for k in ("worktrees_removed", "refs_removed", "verified")},
         },
-        "pull_request": {
-            "number": target.number,
-            "url": target.url,
-            "title": target.title,
-            "repository": target.repository,
-            "base_ref": target.base_ref,
-            "base_sha": target.base_sha,
-            "head_ref": target.head_ref,
-            "head_sha": target.head_sha,
-        },
+        "pull_request": _pull_request_block(target, evidence),
         "comparability": {
             "scans_completed": True,
             "analyzers_skipped": 0,
@@ -457,6 +487,26 @@ def _build_report(
         "assessment_verification": verification,
         "repair_plan": _repair_plan(verification),
         "disposition": _disposition(verification["counts"]),
+    }
+
+
+def _pull_request_block(target: PullRequestTarget, evidence: _Evidence) -> dict[str, Any]:
+    """PR identity plus the commits compared.
+
+    ``target_base_sha`` (captured tip of the base branch) is context only;
+    classification uses ``comparison_base_sha``, the PR's verified merge-base.
+    """
+    return {
+        "number": target.number,
+        "url": target.url,
+        "title": target.title,
+        "repository": target.repository,
+        "base_ref": target.base_ref,
+        "head_ref": target.head_ref,
+        "head_sha": target.head_sha,
+        "target_base_sha": target.base_sha,
+        "comparison_base_sha": evidence.comparison_base_sha,
+        "comparison_strategy": "merge_base",
     }
 
 

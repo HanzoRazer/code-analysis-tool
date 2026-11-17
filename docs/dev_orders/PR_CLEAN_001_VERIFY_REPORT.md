@@ -81,7 +81,8 @@ python -m code_audit.pr_clean 296 \
 
 ## Verification semantics
 
-The tool scans the exact PR head and exact recorded base SHA independently.
+The tool scans the exact PR head and the PR's **merge-base** independently
+(see "Comparison baseline" below).
 
 **Comparability first.** Both scans use identical analyzer configuration,
 including the `--pr-scope-manifest` (resolved inside the head and applied to
@@ -134,15 +135,33 @@ The report's `execution` block states this explicitly
 `git_admin_metadata.temporarily_modified: true`, `cleanup.verified: true`)
 in place of a single `mutations_performed` flag.
 
-### Open question: base commit vs. merge-base
+### Comparison baseline: merge-base
 
-`base_sha` is GitHub's `baseRefOid`, i.e. the base branch tip when the PR
-was resolved. If the base branch advanced after the PR branched, comparing
-head against that tip (rather than against the merge-base) can mislabel a
-finding as `pr_introduced` when the base merely fixed it later, and
-`changed_files` can include base-side changes. Whether to compare against
-the merge-base is a semantic decision deferred to review; the current
-behaviour is the documented "exact recorded base SHA".
+GitHub's `baseRefOid` is the base branch tip when the PR was resolved. If the
+base branch advanced after the PR branched, comparing head against that tip
+would mislabel a defect the base branch later fixed as `pr_introduced`, and
+attribute base-side changes to the PR. PR-CLEAN-001 therefore classifies
+against the PR's branch point:
+
+1. head and the captured base tip are fetched and verified (above);
+2. `git merge-base --all <target_base_sha> <head_sha>` must return exactly one
+   commit. No merge-base (unrelated histories), several (criss-cross), or
+   malformed output fails the run (exit 2) before any scan;
+3. that commit is checked out in the base worktree and verified, then scanned
+   with the same configuration as head; `changed_files` is the diff from it.
+
+| Report field (`pull_request`) | Meaning |
+|---|---|
+| `head_sha` | Exact PR commit scanned |
+| `target_base_sha` | Captured tip of the base branch (context only) |
+| `comparison_base_sha` | Verified merge-base used for classification |
+| `comparison_strategy` | `merge_base` |
+
+**Scope of the claim.** Merge-base comparison establishes which findings the
+PR introduced *relative to its branch point*. It does not show whether a
+finding is present or absent on the current base branch: a `pre_existing`
+finding may already be fixed on the tip, and a `pr_introduced` one may also
+have appeared there independently. Neither tip state is evaluated.
 
 ## Repair plan semantics
 

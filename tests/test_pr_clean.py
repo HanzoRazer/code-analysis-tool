@@ -81,6 +81,8 @@ def test_plan_scans_exact_head_and_captured_base_and_leaves_no_trace(wired):
     assert seen["pr-head"]["head"] == target.head_sha
     # Captured base commit, even though origin/main has moved past it.
     assert seen["pr-base"]["head"] == target.base_sha
+    # Here the captured base IS the branch point, so the merge-base equals it.
+    assert report["pull_request"]["comparison_base_sha"] == target.base_sha
     assert seen["pr-base"]["files"] == ["app.py"]
     assert report["scope"]["changed_files"] == ["feature.py"]
     assert report["assessment_verification"]["counts"]["pr_introduced"] == 1
@@ -359,3 +361,181 @@ def test_report_states_comparability(wired):
         "identical_scan_configuration": True,
         "pr_scope_manifest_applied_to": [],
     }
+
+
+def test_cli_incomplete_scan_exits_2(wired, monkeypatch, tmp_path, capsys):
+    import logging
+
+    caller, _target, _seen = wired
+
+    def partial_scan(root, **kwargs):
+        logging.getLogger("code_audit.core.runner").warning(
+            "Analyzer '%s' timed out after %.0fs — skipped", "x", 1.0
+        )
+        return object(), _result()
+
+    monkeypatch.setattr(pr_clean, "scan_project", partial_scan)
+    assessment = tmp_path / "a.json"
+    assessment.write_text(json.dumps(_assessment()), encoding="utf-8")
+    assert main(["7", "--repo-root", str(caller), "--assessment", str(assessment)]) == 2
+    assert "scan incomplete" in capsys.readouterr().err
+    assert _git(caller, "for-each-ref", "refs/code-audit") == ""
+
+
+# ------------------------------------------------ merge-base comparison
+
+
+def _commit_files(repo: Path, files: dict[str, str], message: str) -> str:
+    for name, content in files.items():
+        (repo / name).write_text(content, encoding="utf-8")
+    _git(repo, "add", *files)
+    _git(repo, "commit", "-q", "-m", message)
+    return _git(repo, "rev-parse", "HEAD")
+
+
+@pytest.fixture
+def diverged(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """main fixed a defect AFTER the PR branched; the PR adds a new one.
+
+        branch point M: old.py=BUG:old  same.py=BUG:same
+        main tip     T: old.py=fixed    (captured target base)
+        PR head      H: M + new.py=BUG:new
+
+    Findings are derived from file content (one R1 finding per BUG marker), so
+    classification exercises the real commits git checked out.
+    """
+    for key in ("GIT_AUTHOR_NAME", "GIT_COMMITTER_NAME"):
+        monkeypatch.setenv(key, "t")
+    for key in ("GIT_AUTHOR_EMAIL", "GIT_COMMITTER_EMAIL"):
+        monkeypatch.setenv(key, "t@e")
+    seed = tmp_path / "seed"
+    seed.mkdir()
+    _git(seed, "init", "-q", "-b", "main")
+    branch_point = _commit_files(
+        seed, {"old.py": "BUG:old\n", "same.py": "BUG:same\n"}, "branch point"
+    )
+    _git(seed, "checkout", "-q", "-b", "feature")
+    head = _commit_files(seed, {"new.py": "BUG:new\n"}, "pr adds defect")
+    _git(seed, "checkout", "-q", "main")
+    tip = _commit_files(seed, {"old.py": "fixed\n"}, "main fixes old defect")
+    _git(seed, "checkout", "-q", "--orphan", "unrelated")
+    unrelated = _commit_files(seed, {"other.py": "z\n"}, "unrelated history")
+    _git(seed, "checkout", "-q", "main")
+
+    origin = tmp_path / "origin.git"
+    _git(tmp_path, "clone", "-q", "--bare", str(seed), str(origin))
+    _git(origin, "update-ref", "refs/pull/7/head", head)
+    _git(origin, "branch", "-D", "feature")
+    caller = tmp_path / "caller"
+    _git(tmp_path, "clone", "-q", str(origin), str(caller))
+
+    target = pr_scan.PullRequestTarget(
+        number=7,
+        url="https://github.com/o/r/pull/7",
+        title="diverged",
+        repository="o/r",
+        base_ref="main",
+        base_sha=tip,
+        head_ref="feature",
+        head_sha=head,
+    )
+    seen: dict = {}
+    monkeypatch.setattr(pr_clean, "resolve_pull_request", lambda root, pr, timeout: target)
+    monkeypatch.setattr(pr_clean, "scan_project", _content_scan(seen))
+    return caller.resolve(), target, seen, branch_point, unrelated
+
+
+def _content_scan(seen: dict):
+    """Fake scanner: one R1 finding per ``BUG:`` file, keyed by its content."""
+
+    def scan(root, **kwargs):
+        kind = kwargs["project_id"].split(":", 1)[0]
+        seen[kind] = _git(Path(root), "rev-parse", "HEAD")
+        findings = [
+            _finding("R1", p.name, f"fp-{p.name}-{p.read_text(encoding='utf-8').strip()}")
+            for p in sorted(Path(root).glob("*.py"))
+            if p.read_text(encoding="utf-8").startswith("BUG:")
+        ]
+        return object(), _result(*findings)
+
+    return scan
+
+
+def _claim(cid: str, path: str) -> dict:
+    return {"claim_id": cid, "summary": cid, "rule_id": "R1", "path": path}
+
+
+def test_merge_base_is_the_classification_baseline(diverged):
+    caller, target, seen, branch_point, _unrelated = diverged
+    before = _caller_snapshot(caller)
+
+    report = build_plan(
+        caller,
+        7,
+        assessment=_assessment(
+            _claim("fixed_on_main_later", "old.py"),
+            _claim("introduced_by_pr", "new.py"),
+            _claim("identical_both_sides", "same.py"),
+        ),
+    )
+
+    status = {c["claim_id"]: c["status"] for c in report["assessment_verification"]["claims"]}
+    # old.py still has the defect on the PR head, but it predates the branch
+    # point; main's later fix must not make it look PR-introduced.
+    assert status == {
+        "fixed_on_main_later": "pre_existing",
+        "introduced_by_pr": "pr_introduced",
+        "identical_both_sides": "pre_existing",
+    }
+    assert seen == {"pr-head": target.head_sha, "pr-base": branch_point}
+    pr = report["pull_request"]
+    assert pr["head_sha"] == target.head_sha
+    assert pr["target_base_sha"] == target.base_sha
+    assert pr["comparison_base_sha"] == branch_point != target.base_sha
+    assert pr["comparison_strategy"] == "merge_base"
+    assert "base_sha" not in pr
+    # Main-side changes (old.py) are not attributed to the PR.
+    assert report["scope"]["changed_files"] == ["new.py"]
+    assert report["execution"]["cleanup"]["verified"] is True
+    assert _caller_snapshot(caller) == before
+    assert _git(caller, "for-each-ref", "refs/code-audit") == ""
+
+
+def test_no_merge_base_fails_closed(diverged, monkeypatch, tmp_path, capsys):
+    caller, target, seen, _bp, unrelated = diverged
+    before = _caller_snapshot(caller)
+    orphan_target = replace(target, base_sha=unrelated)
+    monkeypatch.setattr(pr_clean, "resolve_pull_request", lambda r, p, timeout: orphan_target)
+
+    with pytest.raises(PrCleanError, match="cannot establish merge-base"):
+        build_plan(caller, 7, assessment=_assessment())
+    assert "pr-base" not in seen and "pr-head" not in seen
+    assert _caller_snapshot(caller) == before
+    assert _git(caller, "for-each-ref", "refs/code-audit") == ""
+
+    assessment = tmp_path / "a.json"
+    assessment.write_text(json.dumps(_assessment()), encoding="utf-8")
+    assert main(["7", "--repo-root", str(caller), "--assessment", str(assessment)]) == 2
+    assert "cannot establish merge-base" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "stdout", ["", "not-a-sha\n", "a" * 40 + "\n" + "b" * 40 + "\n"], ids=["empty", "junk", "two"]
+)
+def test_ambiguous_or_malformed_merge_base_fails_closed(diverged, monkeypatch, stdout):
+    """Criss-cross histories (several merge-bases) are not silently resolved."""
+    import subprocess
+
+    caller, _target, seen, _bp, _unrelated = diverged
+
+    def run(args, *, cwd, timeout=30.0):
+        if list(args)[:2] == ["git", "merge-base"]:
+            return subprocess.CompletedProcess(list(args), 0, stdout, "")
+        return _REAL_RUN(args, cwd=cwd, timeout=timeout)
+
+    monkeypatch.setattr(pr_clean, "_run", run)
+    with pytest.raises(PrCleanError, match="expected exactly one commit"):
+        build_plan(caller, 7, assessment=_assessment())
+    assert not seen
+    assert _git(caller, "for-each-ref", "refs/code-audit") == ""
+    assert _git(caller, "worktree", "list", "--porcelain").count("worktree ") == 1
