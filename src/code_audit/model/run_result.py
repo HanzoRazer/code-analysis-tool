@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
+import uuid
 
 from code_audit import __version__
 from code_audit.model import RiskLevel
@@ -28,7 +28,7 @@ class RunResult:
     )
     tool_version: str = __version__
     engine_version: str = "engine_v1"
-    signal_logic_version: str = "signals_v5"
+    signal_logic_version: str = "signals_v6"
     openapi_classifier_version: str = "openapi_classifier_v1"  # version anchor: OpenAPI diff classifier logic
     bom_logic_version: str = "bom_v1"  # version anchor: BOM generation + consistency logic
     copy_version: str = "i18n@dev"
@@ -37,8 +37,10 @@ class RunResult:
 
     # ── summary ─────────────────────────────────────────────────────
     vibe_tier: RiskLevel = RiskLevel.GREEN
-    confidence_score: int = 78
+    confidence_score: int | None = 78
     findings: list[Finding] = field(default_factory=list)
+    # Absent (empty) means a legacy/unverified result. The runner always sets it.
+    scan_integrity: dict = field(default_factory=dict)
 
     # ── signals (populated by insight layer) ────────────────────────
     signals_snapshot: list[dict] = field(default_factory=list)
@@ -58,8 +60,8 @@ class RunResult:
             )
             type_counts[f.type.value] = type_counts.get(f.type.value, 0) + 1
 
-        return {
-            "schema_version": "run_result_v1",
+        payload = {
+            "schema_version": "run_result_v2",
             "run": {
                 "run_id": self.run_id,
                 "project_id": self.project_id or "",
@@ -86,3 +88,6 @@ class RunResult:
                 "snippet_policy": self.snippet_policy,
             },
         }
+        if self.scan_integrity:
+            payload["scan_integrity"] = self.scan_integrity
+        return payload

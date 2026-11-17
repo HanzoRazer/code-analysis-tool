@@ -10,7 +10,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 def test_run_result_schema_loads():
     schema_path = REPO_ROOT / "schemas" / "run_result.schema.json"
     schema = json.loads(schema_path.read_text(encoding="utf-8"))
-    assert schema["$id"] == "run_result_v1"
+    assert schema["$id"] == "run_result_v2"
 
 
 def test_signals_latest_schema_loads():

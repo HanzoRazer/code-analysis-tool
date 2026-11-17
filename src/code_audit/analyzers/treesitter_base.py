@@ -9,11 +9,12 @@ findings via the ``FindingSink`` protocol.
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass
+import logging
 from pathlib import Path
 from typing import Protocol
 
+from code_audit.core.scan_integrity import MissingAnalyzerCapability
 from code_audit.model.finding import Finding
 from code_audit.parsers.tree_sitter_loader import is_available
 
@@ -91,20 +92,27 @@ class TreeSitterAnalyzerBase:
         """Analyze a single parsed file. Override in subclasses."""
         return []
 
+    def capability_available(self) -> bool:
+        """False when eligible files cannot be parsed (optional dep absent)."""
+        return is_available()
+
     def run_multilang(
         self,
         root: Path,
         files_by_lang: dict[str, list[Path]],
     ) -> list[Finding]:
         """Entry point called by the runner for multi-language analysis."""
+        eligible = self.filter_files(files_by_lang)
+        if not eligible:
+            return []
         if not is_available():
             _logger.info(
                 "tree-sitter not available — skipping %s", self.id,
             )
-            return []
+            raise MissingAnalyzerCapability(self.id or type(self).__name__)
 
         all_findings: list[Finding] = []
-        for path, language in self.filter_files(files_by_lang):
+        for path, language in eligible:
             sf = self._parse_file(path, language)
             if sf is not None:
                 findings = self.analyze_file(sf, root)

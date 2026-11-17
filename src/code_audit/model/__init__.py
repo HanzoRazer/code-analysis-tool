@@ -16,11 +16,16 @@ class Severity(str, Enum):
 
 
 class RiskLevel(str, Enum):
-    """User-facing vibe tier — maximum three levels."""
+    """User-facing vibe tier.
+
+    GREEN / YELLOW / RED are assessed tiers. INCONCLUSIVE means the scan
+    could not assess the repository; it is not a fourth risk level.
+    """
 
     GREEN = "green"
     YELLOW = "yellow"
     RED = "red"
+    INCONCLUSIVE = "inconclusive"
 
 
 class Urgency(str, Enum):

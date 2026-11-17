@@ -54,14 +54,12 @@ python_functions = ["test_*"]
 # -q: quieter output (good for CI logs)
 # --strict-config/markers: catch typos in config/markers
 # --disable-warnings: reduce noise
-# --maxfail=1: fail fast in CI
 addopts = """
 -ra
 -q
 --strict-config
 --strict-markers
 --disable-warnings
---maxfail=1
 """
 
 # Markers (declared up front to catch typos)

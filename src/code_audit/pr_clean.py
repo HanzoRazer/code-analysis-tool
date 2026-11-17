@@ -431,8 +431,15 @@ def _complete_scan(worktree: Path, project_id: str, manifest: Path | None) -> di
         logger.removeHandler(probe)
         logger.setLevel(old_level)
     if probe.skipped:
+        detail = "; ".join(probe.skipped)
+        degraded = (result.get("scan_integrity") or {}).get("degraded") or []
+        if degraded:
+            structured = ", ".join(
+                f"{item.get('analyzer_id')}={item.get('status')}" for item in degraded
+            )
+            detail = f"{detail} [scan_integrity.degraded: {structured}]"
         raise PrCleanError(
-            f"{project_id} scan incomplete; refusing to compare: " + "; ".join(probe.skipped)
+            f"{project_id} scan incomplete; refusing to compare: " + detail
         )
     _findings(result)  # reject a malformed result before any comparison
     return result

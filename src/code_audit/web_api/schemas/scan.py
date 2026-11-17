@@ -31,7 +31,7 @@ class ScanSummary(BaseModel):
     files_scanned: int = Field(default=0)
     total_lines: int = Field(default=0)
     issues_found: int = Field(default=0)
-    confidence_score: float = Field(default=0.0)
+    confidence_score: float | None = Field(default=None)
 
 
 class ScanResponse(BaseModel):

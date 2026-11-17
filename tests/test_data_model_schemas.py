@@ -64,7 +64,7 @@ class TestRunResult:
         Draft202012Validator(run_result_schema).validate(run_result_example)
 
     def test_schema_version_const(self, run_result_example):
-        assert run_result_example["schema_version"] == "run_result_v1"
+        assert run_result_example["schema_version"] == "run_result_v2"
 
     def test_summary_confidence_range(self, run_result_example):
         score = run_result_example["summary"]["confidence_score"]

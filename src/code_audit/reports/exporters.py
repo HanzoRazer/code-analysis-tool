@@ -11,15 +11,16 @@ All exporters accept a :class:`RunResult` and produce a string.
 
 from __future__ import annotations
 
-import html as html_mod
-import json
 from collections import Counter
 from datetime import datetime, timezone
+import html as html_mod
+import json
 from typing import Any
 
+from code_audit.core.scan_integrity import degraded_coverage_lines
 from code_audit.model import Severity
-from code_audit.utils.json_norm import stable_json_dumps
 from code_audit.model.run_result import RunResult
+from code_audit.utils.json_norm import stable_json_dumps
 
 # ── severity ordering (worst first) ─────────────────────────────────
 _SEVERITY_ORDER = [
@@ -58,9 +59,12 @@ def export_markdown(result: RunResult, *, top_n: int = 20) -> str:
     lines.append("# Scan Results")
     lines.append("")
     lines.append(f"**Generated:** {now}  ")
-    lines.append(f"**Score:** {result.confidence_score}/100  ")
+    shown = "inconclusive" if result.confidence_score is None else f"{result.confidence_score}/100"
+    lines.append(f"**Score:** {shown}  ")
     lines.append(f"**Tier:** {result.vibe_tier.value.upper()}  ")
     lines.append(f"**Findings:** {len(result.findings)}")
+    for line in degraded_coverage_lines(result.scan_integrity):
+        lines.append(line)
     lines.append("")
 
     # Severity breakdown
@@ -146,10 +150,13 @@ def export_html(result: RunResult, *, top_n: int = 30) -> str:
     parts.append("<h1>Code Audit Report</h1>")
     parts.append('<div class="summary">')
     parts.append(f"<p><strong>Generated:</strong> {now}</p>")
+    shown = "inconclusive" if result.confidence_score is None else f"{result.confidence_score}/100"
     parts.append(
-        f"<p><strong>Score:</strong> {result.confidence_score}/100 "
+        f"<p><strong>Score:</strong> {shown} "
         f"(<strong>{tier}</strong>)</p>"
     )
+    for line in degraded_coverage_lines(result.scan_integrity):
+        parts.append(f"<p>{html_mod.escape(line)}</p>")
     parts.append(f"<p><strong>Findings:</strong> {len(result.findings)}</p>")
     if result.project_id:
         parts.append(
