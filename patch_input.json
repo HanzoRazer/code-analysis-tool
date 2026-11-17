@@ -16,6 +16,7 @@
       "pyproject.toml"
     ],
     "files_expected_to_change": [
+      "ci/enforce_schema_version_bump.sh",
       "docs/contracts_bundle.json",
       "docs/openapi.json",
       "patch_input.json",
@@ -87,8 +88,9 @@
     "base": "main",
     "head": "cursor/fail-closed-scan-integrity-221a"
   },
-  "changed_files_count": 64,
+  "changed_files_count": 65,
   "changed_files_exact": [
+    "ci/enforce_schema_version_bump.sh",
     "docs/contracts_bundle.json",
     "docs/openapi.json",
     "patch_input.json",
@@ -163,7 +165,8 @@
       "Non-critical degradation caps GREEN at YELLOW and every tier discloses degraded coverage",
       "PR-CLEAN appends structured degraded evidence beside the existing skipped warning text",
       "Removed pytest --maxfail=1 and locked the debt CLI --ci/--out contract",
-      "Bumped signal_logic_version to signals_v6 and refreshed golden fixtures and contract manifests"
+      "Bumped signal_logic_version to signals_v6 and refreshed golden fixtures and contract manifests",
+      "Fixed the schema bump gate so it reads the schema from stdin instead of an empty heredoc"
     ],
     "why_not_redundant": "The scorer only sees findings, so an empty or crashed scan previously scored 83 and exited 0. The guard has to live where the runner knows which analyzers finished."
   },
@@ -183,7 +186,8 @@
       "Python 3.11 AST contract gates passed",
       "Empty directory: vibe_tier inconclusive, confidence null, exit 3",
       "Clean Python file: vibe_tier green, score 83, exit 0",
-      "eval() finding: vibe_tier red, exit 2"
+      "eval() finding: vibe_tier red, exit 2",
+      "ci/enforce_schema_version_bump.sh: run_result_v1 -> run_result_v2"
     ],
     "notes": "Schema version bump script compares origin/main...HEAD, so it is re-run after the commit."
   },
