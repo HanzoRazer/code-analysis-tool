@@ -108,69 +108,66 @@ def _invoke(
         raise
 
 
+def _outcome(
+    analyzer_id: str,
+    critical: bool,
+    status: AnalyzerStatus,
+    started: float,
+) -> AnalyzerOutcome:
+    return AnalyzerOutcome(
+        analyzer_id=analyzer_id,
+        status=status,
+        is_critical=critical,
+        duration_s=time.perf_counter() - started,
+    )
+
+
 def _run_analyzer(
     analyzer: Analyzer,
     root: Path,
-    py_files: list[Path],
     files_by_lang: dict[str, list[Path]],
     *,
     enable_js_ts: bool,
     timeout: float | None,
 ) -> tuple[list[Finding], AnalyzerOutcome]:
+    """Run one analyzer and record why it did or did not assess its files."""
     analyzer_id = _analyzer_id(analyzer)
     critical = analyzer_id in CRITICAL_ANALYZER_IDS
     started = time.perf_counter()
-    findings: list[Finding] = []
-
-    def outcome(status: AnalyzerStatus) -> AnalyzerOutcome:
-        return AnalyzerOutcome(
-            analyzer_id=analyzer_id,
-            status=status,
-            is_critical=critical,
-            duration_s=time.perf_counter() - started,
-        )
-
-    py_target = _targets_python(analyzer)
+    py_files = list(files_by_lang.get("py") or [])
     multilang = _is_multilang(analyzer)
+    py_eligible = _targets_python(analyzer) and bool(py_files)
     ml_files = _eligible_ml_files(analyzer, files_by_lang) if multilang else []
-    py_eligible = py_target and bool(py_files)
     ml_eligible = multilang and enable_js_ts and bool(ml_files)
 
-    if multilang and not enable_js_ts and not py_eligible:
-        return findings, outcome("not_scheduled")
-    if not py_eligible and not ml_eligible:
-        return findings, outcome("not_applicable")
+    def finish(status: AnalyzerStatus) -> AnalyzerOutcome:
+        return _outcome(analyzer_id, critical, status, started)
 
+    if multilang and not enable_js_ts and not py_eligible:
+        return [], finish("not_scheduled")
+    if not py_eligible and not ml_eligible:
+        return [], finish("not_applicable")
     if ml_eligible and _capability_missing(analyzer):
         _logger.info("tree-sitter not available — skipping %s", analyzer_id)
-        return findings, outcome("missing_capability")
+        return [], finish("missing_capability")
 
+    findings: list[Finding] = []
     try:
         if py_eligible:
-            findings.extend(
-                _invoke(
-                    analyzer.run,
-                    (root, py_files),
-                    timeout=timeout,
-                    analyzer_id=analyzer_id,
-                    multilang=False,
-                )
-            )
+            findings.extend(_invoke(
+                analyzer.run, (root, py_files),
+                timeout=timeout, analyzer_id=analyzer_id, multilang=False,
+            ))
         if ml_eligible:
-            findings.extend(
-                _invoke(
-                    analyzer.run_multilang,
-                    (root, files_by_lang),
-                    timeout=timeout,
-                    analyzer_id=analyzer_id,
-                    multilang=True,
-                )
-            )
+            findings.extend(_invoke(
+                analyzer.run_multilang, (root, files_by_lang),
+                timeout=timeout, analyzer_id=analyzer_id, multilang=True,
+            ))
     except MissingAnalyzerCapability:
-        return findings, outcome("missing_capability")
-    except (FuturesTimeoutError, Exception):
-        return findings, outcome("failed")
-    return findings, outcome("ok")
+        return findings, finish("missing_capability")
+    except Exception:
+        return findings, finish("failed")
+    return findings, finish("ok")
 
 
 def run_scan(
@@ -198,7 +195,6 @@ def run_scan(
         exclude=scan_config.get("exclude"),
         enable_js_ts=enable_js_ts,
     )
-    files = files_by_lang["py"]
 
     # ── 1. run every analyzer (with per-analyzer timeout) ───────────
     timeout_str = os.environ.get("CODE_AUDIT_ANALYZER_TIMEOUT", "")
@@ -214,7 +210,6 @@ def run_scan(
         produced, outcome = _run_analyzer(
             analyzer,
             root,
-            files,
             files_by_lang,
             enable_js_ts=enable_js_ts,
             timeout=analyzer_timeout,
