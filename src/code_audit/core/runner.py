@@ -2,23 +2,31 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 import json
 import logging
 import os
-import signal as _signal
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from pathlib import Path
+import signal as _signal
+import time
 from typing import TYPE_CHECKING
 
 from code_audit.contracts.load import validate_instance
-from code_audit.utils.json_norm import stable_json_dumps
 from code_audit.core.discover import discover_py_files, discover_source_files
+from code_audit.core.scan_integrity import (
+    CRITICAL_ANALYZER_IDS,
+    AnalyzerOutcome,
+    AnalyzerStatus,
+    MissingAnalyzerCapability,
+    evaluate_scan_integrity,
+)
 from code_audit.insights.confidence import compute_confidence
 from code_audit.insights.translator import findings_to_signals
 from code_audit.model import RiskLevel
 from code_audit.model.finding import Finding
 from code_audit.model.run_result import RunResult
 from code_audit.policy.thresholds import tier_from_score
+from code_audit.utils.json_norm import stable_json_dumps
 
 if TYPE_CHECKING:
     from code_audit.analyzers.base import Analyzer
@@ -28,6 +36,141 @@ _logger = logging.getLogger(__name__)
 # Default per-analyzer timeout in seconds.  Override with
 # CODE_AUDIT_ANALYZER_TIMEOUT env var (0 = no limit).
 _DEFAULT_ANALYZER_TIMEOUT = 300  # 5 minutes
+
+
+def _analyzer_id(analyzer: Analyzer) -> str:
+    return str(getattr(analyzer, "id", type(analyzer).__name__))
+
+
+def _targets_python(analyzer: Analyzer) -> bool:
+    languages = getattr(analyzer, "languages", None)
+    if languages is None:
+        return True
+    return any(lang in {"py", "python"} for lang in languages)
+
+
+def _is_multilang(analyzer: Analyzer) -> bool:
+    return callable(getattr(analyzer, "run_multilang", None))
+
+
+def _capability_missing(analyzer: Analyzer) -> bool:
+    probe = getattr(analyzer, "capability_available", None)
+    if not callable(probe):
+        return False
+    try:
+        return not bool(probe())
+    except Exception:
+        return True
+
+
+def _eligible_ml_files(analyzer: Analyzer, files_by_lang: dict[str, list[Path]]) -> list[Path]:
+    filter_files = getattr(analyzer, "filter_files", None)
+    if callable(filter_files):
+        return [path for path, _language in filter_files(files_by_lang)]
+    found: list[Path] = []
+    for key in ("js", "ts"):
+        found.extend(files_by_lang.get(key) or [])
+    return found
+
+
+def _invoke(
+    fn,
+    args: tuple,
+    *,
+    timeout: float | None,
+    analyzer_id: str,
+    multilang: bool,
+) -> list[Finding]:
+    """Run one analyzer phase. Timeout and crash keep the historical warning text."""
+    label = "Multi-lang analyzer" if multilang else "Analyzer"
+    try:
+        if timeout is None:
+            return list(fn(*args))
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(fn, *args)
+            return list(future.result(timeout=timeout))
+    except FuturesTimeoutError:
+        _logger.warning(
+            "%s '%s' timed out after %.0fs — skipped",
+            label,
+            analyzer_id,
+            timeout,
+        )
+        raise
+    except MissingAnalyzerCapability:
+        raise
+    except Exception:
+        _logger.exception(
+            "%s '%s' raised an exception — skipped",
+            label,
+            analyzer_id,
+        )
+        raise
+
+
+def _run_analyzer(
+    analyzer: Analyzer,
+    root: Path,
+    py_files: list[Path],
+    files_by_lang: dict[str, list[Path]],
+    *,
+    enable_js_ts: bool,
+    timeout: float | None,
+) -> tuple[list[Finding], AnalyzerOutcome]:
+    analyzer_id = _analyzer_id(analyzer)
+    critical = analyzer_id in CRITICAL_ANALYZER_IDS
+    started = time.perf_counter()
+    findings: list[Finding] = []
+
+    def outcome(status: AnalyzerStatus) -> AnalyzerOutcome:
+        return AnalyzerOutcome(
+            analyzer_id=analyzer_id,
+            status=status,
+            is_critical=critical,
+            duration_s=time.perf_counter() - started,
+        )
+
+    py_target = _targets_python(analyzer)
+    multilang = _is_multilang(analyzer)
+    ml_files = _eligible_ml_files(analyzer, files_by_lang) if multilang else []
+    py_eligible = py_target and bool(py_files)
+    ml_eligible = multilang and enable_js_ts and bool(ml_files)
+
+    if multilang and not enable_js_ts and not py_eligible:
+        return findings, outcome("not_scheduled")
+    if not py_eligible and not ml_eligible:
+        return findings, outcome("not_applicable")
+
+    if ml_eligible and _capability_missing(analyzer):
+        _logger.info("tree-sitter not available — skipping %s", analyzer_id)
+        return findings, outcome("missing_capability")
+
+    try:
+        if py_eligible:
+            findings.extend(
+                _invoke(
+                    analyzer.run,
+                    (root, py_files),
+                    timeout=timeout,
+                    analyzer_id=analyzer_id,
+                    multilang=False,
+                )
+            )
+        if ml_eligible:
+            findings.extend(
+                _invoke(
+                    analyzer.run_multilang,
+                    (root, files_by_lang),
+                    timeout=timeout,
+                    analyzer_id=analyzer_id,
+                    multilang=True,
+                )
+            )
+    except MissingAnalyzerCapability:
+        return findings, outcome("missing_capability")
+    except (FuturesTimeoutError, Exception):
+        return findings, outcome("failed")
+    return findings, outcome("ok")
 
 
 def run_scan(
@@ -66,59 +209,22 @@ def run_scan(
         analyzer_timeout = None  # no limit
 
     all_findings: list[Finding] = []
+    outcomes: list[AnalyzerOutcome] = []
     for analyzer in analyzers:
-        analyzer_id = getattr(analyzer, "id", type(analyzer).__name__)
-        if analyzer_timeout is not None:
-            # Run with a deadline so a single slow analyzer cannot stall
-            # the entire scan indefinitely.
-            with ThreadPoolExecutor(max_workers=1) as pool:
-                future = pool.submit(analyzer.run, root, files)
-                try:
-                    results = future.result(timeout=analyzer_timeout)
-                    all_findings.extend(results)
-                except FuturesTimeoutError:
-                    _logger.warning(
-                        "Analyzer '%s' timed out after %.0fs — skipped",
-                        analyzer_id,
-                        analyzer_timeout,
-                    )
-                except Exception:
-                    _logger.exception(
-                        "Analyzer '%s' raised an exception — skipped",
-                        analyzer_id,
-                    )
-        else:
-            all_findings.extend(analyzer.run(root, files))
-
-    # ── 1b. run multi-language analyzers (JS/TS) ────────────────────
-    if enable_js_ts:
-        for analyzer in analyzers:
-            run_ml = getattr(analyzer, "run_multilang", None)
-            if run_ml is not None:
-                analyzer_id = getattr(analyzer, "id", type(analyzer).__name__)
-                if analyzer_timeout is not None:
-                    with ThreadPoolExecutor(max_workers=1) as pool:
-                        future = pool.submit(run_ml, root, files_by_lang)
-                        try:
-                            results = future.result(timeout=analyzer_timeout)
-                            all_findings.extend(results)
-                        except FuturesTimeoutError:
-                            _logger.warning(
-                                "Multi-lang analyzer '%s' timed out after %.0fs — skipped",
-                                analyzer_id,
-                                analyzer_timeout,
-                            )
-                        except Exception:
-                            _logger.exception(
-                                "Multi-lang analyzer '%s' raised an exception — skipped",
-                                analyzer_id,
-                            )
-                else:
-                    all_findings.extend(run_ml(root, files_by_lang))
+        produced, outcome = _run_analyzer(
+            analyzer,
+            root,
+            files,
+            files_by_lang,
+            enable_js_ts=enable_js_ts,
+            timeout=analyzer_timeout,
+        )
+        all_findings.extend(produced)
+        outcomes.append(outcome)
 
     # ── 2. compute confidence score ─────────────────────────────────
     # Contract hygiene: validate each finding against finding schema.
-    from code_audit.contracts.validate import validate_finding, ContractValidationError
+    from code_audit.contracts.validate import ContractValidationError, validate_finding
 
     for f in all_findings:
         try:
@@ -131,20 +237,34 @@ def run_scan(
                 exc_info=True,
             )
 
-    score = compute_confidence(all_findings)
+    score: int | None = compute_confidence(all_findings)
     tier = tier_from_score(score)
 
-    # Hard-stop red triggers (per spec)
+    # Hard-stop red triggers (per spec). A completed critical finding
+    # outranks an inconclusive scan: the hit is more actionable than
+    # "we could not finish looking."
     from code_audit.model import AnalyzerType, Severity
 
+    red_hit = False
     for f in all_findings:
         if f.severity in {Severity.HIGH, Severity.CRITICAL} and f.type in {
             AnalyzerType.SECURITY,
             AnalyzerType.SAFETY,
             AnalyzerType.EXCEPTIONS,
         }:
+            red_hit = True
             tier = RiskLevel.RED
             break
+
+    files_scanned = sum(len(paths) for paths in files_by_lang.values())
+    integrity = evaluate_scan_integrity(files_scanned, outcomes)
+    if red_hit:
+        tier = RiskLevel.RED
+    elif not integrity.assessable:
+        tier = RiskLevel.INCONCLUSIVE
+        score = None
+    elif integrity.degraded and tier == RiskLevel.GREEN:
+        tier = RiskLevel.YELLOW
 
     # ── 3. translate findings → signals ─────────────────────────────
     signals = findings_to_signals(all_findings)
@@ -161,6 +281,7 @@ def run_scan(
         confidence_score=score,
         findings=all_findings,
         signals_snapshot=signals,
+        scan_integrity=integrity.to_dict(),
     )
     # Inject deterministic values for golden-fixture testing
     if _run_id is not None:

@@ -362,7 +362,7 @@ def build_run_result(
     }
 
     run: Dict[str, Any] = {
-        "schema_version": "run_result_v1",
+        "schema_version": "run_result_v2",
         "run": {
             "run_id": _run_id or str(uuid.uuid4()),
             "project_id": project_id,

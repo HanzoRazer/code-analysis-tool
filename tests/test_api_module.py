@@ -100,7 +100,7 @@ class TestScanProject:
 
     def test_returns_tuple(self) -> None:
         rr, rr_dict = scan_project(FIXTURE_REPO, ci_mode=True)
-        assert rr_dict["schema_version"] == "run_result_v1"
+        assert rr_dict["schema_version"] == "run_result_v2"
         assert "summary" in rr_dict
         assert "findings_raw" in rr_dict
 

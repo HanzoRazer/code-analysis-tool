@@ -15,10 +15,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from code_audit.core.scan_integrity import degraded_coverage_lines
 from code_audit.model import Severity
 from code_audit.model.finding import Finding
 from code_audit.model.run_result import RunResult
-
 
 # ── severity ordering ─────────────────────────────────────────────────
 _SEVERITY_ORDER = [
@@ -29,7 +29,7 @@ _SEVERITY_ORDER = [
     Severity.INFO,
 ]
 
-_TIER_EMOJI = {"green": "🟢", "yellow": "🟡", "red": "🔴"}
+_TIER_EMOJI = {"green": "🟢", "yellow": "🟡", "red": "🔴", "inconclusive": "⚪"}
 _SEV_EMOJI = {
     "critical": "🔴",
     "high": "🟠",
@@ -73,9 +73,12 @@ def render_dashboard(
     lines.append("═" * width)
     lines.append(f"  CODE AUDIT DASHBOARD  {emoji}  {tier.upper()}")
     lines.append("═" * width)
-    lines.append(f"  Score: {result.confidence_score}/100    "
+    shown = "inconclusive" if result.confidence_score is None else f"{result.confidence_score}/100"
+    lines.append(f"  Score: {shown}    "
                  f"Findings: {len(result.findings)}    "
                  f"{now}")
+    for line in degraded_coverage_lines(result.scan_integrity):
+        lines.append(f"  {line}")
     if result.project_id:
         lines.append(f"  Project: {result.project_id}")
     lines.append("─" * width)

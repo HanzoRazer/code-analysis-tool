@@ -42,12 +42,17 @@ def tier_from_score(
 def exit_code_from_tier(tier: RiskLevel) -> int:
     """Map a ``RiskLevel`` tier to a CLI exit code.
 
-    Policy: green → 0, yellow → 1, red → 2.
+    Policy: green → 0, yellow → 1, red → 2, inconclusive → 3.
+    INCONCLUSIVE is never derived from a score; the runner sets it.
     """
     if tier == RiskLevel.GREEN:
         return ExitCode.SUCCESS
     if tier == RiskLevel.YELLOW:
         return ExitCode.VIOLATION
+    if tier == RiskLevel.RED:
+        return ExitCode.ERROR
+    if tier == RiskLevel.INCONCLUSIVE:
+        return ExitCode.INCONCLUSIVE
     return ExitCode.ERROR
 
 
