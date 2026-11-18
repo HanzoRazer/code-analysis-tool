@@ -31,6 +31,7 @@ from typing import Any, Dict, List, Literal, Optional, Tuple
 from .analyzers.dead_code import analyze_dead_code
 from .analyzers.exceptions import analyze_exceptions
 from .contracts.load import validate_instance
+from .core.scan_integrity import AnalyzerOutcome, evaluate_scan_integrity
 
 Severity = Literal["info", "low", "medium", "high", "critical"]
 RiskLevel = Literal["green", "yellow", "red"]
@@ -341,7 +342,8 @@ def build_run_result(
 
     # 1) Raw findings (engine truth)
     findings_raw: List[Dict[str, Any]] = []
-    for pyfile in _iter_python_files(root_path):
+    py_files = _iter_python_files(root_path)
+    for pyfile in py_files:
         findings_raw.extend(analyze_dead_code(pyfile, root=root_path))
         findings_raw.extend(analyze_exceptions(pyfile, root=root_path))
 
@@ -350,6 +352,19 @@ def build_run_result(
 
     # 3) Confidence + vibe tier
     confidence_score, vibe_tier = _compute_confidence_and_vibe(findings_raw)
+
+    # Integrity evidence, so this deprecated path is not read as "unverified"
+    # and an empty tree is not reported GREEN. Analyzer errors propagate here,
+    # so reaching this point means both analyzers completed.
+    integrity = evaluate_scan_integrity(
+        len(py_files),
+        [
+            AnalyzerOutcome("dead_code", "ok", is_critical=False),
+            AnalyzerOutcome("exceptions", "ok", is_critical=True),
+        ],
+    )
+    if not integrity.assessable and vibe_tier != "red":
+        vibe_tier, confidence_score = "inconclusive", None
 
     summary = {
         "vibe_tier": vibe_tier,
@@ -378,6 +393,7 @@ def build_run_result(
         "summary": summary,
         "signals_snapshot": signals_snapshot,
         "findings_raw": findings_raw,
+        "scan_integrity": integrity.to_dict(),
         "artifacts": {
             "redactions_applied": True,
             "snippet_policy": "truncated_200_chars",

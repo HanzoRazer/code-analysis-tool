@@ -110,9 +110,14 @@ CI ratchet rules:
 
 ## 5. Schema Stability
 
-The following schemas are frozen under v1:
+The following schemas are frozen at their current versions:
 
-- `run_result_v1`
+- `run_result_v2` (supersedes `run_result_v1`: nullable
+  `summary.confidence_score`, `inconclusive` vibe tier, optional
+  `scan_integrity` block). Consumers pinned to `run_result_v1`, including
+  code-rescue-tool's `ingest/run_result_loader.py` and its
+  `contracts/run_result.schema.json`, reject v2 and must be updated before a
+  v2-producing release is deployed.
 - `debt_snapshot_v1`
 
 Breaking schema changes require:

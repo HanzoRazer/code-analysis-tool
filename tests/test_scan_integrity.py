@@ -122,3 +122,47 @@ def test_legacy_red_stays_red_but_unverified() -> None:
     )
     assert view.verified is False
     assert view.effective_tier == "red"
+
+
+def test_noncritical_missing_capability_not_assessable() -> None:
+    """Eligible files with no parser were never assessed; criticality is moot."""
+    integrity = evaluate_scan_integrity(
+        2,
+        [
+            make_outcome("complexity", "ok"),
+            make_outcome("js_ts_security", "missing_capability"),
+        ],
+    )
+    assert integrity.assessable is False
+    assert "missing_capability:js_ts_security" in integrity.reasons
+
+
+def test_noncritical_failed_stays_assessable() -> None:
+    integrity = evaluate_scan_integrity(
+        2,
+        [make_outcome("complexity", "ok"), make_outcome("dead_code", "failed")],
+    )
+    assert integrity.assessable is True
+    assert integrity.reasons == ["noncritical_degradation"]
+
+
+def test_legacy_builder_emits_integrity(tmp_path) -> None:
+    """The deprecated builder now carries integrity evidence (verified view).
+
+    Note: on main this builder raises IndexError for any tree without an
+    exceptions finding (including empty trees), so only a tree with one is
+    exercised here.
+    """
+    import warnings
+
+    from code_audit.run_result import build_run_result
+
+    (tmp_path / "a.py").write_text(
+        "def f():\n    try:\n        pass\n    except:\n        pass\n", encoding="utf-8"
+    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        result = build_run_result(root=str(tmp_path), tool_version="t")
+    assert result["scan_integrity"]["assessable"] is True
+    assert result["scan_integrity"]["files_scanned"] == 1
+    assert interpret_stored_result(result).verified is True

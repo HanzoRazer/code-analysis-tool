@@ -35,6 +35,20 @@ class MissingAnalyzerCapability(Exception):
         self.analyzer_id = analyzer_id
 
 
+class AnalyzerIncomplete(Exception):
+    """An analyzer ran but could not assess some eligible files.
+
+    Carries the findings it did produce so they are not lost; the runner
+    records the analyzer as ``failed`` (degraded) rather than ``ok``.
+    """
+
+    def __init__(self, analyzer_id: str, findings: list, unassessed: list[str]) -> None:
+        super().__init__(f"{analyzer_id}: {len(unassessed)} eligible file(s) not assessed")
+        self.analyzer_id = analyzer_id
+        self.findings = list(findings)
+        self.unassessed = list(unassessed)
+
+
 @dataclass(frozen=True, slots=True)
 class AnalyzerOutcome:
     analyzer_id: str
@@ -101,9 +115,11 @@ def evaluate_scan_integrity(
     """Apply D3–D5. Pure and deterministic.
 
     Not assessable when no source files were discovered, no analyzer
-    completed, or a critical analyzer is ``missing_capability`` or ``failed``.
-    ``not_applicable`` and ``not_scheduled`` never degrade. Other degrading
-    outcomes stay assessable and are listed for the GREEN→YELLOW cap.
+    completed, a critical analyzer is ``missing_capability`` or ``failed``,
+    or any analyzer is ``missing_capability`` (eligible files exist that no
+    parser could read, so they were never assessed at all).
+    ``not_applicable`` and ``not_scheduled`` never degrade. A non-critical
+    ``failed`` stays assessable and is listed for the GREEN→YELLOW cap.
     """
     degraded = [item for item in outcomes if item.status in _DEGRADING_STATUSES]
     analyzers_ok = sum(1 for item in outcomes if item.status == "ok")
@@ -116,6 +132,8 @@ def evaluate_scan_integrity(
     for item in degraded:
         if item.is_critical:
             blocking.append(f"critical_analyzer_{item.status}:{item.analyzer_id}")
+        elif item.status == "missing_capability":
+            blocking.append(f"missing_capability:{item.analyzer_id}")
 
     reasons = list(blocking)
     if degraded and not blocking:

@@ -13,11 +13,16 @@
       "tests/",
       "docs/openapi.json",
       "docs/contracts_bundle.json",
-      "pyproject.toml"
+      "pyproject.toml",
+      "docs/CONTRACT.md",
+      "docs/dev_orders/",
+      "ci/"
     ],
     "files_expected_to_change": [
       "ci/enforce_schema_version_bump.sh",
+      "docs/CONTRACT.md",
       "docs/contracts_bundle.json",
+      "docs/dev_orders/PR_CLEAN_001_VERIFY_REPORT.md",
       "docs/openapi.json",
       "patch_input.json",
       "pyproject.toml",
@@ -78,6 +83,7 @@
       "tests/test_debt_cli_contract_parity.py",
       "tests/test_maxfail_masking_analyzer.py",
       "tests/test_policy_thresholds.py",
+      "tests/test_pr_clean.py",
       "tests/test_run_result_schema.py",
       "tests/test_scan_integrity.py",
       "tests/test_scan_integrity_runner.py"
@@ -88,10 +94,12 @@
     "base": "main",
     "head": "cursor/fail-closed-scan-integrity-221a"
   },
-  "changed_files_count": 65,
+  "changed_files_count": 68,
   "changed_files_exact": [
     "ci/enforce_schema_version_bump.sh",
+    "docs/CONTRACT.md",
     "docs/contracts_bundle.json",
+    "docs/dev_orders/PR_CLEAN_001_VERIFY_REPORT.md",
     "docs/openapi.json",
     "patch_input.json",
     "pyproject.toml",
@@ -152,6 +160,7 @@
     "tests/test_debt_cli_contract_parity.py",
     "tests/test_maxfail_masking_analyzer.py",
     "tests/test_policy_thresholds.py",
+    "tests/test_pr_clean.py",
     "tests/test_run_result_schema.py",
     "tests/test_scan_integrity.py",
     "tests/test_scan_integrity_runner.py"
@@ -161,12 +170,16 @@
       "Added RiskLevel.INCONCLUSIVE and exit code 3, distinct from RED exit 2",
       "Added scan_integrity evaluation in the runner, not in compute_confidence",
       "Bumped run_result schema to run_result_v2 with nullable confidence and optional scan_integrity",
-      "A missing parser on eligible JS/TS files is missing_capability and cannot be GREEN",
+      "A missing parser on eligible JS/TS files is missing_capability and makes the scan INCONCLUSIVE (exit 3) regardless of analyzer criticality",
       "Non-critical degradation caps GREEN at YELLOW and every tier discloses degraded coverage",
-      "PR-CLEAN appends structured degraded evidence beside the existing skipped warning text",
+      "PR-CLEAN refuses a comparison from the structured scan_integrity evidence (absent, not assessable, or any degraded analyzer) instead of a warning-log probe",
       "Removed pytest --maxfail=1 and locked the debt CLI --ci/--out contract",
       "Bumped signal_logic_version to signals_v6 and refreshed golden fixtures and contract manifests",
-      "Fixed the schema bump gate so it reads the schema from stdin instead of an empty heredoc"
+      "Fixed the schema bump gate so it reads the schema from stdin instead of an empty heredoc",
+      "A crash in an analyzer's filter_files() eligibility check is recorded as a failed outcome instead of escaping run_scan()",
+      "A tree-sitter analyzer that cannot read or parse an eligible file is recorded as failed (degraded) and keeps its partial findings",
+      "The deprecated build_run_result() emits scan_integrity evidence",
+      "docs/CONTRACT.md lists run_result_v2 and names the v1-pinned downstream consumer"
     ],
     "why_not_redundant": "The scorer only sees findings, so an empty or crashed scan previously scored 83 and exited 0. The guard has to live where the runner knows which analyzers finished."
   },

@@ -32,8 +32,33 @@ def _finding(rule: str, path: str, fp: str, line: int = 1, end: int | None = Non
     }
 
 
-def _result(*findings: dict) -> dict:
-    return {"schema_version": "run_result_v1", "findings_raw": list(findings)}
+_COMPLETE = {
+    "assessable": True,
+    "files_scanned": 1,
+    "analyzers_total": 1,
+    "analyzers_ok": 1,
+    "degraded": [],
+    "reasons": [],
+}
+
+
+def _result(*findings: dict, integrity: dict | None = _COMPLETE) -> dict:
+    result = {"schema_version": "run_result_v2", "findings_raw": list(findings)}
+    if integrity is not None:
+        result["scan_integrity"] = integrity
+    return result
+
+
+def _degraded(analyzer_id: str, status: str, *, assessable: bool = True) -> dict:
+    return {
+        **_COMPLETE,
+        "assessable": assessable,
+        "degraded": [
+            {"analyzer_id": analyzer_id, "status": status, "is_critical": False,
+             "duration_s": None}
+        ],
+        "reasons": [] if assessable else [f"missing_capability:{analyzer_id}"],
+    }
 
 
 @pytest.fixture
@@ -331,22 +356,34 @@ def test_verifies_against_real_scanner_output(tmp_path):
     assert out["claims"][0]["status"] == "pr_introduced"
 
 
-def test_skipped_analyzer_fails_closed_and_cleans_up(wired, monkeypatch):
-    """A scan in which the runner skipped an analyzer is not comparable."""
-    import logging
-
+@pytest.mark.parametrize(
+    ("integrity", "match"),
+    [
+        # Noncritical crash: the scan stays assessable (YELLOW) but is degraded.
+        (_degraded("exceptions", "failed"), "exceptions=failed"),
+        # Missing parser: the runner logs only at INFO ("skipping"), so a
+        # warning-log probe never saw it. Structured evidence must.
+        (_degraded("js_ts_security", "missing_capability", assessable=False),
+         "js_ts_security=missing_capability"),
+        ({**_COMPLETE, "assessable": False, "reasons": ["no_source_files"]},
+         "no_source_files"),
+        (None, "no scan_integrity evidence"),
+        ({**_COMPLETE, "degraded": None}, "degraded must be an array"),
+    ],
+    ids=["degraded", "missing_capability", "not_assessable", "absent", "malformed"],
+)
+def test_incomplete_scan_fails_closed_and_cleans_up(wired, monkeypatch, integrity, match):
+    """A base scan that is not complete per scan_integrity is not comparable."""
     caller, _target, _seen = wired
     before = _caller_snapshot(caller)
 
     def partial_scan(root, **kwargs):
         if kwargs["project_id"].startswith("pr-base:"):
-            logging.getLogger("code_audit.core.runner").warning(
-                "Analyzer '%s' raised an exception — skipped", "exceptions"
-            )
+            return object(), _result(integrity=integrity)
         return object(), _result()
 
     monkeypatch.setattr(pr_clean, "scan_project", partial_scan)
-    with pytest.raises(PrCleanError, match="pr-base:.*scan incomplete"):
+    with pytest.raises(PrCleanError, match="pr-base:.*" + match):
         build_plan(caller, 7, assessment=_assessment())
     assert _caller_snapshot(caller) == before
     assert _git(caller, "for-each-ref", "refs/code-audit") == ""
@@ -364,15 +401,10 @@ def test_report_states_comparability(wired):
 
 
 def test_cli_incomplete_scan_exits_2(wired, monkeypatch, tmp_path, capsys):
-    import logging
-
     caller, _target, _seen = wired
 
     def partial_scan(root, **kwargs):
-        logging.getLogger("code_audit.core.runner").warning(
-            "Analyzer '%s' timed out after %.0fs — skipped", "x", 1.0
-        )
-        return object(), _result()
+        return object(), _result(integrity=_degraded("x", "failed"))
 
     monkeypatch.setattr(pr_clean, "scan_project", partial_scan)
     assessment = tmp_path / "a.json"

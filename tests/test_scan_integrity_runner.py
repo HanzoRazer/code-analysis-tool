@@ -97,13 +97,20 @@ def test_crashing_security_analyzer_inconclusive(tmp_path: Path) -> None:
     )
 
 
-def test_missing_capability_on_eligible_js_not_green(tmp_path: Path) -> None:
+def test_missing_capability_on_eligible_js_is_inconclusive(tmp_path: Path) -> None:
+    """Eligible JS/TS files no parser could read were never assessed: exit 3.
+
+    Holds even though js_ts_security is non-critical and a Python analyzer
+    completed (the PR contract: missing parsers on eligible files are
+    inconclusive, not a YELLOW cap).
+    """
     (tmp_path / "a.py").write_text("x = 1\n")
     (tmp_path / "app.js").write_text("const x = 1;\n")
     result = run_scan(tmp_path, [_Ok(), _JsMissing()])
-    assert result.vibe_tier != RiskLevel.GREEN
-    assert result.vibe_tier == RiskLevel.YELLOW
-    assert result.confidence_score is not None
+    assert result.vibe_tier == RiskLevel.INCONCLUSIVE
+    assert result.confidence_score is None
+    assert exit_code_from_tier(result.vibe_tier) == 3
+    assert "missing_capability:js_ts_security" in result.scan_integrity["reasons"]
     degraded = result.scan_integrity["degraded"]
     assert degraded[0]["analyzer_id"] == "js_ts_security"
     assert degraded[0]["status"] == "missing_capability"
@@ -164,6 +171,88 @@ def test_pr_clean_surfaces_structured_degradation(
     with pytest.raises(PrCleanError) as exc:
         _complete_scan(tmp_path, "proj", None)
     message = str(exc.value)
-    assert "skipped" in message
-    assert "scan_integrity.degraded:" in message
+    assert "scan incomplete" in message
+    assert "scan_integrity.degraded=[" in message
     assert "security=failed" in message
+
+
+def test_pr_clean_refuses_missing_parser_logged_only_at_info(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Real scan, tree-sitter absent: the runner logs INFO "skipping" only."""
+    from code_audit.analyzers import treesitter_base
+
+    (tmp_path / "a.py").write_text("x = 1\n")
+    (tmp_path / "app.js").write_text("eval(x);\n")
+    monkeypatch.setattr(treesitter_base, "is_available", lambda: False)
+    with pytest.raises(PrCleanError, match="missing_capability"):
+        _complete_scan(tmp_path, "proj", None)
+
+
+class _FilterCrash(_JsMissing):
+    def capability_available(self) -> bool:
+        return True
+
+    def filter_files(self, files_by_lang: dict) -> list:
+        raise RuntimeError("filter crashed")
+
+
+def test_filter_files_crash_is_recorded_not_raised(tmp_path: Path) -> None:
+    """Eligibility runs before the analyzer; its crash must still be an outcome."""
+    (tmp_path / "a.py").write_text("x = 1\n")
+    (tmp_path / "app.js").write_text("const x = 1;\n")
+    result = run_scan(tmp_path, [SecurityAnalyzer(), _FilterCrash()])
+    assert {"analyzer_id": "js_ts_security", "status": "failed"}.items() <= (
+        result.scan_integrity["degraded"][0].items()
+    )
+    assert result.vibe_tier != RiskLevel.GREEN
+
+
+def test_critical_filter_files_crash_is_inconclusive(tmp_path: Path) -> None:
+    class _CriticalFilterCrash(_FilterCrash):
+        id = "security"
+
+    (tmp_path / "a.py").write_text("x = 1\n")
+    (tmp_path / "app.js").write_text("const x = 1;\n")
+    result = run_scan(tmp_path, [_Ok(), _CriticalFilterCrash()])
+    assert result.vibe_tier == RiskLevel.INCONCLUSIVE
+    assert exit_code_from_tier(result.vibe_tier) == 3
+
+
+def test_unparseable_eligible_file_degrades_and_keeps_findings(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A per-file parse failure is not an "ok" analyzer; found issues are kept."""
+    from code_audit.analyzers import treesitter_base
+    from code_audit.analyzers.treesitter_base import SourceFile, TreeSitterAnalyzerBase
+
+    class _Partial(TreeSitterAnalyzerBase):
+        id = "js_ts_security"
+
+        def _parse_file(self, path: Path, language: str) -> SourceFile | None:
+            if path.name == "broken.js":
+                return None
+            return SourceFile(path=path, language=language, text="", source=b"", tree=None)
+
+        def analyze_file(self, source_file: SourceFile, root: Path) -> list:
+            return [
+                Finding(
+                    finding_id="F-JS",
+                    type=AnalyzerType.SECURITY,
+                    severity=Severity.LOW,
+                    confidence=0.9,
+                    message="js finding",
+                    location=Location(path=source_file.path.name, line_start=1, line_end=1),
+                    fingerprint=make_fingerprint("JS-TEST", source_file.path.name, "x", "y"),
+                )
+            ]
+
+    monkeypatch.setattr(treesitter_base, "is_available", lambda: True)
+    (tmp_path / "a.py").write_text("x = 1\n")
+    (tmp_path / "good.js").write_text("const x = 1;\n")
+    (tmp_path / "broken.js").write_text("const x = 1;\n")
+    result = run_scan(tmp_path, [SecurityAnalyzer(), _Partial()])
+    assert [f.message for f in result.findings] == ["js finding"]
+    degraded = result.scan_integrity["degraded"]
+    assert [(d["analyzer_id"], d["status"]) for d in degraded] == [("js_ts_security", "failed")]
+    assert result.vibe_tier != RiskLevel.GREEN

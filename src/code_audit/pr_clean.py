@@ -27,7 +27,6 @@ import argparse
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 import json
-import logging
 from pathlib import Path
 import sys
 import tempfile
@@ -53,7 +52,6 @@ from code_audit.utils.json_norm import stable_json_dump
 _SCHEMA_VERSION = "pr_clean_plan_v1"
 _ASSESSMENT_VERSION = "pr_clean_assessment_v1"
 _DEFAULT_TIMEOUT_SECONDS = 30.0
-_RUNNER_LOGGER = "code_audit.core.runner"
 _HUMAN = "needs_human_decision"
 
 
@@ -144,13 +142,13 @@ def _require_finding(finding: Any, index: int) -> None:
 
 
 def _findings(run_result: Mapping[str, Any]) -> list[dict[str, Any]]:
-    """Validated ``findings_raw`` of a run_result_v1; malformed input is an error.
+    """Validated ``findings_raw`` of a run_result (v2); malformed input is an error.
 
     A missing or malformed findings array is never read as "no findings".
     """
     raw = run_result.get("findings_raw") if isinstance(run_result, Mapping) else None
     if not isinstance(raw, list):
-        raise PrCleanError("scan result has no findings_raw array (expected run_result_v1)")
+        raise PrCleanError("scan result has no findings_raw array (expected run_result_v2)")
     for index, finding in enumerate(raw):
         _require_finding(finding, index)
     return raw
@@ -398,49 +396,43 @@ def _collect_evidence(
     )
 
 
-class _SkippedAnalyzerProbe(logging.Handler):
-    """Collects the runner's "analyzer ... skipped" warnings for one scan."""
+def _require_complete(result: Mapping[str, Any], project_id: str) -> None:
+    """Fail closed unless the runner's own integrity evidence says complete.
 
-    def __init__(self) -> None:
-        super().__init__(logging.WARNING)
-        self.skipped: list[str] = []
-
-    def emit(self, record: logging.LogRecord) -> None:
-        message = record.getMessage()
-        if message.rstrip().endswith("skipped"):
-            self.skipped.append(message)
+    ``scan_integrity`` records every analyzer outcome (crash, timeout, missing
+    parser, partial parse), so it is authoritative; a log-message probe is not
+    (a missing parser is logged at INFO as "skipping"). Any degraded analyzer
+    or a non-assessable scan on either side makes "absent on base" meaningless.
+    """
+    integrity = result.get("scan_integrity")
+    if not isinstance(integrity, dict):
+        raise PrCleanError(
+            f"{project_id} scan result has no scan_integrity evidence; refusing to compare"
+        )
+    degraded = integrity.get("degraded")
+    if not isinstance(degraded, list):
+        raise PrCleanError(f"{project_id} scan_integrity.degraded must be an array")
+    if integrity.get("assessable") is True and not degraded:
+        return
+    detail = ", ".join(
+        f"{item.get('analyzer_id')}={item.get('status')}"
+        for item in degraded
+        if isinstance(item, dict)
+    )
+    reasons = ", ".join(str(r) for r in integrity.get("reasons") or [])
+    raise PrCleanError(
+        f"{project_id} scan incomplete; refusing to compare: "
+        f"assessable={integrity.get('assessable')!r} reasons=[{reasons}] "
+        f"scan_integrity.degraded=[{detail}]"
+    )
 
 
 def _complete_scan(worktree: Path, project_id: str, manifest: Path | None) -> dict[str, Any]:
-    """Run one scan and fail closed unless every analyzer completed.
-
-    The runner logs and skips an analyzer that raises or times out; a skipped
-    analyzer on either side would make "absent on base" meaningless.
-    """
-    logger = logging.getLogger(_RUNNER_LOGGER)
-    probe = _SkippedAnalyzerProbe()
-    old_level = logger.level
-    logger.addHandler(probe)
-    if logger.getEffectiveLevel() > logging.WARNING:
-        logger.setLevel(logging.WARNING)
-    try:
-        _rr, result = scan_project(
-            worktree, project_id=project_id, ci_mode=True, pr_scope_manifest=manifest
-        )
-    finally:
-        logger.removeHandler(probe)
-        logger.setLevel(old_level)
-    if probe.skipped:
-        detail = "; ".join(probe.skipped)
-        degraded = (result.get("scan_integrity") or {}).get("degraded") or []
-        if degraded:
-            structured = ", ".join(
-                f"{item.get('analyzer_id')}={item.get('status')}" for item in degraded
-            )
-            detail = f"{detail} [scan_integrity.degraded: {structured}]"
-        raise PrCleanError(
-            f"{project_id} scan incomplete; refusing to compare: " + detail
-        )
+    """Run one scan and fail closed unless every analyzer completed."""
+    _rr, result = scan_project(
+        worktree, project_id=project_id, ci_mode=True, pr_scope_manifest=manifest
+    )
+    _require_complete(result, project_id)
     _findings(result)  # reject a malformed result before any comparison
     return result
 

@@ -15,6 +15,7 @@ from code_audit.contracts.load import validate_instance
 from code_audit.core.discover import discover_py_files, discover_source_files
 from code_audit.core.scan_integrity import (
     CRITICAL_ANALYZER_IDS,
+    AnalyzerIncomplete,
     AnalyzerOutcome,
     AnalyzerStatus,
     MissingAnalyzerCapability,
@@ -73,6 +74,23 @@ def _eligible_ml_files(analyzer: Analyzer, files_by_lang: dict[str, list[Path]])
     return found
 
 
+def _ml_eligibility(
+    analyzer: Analyzer, files_by_lang: dict[str, list[Path]], analyzer_id: str
+) -> list[Path] | None:
+    """Eligible JS/TS files, or ``None`` when the analyzer's own filter crashed.
+
+    Runs before the analyzer itself, so it needs its own guard: an exception
+    here must become a ``failed`` outcome, not escape ``run_scan()``.
+    """
+    try:
+        return _eligible_ml_files(analyzer, files_by_lang)
+    except Exception:
+        _logger.exception(
+            "Multi-lang analyzer '%s' raised an exception — skipped", analyzer_id
+        )
+        return None
+
+
 def _invoke(
     fn,
     args: tuple,
@@ -98,6 +116,14 @@ def _invoke(
         )
         raise
     except MissingAnalyzerCapability:
+        raise
+    except AnalyzerIncomplete as exc:
+        _logger.warning(
+            "%s '%s' incomplete: %d eligible file(s) not assessed",
+            label,
+            analyzer_id,
+            len(exc.unassessed),
+        )
         raise
     except Exception:
         _logger.exception(
@@ -137,11 +163,18 @@ def _run_analyzer(
     py_files = list(files_by_lang.get("py") or [])
     multilang = _is_multilang(analyzer)
     py_eligible = _targets_python(analyzer) and bool(py_files)
-    ml_files = _eligible_ml_files(analyzer, files_by_lang) if multilang else []
-    ml_eligible = multilang and enable_js_ts and bool(ml_files)
 
     def finish(status: AnalyzerStatus) -> AnalyzerOutcome:
         return _outcome(analyzer_id, critical, status, started)
+
+    ml_files = (
+        _ml_eligibility(analyzer, files_by_lang, analyzer_id)
+        if multilang and enable_js_ts
+        else []
+    )
+    if ml_files is None:
+        return [], finish("failed")
+    ml_eligible = bool(ml_files)
 
     if multilang and not enable_js_ts and not py_eligible:
         return [], finish("not_scheduled")
@@ -165,6 +198,9 @@ def _run_analyzer(
             ))
     except MissingAnalyzerCapability:
         return findings, finish("missing_capability")
+    except AnalyzerIncomplete as exc:
+        findings.extend(exc.findings)
+        return findings, finish("failed")
     except Exception:
         return findings, finish("failed")
     return findings, finish("ok")

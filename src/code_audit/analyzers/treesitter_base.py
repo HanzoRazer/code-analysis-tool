@@ -14,7 +14,7 @@ import logging
 from pathlib import Path
 from typing import Protocol
 
-from code_audit.core.scan_integrity import MissingAnalyzerCapability
+from code_audit.core.scan_integrity import AnalyzerIncomplete, MissingAnalyzerCapability
 from code_audit.model.finding import Finding
 from code_audit.parsers.tree_sitter_loader import is_available
 
@@ -112,11 +112,17 @@ class TreeSitterAnalyzerBase:
             raise MissingAnalyzerCapability(self.id or type(self).__name__)
 
         all_findings: list[Finding] = []
+        unassessed: list[str] = []
         for path, language in eligible:
             sf = self._parse_file(path, language)
-            if sf is not None:
-                findings = self.analyze_file(sf, root)
-                all_findings.extend(findings)
+            if sf is None:
+                unassessed.append(str(path))
+                continue
+            all_findings.extend(self.analyze_file(sf, root))
+        if unassessed:
+            # Keep what was found, but an eligible file that could not be
+            # read or parsed was not assessed: the analyzer is degraded.
+            raise AnalyzerIncomplete(self.id or type(self).__name__, all_findings, unassessed)
         return all_findings
 
     # Required by the Analyzer protocol for Python files (no-op)

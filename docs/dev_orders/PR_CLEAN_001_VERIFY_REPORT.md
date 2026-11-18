@@ -86,10 +86,12 @@ The tool scans the exact PR head and the PR's **merge-base** independently
 
 **Comparability first.** Both scans use identical analyzer configuration,
 including the `--pr-scope-manifest` (resolved inside the head and applied to
-both sides). The runner skips an analyzer that raises or times out; any such
-skip on either side fails the run (exit 2), because "absent on base" means
-nothing if the base scan was incomplete. Each scan's `findings_raw` must be a
-well-formed `run_result_v1` array (object entries with a fingerprint and a
+both sides). Each scan must carry the runner's `scan_integrity` evidence and
+it must say `assessable: true` with no `degraded` analyzers (crash, timeout,
+missing parser, unparseable eligible file); otherwise, or if the evidence is
+absent or malformed, the run fails (exit 2), because "absent on base" means
+nothing if either scan was incomplete. Each scan's `findings_raw` must be a
+well-formed `run_result_v2` array (object entries with a fingerprint and a
 location path); malformed output is an error, never "no findings". The report's
 `comparability` block records this.
 
