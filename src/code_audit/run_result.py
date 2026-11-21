@@ -185,7 +185,9 @@ def _build_signals_snapshot(
     exc_sorted = sorted(exc_findings, key=_exc_priority)
     exc_ids_sorted = [f["finding_id"] for f in exc_sorted]
 
-    first = exc_sorted[0]
+    # No exception findings is the common (clean-tree) case; no signal is
+    # emitted below, but don't index into an empty list getting there.
+    first = exc_sorted[0] if exc_sorted else {}
     loc = first.get("location", {}) or {}
     primary_location = {
         "path": loc.get("path", ""),
