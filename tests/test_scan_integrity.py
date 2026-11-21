@@ -199,3 +199,21 @@ def test_ci_exit_inconclusive_with_low_findings_stays_3() -> None:
 
     result = _cli_result("inconclusive", None, low=2)
     assert _exit_from_result(result, ci_mode=True) == 3
+
+
+def test_exit_precedence_covers_every_exit_code() -> None:
+    """A new ExitCode must be ranked explicitly, never by numeric value."""
+    from code_audit.__main__ import _EXIT_PRECEDENCE
+    from code_audit.utils.exit_codes import ExitCode
+
+    assert set(_EXIT_PRECEDENCE) == set(ExitCode)
+    assert len(_EXIT_PRECEDENCE) == len(set(_EXIT_PRECEDENCE))
+
+
+def test_most_severe_exit_ranks_by_precedence_not_value() -> None:
+    from code_audit.__main__ import _most_severe_exit
+    from code_audit.utils.exit_codes import ExitCode
+
+    assert _most_severe_exit(ExitCode.INCONCLUSIVE, ExitCode.ERROR) == ExitCode.ERROR
+    assert _most_severe_exit(ExitCode.INCONCLUSIVE, ExitCode.VIOLATION) == ExitCode.INCONCLUSIVE
+    assert _most_severe_exit(ExitCode.SUCCESS, ExitCode.VIOLATION) == ExitCode.VIOLATION

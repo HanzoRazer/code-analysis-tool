@@ -244,12 +244,25 @@ def _exit_from_result(result_dict: dict, *, ci_mode: bool) -> int:
     by_sev = summary.get("counts", {}).get("by_severity", {})
     worst = _worst_severity_from_counts(by_sev)
     sev_ec = _exit_code_for_worst_severity(worst)
-    if score_ec == ExitCode.INCONCLUSIVE:
-        # INCONCLUSIVE (3) is numerically larger than ERROR (2) but is not
-        # "worse": a completed fail-level finding outranks "could not finish"
-        # (same precedence as the runner's RED hard-stop).
-        return ExitCode.ERROR if sev_ec >= ExitCode.ERROR else ExitCode.INCONCLUSIVE
-    return max(score_ec, sev_ec)
+    return _most_severe_exit(score_ec, sev_ec)
+
+
+# Exit codes ordered least → most severe. Numeric values are a wire contract,
+# not a ranking: INCONCLUSIVE (3) sits *below* ERROR (2) because a completed
+# fail-level finding outranks "could not finish" (same precedence as the
+# runner's RED hard-stop). Every ExitCode member must appear here; a test
+# enforces it so a new code cannot silently fall back to numeric order.
+_EXIT_PRECEDENCE: tuple[ExitCode, ...] = (
+    ExitCode.SUCCESS,
+    ExitCode.VIOLATION,
+    ExitCode.INCONCLUSIVE,
+    ExitCode.ERROR,
+)
+
+
+def _most_severe_exit(*codes: int) -> int:
+    """Pick the most severe exit code by declared precedence, not by value."""
+    return max(codes, key=lambda c: _EXIT_PRECEDENCE.index(ExitCode(c)))
 
 
 def _print_human(result_dict: dict) -> None:
