@@ -28,8 +28,12 @@ Rule registry: no
 Exit codes: yes
 Confidence: yes
 Web API: no
-Breaking: no
+Breaking: yes
 
+- **Package 0.1.0 → 0.2.0** (CONTRACT.md §5: breaking schema change requires a minor or major bump).
+- **`run_result_v2`** (breaking, supersedes `run_result_v1`; PR #38 fail-closed scan integrity): nullable `summary.confidence_score`, new `inconclusive` vibe tier, optional `scan_integrity` block. A scan that cannot assess the tree is INCONCLUSIVE (exit 3) instead of GREEN; a degraded-but-assessable GREEN is capped at YELLOW; a completed HIGH/CRITICAL finding still outranks INCONCLUSIVE (exit 2). Exit codes are ranked by a declared precedence, not numeric value. Consumers pinned to v1 (code-rescue-tool's `run_result_loader`) reject v2 and must be updated.
+- `build_run_result` (deprecated): no longer raises IndexError on a tree without exception findings.
+- Golden fixtures no longer compare `run.tool_version`; the release number is gated by the release BOM, and a release bump is not a signal-logic change.
 - `hollow_guarantee` **1.0.1** (advisory): harden workflow step parsing — accept bare-dash YAML step items, scope `_iter_steps()` to `steps:` blocks only, match verification tools from `run:`/`uses:`/`name:` field content (including compact `- run:` and `run: |` blocks), and require swallowed-exit markers on the same shell line as the verification command. Regression tests for parser/heuristic edge cases.
 - CI: quote invalid `Fail-fast: …` step name in `.github/workflows/ratchet.yml` (YAML parse failure aborted the Debt Ratchet workflow on every push) and refresh stale `baselines/main.json` so the now-parseable ratchet can pass.
 - `hollow_guarantee` **1.0.0** (advisory): detect CI verification steps that structurally cannot fail (`continue-on-error: true` / `|| true` / `|| exit 0` / `; true` on type-check, lint, test, and related tools). Family III (failure mimics success); distinct from `maxfail_masking` (Family IV). Suite severity LOW; registered in the default analyzer set.

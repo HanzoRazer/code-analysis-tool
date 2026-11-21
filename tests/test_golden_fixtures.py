@@ -69,6 +69,12 @@ def _normalize(d: dict) -> dict:
     if "run" in out and "config" in out["run"]:
         out["run"]["config"].pop("root", None)
 
+    # 1b) Drop the package release number. Goldens pin engine output, and
+    # signal_logic_version gates their changes; a release bump is not a logic
+    # change. tool_version is gated separately (release BOM: tag == pyproject).
+    if "run" in out:
+        out["run"].pop("tool_version", None)
+
     # 2) Normalize path separators
     def _fix_paths(v):
         if isinstance(v, dict):

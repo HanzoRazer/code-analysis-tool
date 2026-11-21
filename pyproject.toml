@@ -1,6 +1,6 @@
 [project]
 name = "code-analysis-tool"
-version = "0.1.0"
+version = "0.2.0"
 description = "Confidence engine for beginner Vibe Coders"
 requires-python = ">=3.11"
 
