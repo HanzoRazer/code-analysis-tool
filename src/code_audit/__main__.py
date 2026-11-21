@@ -244,6 +244,11 @@ def _exit_from_result(result_dict: dict, *, ci_mode: bool) -> int:
     by_sev = summary.get("counts", {}).get("by_severity", {})
     worst = _worst_severity_from_counts(by_sev)
     sev_ec = _exit_code_for_worst_severity(worst)
+    if score_ec == ExitCode.INCONCLUSIVE:
+        # INCONCLUSIVE (3) is numerically larger than ERROR (2) but is not
+        # "worse": a completed fail-level finding outranks "could not finish"
+        # (same precedence as the runner's RED hard-stop).
+        return ExitCode.ERROR if sev_ec >= ExitCode.ERROR else ExitCode.INCONCLUSIVE
     return max(score_ec, sev_ec)
 
 

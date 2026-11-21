@@ -166,3 +166,36 @@ def test_legacy_builder_emits_integrity(tmp_path) -> None:
     assert result["scan_integrity"]["assessable"] is True
     assert result["scan_integrity"]["files_scanned"] == 1
     assert interpret_stored_result(result).verified is True
+
+
+def _cli_result(tier, score, **by_severity):
+    return {
+        "summary": {
+            "vibe_tier": tier,
+            "confidence_score": score,
+            "counts": {"findings_total": sum(by_severity.values()), "by_severity": by_severity},
+        }
+    }
+
+
+def test_cli_exit_inconclusive_is_3_in_both_modes() -> None:
+    from code_audit.__main__ import _exit_from_result
+
+    result = _cli_result("inconclusive", None)
+    assert _exit_from_result(result, ci_mode=False) == 3
+    assert _exit_from_result(result, ci_mode=True) == 3
+
+
+def test_ci_exit_completed_fail_finding_outranks_inconclusive() -> None:
+    """INCONCLUSIVE (3) must not mask a completed fail-level finding (2)."""
+    from code_audit.__main__ import _exit_from_result
+
+    result = _cli_result("inconclusive", None, critical=1)
+    assert _exit_from_result(result, ci_mode=True) == 2
+
+
+def test_ci_exit_inconclusive_with_low_findings_stays_3() -> None:
+    from code_audit.__main__ import _exit_from_result
+
+    result = _cli_result("inconclusive", None, low=2)
+    assert _exit_from_result(result, ci_mode=True) == 3
