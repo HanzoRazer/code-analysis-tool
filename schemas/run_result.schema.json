@@ -9,7 +9,8 @@
     "run",
     "summary",
     "signals_snapshot",
-    "findings_raw"
+    "findings_raw",
+    "scan_integrity"
   ],
   "properties": {
     "schema_version": {

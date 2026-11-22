@@ -13,7 +13,7 @@
     "run_result_schema": {
       "hash_scope": "file_bytes",
       "path": "schemas/run_result.schema.json",
-      "sha256": "be510d0d684136cda217ca86f29e0c713256d4315b67dd2c6dcc422501a35420"
+      "sha256": "9c337d73c6f0c293c25424b4792bf8d75c26c3d296f2cf2c16e9db6c36900c71"
     }
   },
   "signal_logic_version": "signals_v6"
