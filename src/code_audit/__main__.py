@@ -32,22 +32,25 @@ from __future__ import annotations
 
 import argparse
 import os
+from pathlib import Path
 import sys
 import tempfile
-from pathlib import Path
 
 from code_audit import __version__
-from code_audit.utils.exit_codes import ExitCode
-from code_audit.utils.json_norm import stable_json_dump, stable_json_dumps
-from code_audit.policy.thresholds import (
-    exit_code_from_score as _exit_code_from_score,
-    tier_from_score,
-)
+from code_audit.contracts.ci_mode import CIModeRequiredError, require_ci_true
+from code_audit.core.scan_integrity import degraded_coverage_lines
+from code_audit.model import RiskLevel
 from code_audit.policy.exit_codes import (
     exit_code_for_worst_severity as _exit_code_for_worst_severity,
     worst_severity_from_counts as _worst_severity_from_counts,
 )
-from code_audit.contracts.ci_mode import CIModeRequiredError, require_ci_true
+from code_audit.policy.thresholds import (
+    exit_code_from_score as _exit_code_from_score,
+    exit_code_from_tier as _exit_code_from_tier,
+    tier_from_score,
+)
+from code_audit.utils.exit_codes import ExitCode
+from code_audit.utils.json_norm import stable_json_dump, stable_json_dumps
 
 
 def _require_ci_env(ci_mode: bool) -> int | None:
@@ -94,7 +97,6 @@ from code_audit.api import (
 from code_audit.namespace_authority import (
     check_namespace_authority as _api_check_namespace_authority,
 )
-
 
 # ── CI helpers ───────────────────────────────────────────────────────
 
@@ -185,7 +187,7 @@ def _resolve_ci_relative_artifacts_out_path(
 
 
 # ── Vibe tier thresholds ─────────────────────────────────────────────
-_TIER_EMOJI = {"green": "🟢", "yellow": "🟡", "red": "🔴"}
+_TIER_EMOJI = {"green": "🟢", "yellow": "🟡", "red": "🔴", "inconclusive": "⚪"}
 
 
 def _tier_label(score: int) -> str:
@@ -228,16 +230,56 @@ def _ci_required_keys_check(result_dict: dict) -> int | None:
     return None
 
 
+def _exit_from_result(result_dict: dict, *, ci_mode: bool) -> int:
+    """Exit from the resolved tier. INCONCLUSIVE is 3, distinct from RED (2)."""
+    summary = result_dict.get("summary") or {}
+    tier_raw = summary.get("vibe_tier")
+    try:
+        score_ec = _exit_code_from_tier(RiskLevel(tier_raw))
+    except ValueError:
+        score = summary.get("confidence_score")
+        score_ec = _exit_code_from_score(score if isinstance(score, int) else 0)
+    if not ci_mode:
+        return score_ec
+    by_sev = summary.get("counts", {}).get("by_severity", {})
+    worst = _worst_severity_from_counts(by_sev)
+    sev_ec = _exit_code_for_worst_severity(worst)
+    return _most_severe_exit(score_ec, sev_ec)
+
+
+# Exit codes ordered least → most severe. Numeric values are a wire contract,
+# not a ranking: INCONCLUSIVE (3) sits *below* ERROR (2) because a completed
+# fail-level finding outranks "could not finish" (same precedence as the
+# runner's RED hard-stop). Every ExitCode member must appear here; a test
+# enforces it so a new code cannot silently fall back to numeric order.
+_EXIT_PRECEDENCE: tuple[ExitCode, ...] = (
+    ExitCode.SUCCESS,
+    ExitCode.VIOLATION,
+    ExitCode.INCONCLUSIVE,
+    ExitCode.ERROR,
+)
+
+
+def _most_severe_exit(*codes: int) -> int:
+    """Pick the most severe exit code by declared precedence, not by value."""
+    return max(codes, key=lambda c: _EXIT_PRECEDENCE.index(ExitCode(c)))
+
+
 def _print_human(result_dict: dict) -> None:
     """Pretty-print a human-readable summary to stderr."""
     summary = result_dict.get("summary", {})
-    score = summary.get("confidence_score", 0)
-    tier = summary.get("vibe_tier") or _tier_label(score)
+    score = summary.get("confidence_score")
+    tier = summary.get("vibe_tier") or (
+        _tier_label(score) if isinstance(score, int) else "inconclusive"
+    )
     emoji = _TIER_EMOJI.get(tier, "⚪")
     total = summary.get("counts", {}).get("findings_total", 0)
+    shown = "inconclusive" if score is None else f"{score}/100"
 
-    print(f"\n{emoji}  Confidence: {score}/100  ({tier.upper()})", file=sys.stderr)
+    print(f"\n{emoji}  Confidence: {shown}  ({tier.upper()})", file=sys.stderr)
     print(f"   Findings : {total}", file=sys.stderr)
+    for line in degraded_coverage_lines(result_dict.get("scan_integrity")):
+        print(f"   {line}", file=sys.stderr)
 
     by_sev = summary.get("counts", {}).get("by_severity", {})
     if by_sev:
@@ -1945,14 +1987,7 @@ def main(argv: list[str] | None = None) -> int:
             )
 
         _print_human(result_dict)
-        score = result_dict.get("summary", {}).get("confidence_score", 0)
-        score_ec = _exit_code_from_score(score)
-        if ci_mode:
-            by_sev = result_dict.get("summary", {}).get("counts", {}).get("by_severity", {})
-            worst = _worst_severity_from_counts(by_sev)
-            sev_ec = _exit_code_for_worst_severity(worst)
-            return max(score_ec, sev_ec)
-        return score_ec
+        return _exit_from_result(result_dict, ci_mode=ci_mode)
 
     # ── default positional-path mode ─────────────────────────────────
     if args.path is None:
@@ -1996,15 +2031,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.json_out:
         stable_json_dump(result_dict, sys.stdout, ci_mode=ci_mode, indent=2)
 
-    # Exit code mirrors tier (score-based) + severity policy in CI mode
-    score = result_dict.get("summary", {}).get("confidence_score", 0)
-    score_ec = _exit_code_from_score(score)
-    if ci_mode:
-        by_sev = result_dict.get("summary", {}).get("counts", {}).get("by_severity", {})
-        worst = _worst_severity_from_counts(by_sev)
-        sev_ec = _exit_code_for_worst_severity(worst)
-        return max(score_ec, sev_ec)
-    return score_ec
+    # Exit code mirrors the resolved tier. CI also applies the severity policy.
+    return _exit_from_result(result_dict, ci_mode=ci_mode)
 
 
 if __name__ == "__main__":

@@ -18,13 +18,9 @@ echo "Canonical schema files changed:"
 echo "${schema_changed}"
 
 extract_const () {
-  python - "$1" <<'PY'
-import json, sys
-p = sys.argv[1]
-obj = json.load(sys.stdin)
-const = obj.get("properties", {}).get("schema_version", {}).get("const")
-print(const or "")
-PY
+  # Read the schema document from stdin. A heredoc here would steal that
+  # pipe, so the const check would see an empty document.
+  python -c 'import json,sys; obj=json.load(sys.stdin); print((obj.get("properties") or {}).get("schema_version", {}).get("const") or "")'
 }
 
 while IFS= read -r f; do

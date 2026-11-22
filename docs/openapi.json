@@ -107,9 +107,15 @@
         "description": "Summary of scan results",
         "properties": {
           "confidence_score": {
-            "default": 0.0,
-            "title": "Confidence Score",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence Score"
           },
           "files_scanned": {
             "default": 0,

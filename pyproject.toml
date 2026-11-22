@@ -1,6 +1,6 @@
 [project]
 name = "code-analysis-tool"
-version = "0.1.0"
+version = "0.2.0"
 description = "Confidence engine for beginner Vibe Coders"
 requires-python = ">=3.11"
 
@@ -54,14 +54,12 @@ python_functions = ["test_*"]
 # -q: quieter output (good for CI logs)
 # --strict-config/markers: catch typos in config/markers
 # --disable-warnings: reduce noise
-# --maxfail=1: fail fast in CI
 addopts = """
 -ra
 -q
 --strict-config
 --strict-markers
 --disable-warnings
---maxfail=1
 """
 
 # Markers (declared up front to catch typos)

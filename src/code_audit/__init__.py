@@ -14,7 +14,7 @@ __all__ = [
     "DriftMonitor",
     "DriftScheduler",
 ]
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 # Programmatic engine entrypoints (backend use) — see docs/CONTRACT.md §8.
 from code_audit.api import (  # noqa: E402, F401

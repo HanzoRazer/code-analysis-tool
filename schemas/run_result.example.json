@@ -1,5 +1,5 @@
 {
-  "schema_version": "run_result_v1",
+  "schema_version": "run_result_v2",
   "run": {
     "run_id": "01JEXAMPLE00001",
     "project_id": "proj_sample_repo",
@@ -102,6 +102,14 @@
       "metadata": { "rule_id": "CX_HIGH_001" }
     }
   ],
+  "scan_integrity": {
+    "assessable": true,
+    "files_scanned": 2,
+    "analyzers_total": 2,
+    "analyzers_ok": 2,
+    "degraded": [],
+    "reasons": []
+  },
   "artifacts": {
     "redactions_applied": false,
     "snippet_policy": "truncated"

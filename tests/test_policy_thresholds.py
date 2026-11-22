@@ -70,6 +70,9 @@ class TestExitCodeFromTier:
     def test_red_2(self) -> None:
         assert exit_code_from_tier(RiskLevel.RED) == 2
 
+    def test_inconclusive_is_3(self) -> None:
+        assert exit_code_from_tier(RiskLevel.INCONCLUSIVE) == 3
+
 
 class TestCustomThresholds:
     """ScoreThresholds can be overridden for custom policies."""

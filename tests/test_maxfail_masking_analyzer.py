@@ -265,12 +265,9 @@ def test_bare_pytest_is_escape_when_root_has_no_fail_fast(tmp_path):
     assert "full.yml" in f[0].metadata["collect_all_escape_evidence"]
 
 
-def test_dogfood_this_repo_maxfail_without_collect_all_escape():
-    """This repo's pyproject has --maxfail=1; CI runs bare pytest (inherits it)."""
+def test_dogfood_this_repo_has_no_committed_maxfail():
+    """Committed pytest addopts must not fail-fast. --maxfail=1 hides later failures."""
     root = Path(__file__).resolve().parents[1]
-    f = _run(root)
-    py_hits = [x for x in f if x.location.path == "pyproject.toml"]
-    assert py_hits, "expected pyproject.toml fail-fast finding"
-    assert py_hits[0].metadata["collect_all_escape_confirmed"] is False
-    assert py_hits[0].severity is Severity.LOW
-    assert "--maxfail" in py_hits[0].metadata["fail_fast_flags"]
+    findings = _run(root)
+    py_hits = [item for item in findings if item.location.path == "pyproject.toml"]
+    assert py_hits == []

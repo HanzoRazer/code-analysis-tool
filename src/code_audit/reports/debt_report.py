@@ -19,17 +19,17 @@ consumption.
 
 from __future__ import annotations
 
-import subprocess
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
+import subprocess
 from typing import Any
 
 from code_audit import __version__
+from code_audit.core.scan_integrity import degraded_coverage_lines
 from code_audit.model import AnalyzerType, Severity
 from code_audit.model.finding import Finding
 from code_audit.model.run_result import RunResult
-
 
 # ── severity ordering (worst first) ────────────────────────────────
 _SEVERITY_ORDER = [
@@ -73,7 +73,7 @@ def _git_info(root: Path) -> dict[str, str]:
 
 
 # ── tier emoji ─────────────────────────────────────────────────────
-_TIER_EMOJI = {"green": "🟢", "yellow": "🟡", "red": "🔴"}
+_TIER_EMOJI = {"green": "🟢", "yellow": "🟡", "red": "🔴", "inconclusive": "⚪"}
 
 
 # ── core renderer ──────────────────────────────────────────────────
@@ -123,10 +123,13 @@ def render_markdown(
     # ── executive summary ───────────────────────────────────────────
     lines.append("## Executive Summary")
     lines.append("")
+    shown = "inconclusive" if result.confidence_score is None else f"{result.confidence_score}/100"
     lines.append(
-        f"{emoji} **Confidence Score:** {result.confidence_score}/100 "
+        f"{emoji} **Confidence Score:** {shown} "
         f"(**{tier.upper()}**)"
     )
+    for line in degraded_coverage_lines(result.scan_integrity):
+        lines.append(line)
     lines.append(f"- **Total findings:** {len(result.findings)}")
     lines.append("")
 
@@ -251,8 +254,8 @@ def generate_debt_report(
     from code_audit.analyzers.exceptions import ExceptionsAnalyzer
     from code_audit.analyzers.file_sizes import FileSizesAnalyzer
     from code_audit.contracts.safety_fence import SafetyFenceAnalyzer
-    from code_audit.governance.import_ban import ImportBanAnalyzer
     from code_audit.core.runner import run_scan
+    from code_audit.governance.import_ban import ImportBanAnalyzer
 
     if analyzers is None:
         analyzers = [

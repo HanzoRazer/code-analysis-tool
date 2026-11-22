@@ -52,6 +52,7 @@ from typing import Any
 import uuid
 
 from code_audit.api import scan_project
+from code_audit.core.scan_integrity import degraded_coverage_lines
 from code_audit.utils.json_norm import stable_json_dump
 
 _DEFAULT_TIMEOUT_SECONDS = 30.0
@@ -671,10 +672,16 @@ def main(argv: list[str] | None = None) -> int:
         summary = payload["run_result"].get("summary", {})
         count = summary.get("counts", {}).get("findings_total", 0)
         score = summary.get("confidence_score", "?")
+        if score is None:
+            score = "inconclusive"
+        coverage = degraded_coverage_lines(payload["run_result"].get("scan_integrity"))
+        extra = ""
+        if coverage:
+            extra = "\n" + "\n".join(coverage)
         print(
             f"PR #{pr_meta['number']} {pr_meta['title']}\n"
             f"{pr_meta['base_ref']}..{pr_meta['head_ref']} ({pr_meta['head_sha'][:12]})\n"
-            f"findings={count} confidence={score}",
+            f"findings={count} confidence={score}{extra}",
             file=sys.stderr,
         )
 

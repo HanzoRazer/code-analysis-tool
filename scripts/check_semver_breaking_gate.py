@@ -2,7 +2,10 @@
 """Release gate: enforce semver rules against CHANGELOG breaking declarations.
 
 Rules:
-  1. Breaking: yes  →  MAJOR version bump required (vs previous tag)
+  1. Breaking: yes  →  MAJOR version bump required (vs previous tag).
+     Pre-1.0 (previous and current major are both 0): a MINOR bump is
+     required instead -- SemVer item 4, and docs/CONTRACT.md section 5
+     ("minor or major version bump").
   2. Breaking: no   →  MAJOR version bump forbidden (vs previous tag)
   3. Breaking: yes  →  at least one contract axis must also be 'yes'
      (Schema, Signals, Rule registry, Exit codes, Confidence, Web API)
@@ -115,6 +118,25 @@ def _find_previous_tag(current_tag: str) -> str | None:
     return None
 
 
+def breaking_bump_required(prev: tuple, current: tuple) -> str:
+    """Which component a breaking release must bump: 'minor' pre-1.0, else 'major'."""
+    return "minor" if prev[0] == 0 and current[0] == 0 else "major"
+
+
+def is_breaking_bump(prev: tuple, current: tuple) -> bool:
+    """True when current -> prev is a bump large enough for a breaking change.
+
+    >= 1.0: the major component must increase. Pre-1.0 (both majors 0): the
+    minor component must increase (SemVer item 4; docs/CONTRACT.md section 5).
+    Leaving 0.x for 1.0.0 always counts.
+    """
+    if current[0] > prev[0]:
+        return True
+    if prev[0] == 0 and current[0] == 0:
+        return current[1] > prev[1]
+    return False
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Semver breaking gate")
     ap.add_argument("--tag", required=True, help="Git tag, e.g. v1.0.0")
@@ -220,11 +242,12 @@ def main() -> int:
         return 0
 
     is_major_bump = current_semver[0] > prev_semver[0]
+    required = breaking_bump_required(prev_semver, current_semver)
 
-    # Rule 1: Breaking:yes → MAJOR bump required
-    if is_breaking and not is_major_bump:
+    # Rule 1: Breaking:yes → MAJOR bump required (MINOR while pre-1.0)
+    if is_breaking and not is_breaking_bump(prev_semver, current_semver):
         print(
-            f"ERROR: Breaking: yes but this is NOT a major version bump.",
+            f"ERROR: Breaking: yes but this is NOT a {required} version bump.",
             file=sys.stderr,
         )
         print(
@@ -236,7 +259,7 @@ def main() -> int:
             file=sys.stderr,
         )
         print("", file=sys.stderr)
-        print("Fix: bump the major version (e.g. v2.0.0) or set Breaking: no.", file=sys.stderr)
+        print(f"Fix: bump the {required} version or set Breaking: no.", file=sys.stderr)
         return 1
 
     # Rule 2: Breaking:no → MAJOR bump forbidden

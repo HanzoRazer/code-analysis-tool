@@ -42,6 +42,7 @@ async def run_scan(request: ScanRequest):
 
         # Transform to response
         summary = result.get("summary", {})
+        raw_score = summary.get("confidence_score")
         return ScanResponse(
             status="complete",
             project_id=request.project_id,
@@ -49,7 +50,7 @@ async def run_scan(request: ScanRequest):
                 files_scanned=summary.get("files_scanned", 0),
                 total_lines=summary.get("total_lines", 0),
                 issues_found=summary.get("total_findings", 0),
-                confidence_score=summary.get("confidence_score", 0),
+                confidence_score=None if raw_score is None else float(raw_score),
             ),
             result=result,
         )
