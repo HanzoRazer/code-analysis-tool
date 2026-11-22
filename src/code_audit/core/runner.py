@@ -23,7 +23,7 @@ from code_audit.core.scan_integrity import (
 )
 from code_audit.insights.confidence import compute_confidence
 from code_audit.insights.translator import findings_to_signals
-from code_audit.model import RiskLevel
+from code_audit.model import AnalyzerType, RiskLevel
 from code_audit.model.finding import Finding
 from code_audit.model.run_result import RunResult
 from code_audit.policy.thresholds import tier_from_score
@@ -38,6 +38,17 @@ _logger = logging.getLogger(__name__)
 # CODE_AUDIT_ANALYZER_TIMEOUT env var (0 = no limit).
 _DEFAULT_ANALYZER_TIMEOUT = 300  # 5 minutes
 
+
+# A completed HIGH/CRITICAL finding of these types forces RED. Every type here
+# must also be a critical analyzer in scan_integrity.CRITICAL_ANALYZER_IDS:
+# if a finding is severe enough to force RED, failing to run the analyzer that
+# finds it leaves the scan unassessable (tests/test_scan_integrity_runner.py).
+HARD_STOP_FINDING_TYPES = frozenset({
+    AnalyzerType.SECURITY,
+    AnalyzerType.SAFETY,
+    AnalyzerType.EXCEPTIONS,
+    AnalyzerType.JS_TS_SECURITY,
+})
 
 def _analyzer_id(analyzer: Analyzer) -> str:
     return str(getattr(analyzer, "id", type(analyzer).__name__))
@@ -274,15 +285,11 @@ def run_scan(
     # Hard-stop red triggers (per spec). A completed critical finding
     # outranks an inconclusive scan: the hit is more actionable than
     # "we could not finish looking."
-    from code_audit.model import AnalyzerType, Severity
+    from code_audit.model import Severity
 
     red_hit = False
     for f in all_findings:
-        if f.severity in {Severity.HIGH, Severity.CRITICAL} and f.type in {
-            AnalyzerType.SECURITY,
-            AnalyzerType.SAFETY,
-            AnalyzerType.EXCEPTIONS,
-        }:
+        if f.severity in {Severity.HIGH, Severity.CRITICAL} and f.type in HARD_STOP_FINDING_TYPES:
             red_hit = True
             tier = RiskLevel.RED
             break

@@ -22,9 +22,12 @@ AnalyzerStatus = Literal[
 # Only these statuses mean eligible code was not assessed.
 _DEGRADING_STATUSES = frozenset({"missing_capability", "failed"})
 
-# Analyzer ids whose failure means the scan cannot be assessed.
-# Mirrors the runner hard-stop set (security / safety / exceptions).
-CRITICAL_ANALYZER_IDS = frozenset({"security", "exceptions", "safety", "safety_fence"})
+# Analyzer ids whose failure means the scan cannot be assessed. Covers every
+# finding type in runner.HARD_STOP_FINDING_TYPES (security / safety /
+# exceptions / js_ts_security); a test enforces the coverage.
+CRITICAL_ANALYZER_IDS = frozenset(
+    {"security", "exceptions", "safety", "safety_fence", "js_ts_security"}
+)
 
 
 class MissingAnalyzerCapability(Exception):

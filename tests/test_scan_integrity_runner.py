@@ -100,9 +100,10 @@ def test_crashing_security_analyzer_inconclusive(tmp_path: Path) -> None:
 def test_missing_capability_on_eligible_js_is_inconclusive(tmp_path: Path) -> None:
     """Eligible JS/TS files no parser could read were never assessed: exit 3.
 
-    Holds even though js_ts_security is non-critical and a Python analyzer
-    completed (the PR contract: missing parsers on eligible files are
-    inconclusive, not a YELLOW cap).
+    Holds even though a Python analyzer completed. js_ts_security is now a
+    critical analyzer (its HIGH findings force RED), so the reason is reported
+    as critical_analyzer_missing_capability; before that change this case was
+    already INCONCLUSIVE via the generic missing_capability rule.
     """
     (tmp_path / "a.py").write_text("x = 1\n")
     (tmp_path / "app.js").write_text("const x = 1;\n")
@@ -110,7 +111,7 @@ def test_missing_capability_on_eligible_js_is_inconclusive(tmp_path: Path) -> No
     assert result.vibe_tier == RiskLevel.INCONCLUSIVE
     assert result.confidence_score is None
     assert exit_code_from_tier(result.vibe_tier) == 3
-    assert "missing_capability:js_ts_security" in result.scan_integrity["reasons"]
+    assert "critical_analyzer_missing_capability:js_ts_security" in result.scan_integrity["reasons"]
     degraded = result.scan_integrity["degraded"]
     assert degraded[0]["analyzer_id"] == "js_ts_security"
     assert degraded[0]["status"] == "missing_capability"
@@ -256,3 +257,83 @@ def test_unparseable_eligible_file_degrades_and_keeps_findings(
     degraded = result.scan_integrity["degraded"]
     assert [(d["analyzer_id"], d["status"]) for d in degraded] == [("js_ts_security", "failed")]
     assert result.vibe_tier != RiskLevel.GREEN
+
+
+# ── JS/TS security: same fail-closed treatment as Python security ──────────
+
+
+class _JsHigh:
+    id = "js_ts_security"
+
+    def run(self, root: Path, files: list[Path]) -> list:
+        return [
+            Finding(
+                finding_id="F-JS",
+                type=AnalyzerType.JS_TS_SECURITY,
+                severity=Severity.HIGH,
+                confidence=0.9,
+                message="eval() executes arbitrary code",
+                location=Location(path="app.js", line_start=2, line_end=2),
+                fingerprint=make_fingerprint("SEC_EVAL_JS_001", "app.js", "eval", "eval"),
+            )
+        ]
+
+
+def test_completed_js_ts_high_is_red(tmp_path: Path) -> None:
+    """A completed HIGH JS/TS security finding forces RED, like Python security.
+
+    Before: JS_TS_SECURITY was outside the hard-stop set, so eval() scored
+    GREEN 77 with exit 0.
+    """
+    (tmp_path / "a.py").write_text("x = 1\n")
+    result = run_scan(tmp_path, [_Ok(), _JsHigh()])
+    assert result.vibe_tier == RiskLevel.RED
+    assert exit_code_from_tier(result.vibe_tier) == 2
+
+
+def test_real_js_eval_is_red(tmp_path: Path) -> None:
+    """End to end with the real tree-sitter analyzer (the reproduced P1)."""
+    pytest.importorskip("tree_sitter_javascript")
+    from code_audit.analyzers.js_ts_security import JsTsSecurityPreviewAnalyzer
+
+    (tmp_path / "app.js").write_text(
+        "function run(code) {\n  return eval(code);\n}\nmodule.exports = { run };\n",
+        encoding="utf-8",
+    )
+    result = run_scan(tmp_path, [JsTsSecurityPreviewAnalyzer()])
+    assert any(f["metadata"].get("rule_id") == "SEC_EVAL_JS_001" for f in result.to_dict()["findings_raw"])
+    assert result.vibe_tier == RiskLevel.RED
+
+
+def test_crashing_js_ts_security_inconclusive(tmp_path: Path) -> None:
+    """If its findings force RED, failing to run it leaves the scan unassessable."""
+    (tmp_path / "a.py").write_text("x = 1\n")
+    (tmp_path / "app.js").write_text("const x = 1;\n")
+    result = run_scan(tmp_path, [_Ok(), _Crash("js_ts_security")])
+    assert result.vibe_tier == RiskLevel.INCONCLUSIVE
+    assert exit_code_from_tier(result.vibe_tier) == 3
+    assert "critical_analyzer_failed:js_ts_security" in result.scan_integrity["reasons"]
+
+
+def test_hard_stop_finding_types_are_critical_analyzers() -> None:
+    """The two sets drifted once (JS_TS_SECURITY); keep them in lockstep."""
+    from code_audit.core.runner import HARD_STOP_FINDING_TYPES
+    from code_audit.core.scan_integrity import CRITICAL_ANALYZER_IDS
+
+    missing = {t.value for t in HARD_STOP_FINDING_TYPES} - CRITICAL_ANALYZER_IDS
+    assert not missing, f"hard-stop types without a critical analyzer: {sorted(missing)}"
+
+
+def test_v2_schema_requires_scan_integrity(tmp_path: Path) -> None:
+    """No integrity-free GREEN: a v2 result must carry its integrity evidence.
+
+    The single producer (the runner) always emits it, so requiring it closes
+    the path where a consumer trusts a GREEN that never proved assessability.
+    interpret_stored_result() keeps "missing = unverified" for v1/legacy only.
+    """
+    (tmp_path / "a.py").write_text("x = 1\n")
+    payload = run_scan(tmp_path, [_Ok()]).to_dict()
+    jsonschema.validate(payload, _schema())
+    payload.pop("scan_integrity")
+    with pytest.raises(jsonschema.ValidationError, match="scan_integrity"):
+        jsonschema.validate(payload, _schema())
