@@ -17,8 +17,10 @@ Web API: yes|no
 Breaking: yes|no
 ```
 
-When `Breaking: yes`, the release **must** bump the MAJOR version and at least
-one contract axis must also be `yes`.
+When `Breaking: yes`, at least one contract axis must also be `yes`, and the
+release **must** bump the MAJOR version — or, while the major version is `0`,
+at least the MINOR version (SemVer item 4; `docs/CONTRACT.md` §5: "minor or
+major version bump"). `scripts/check_semver_breaking_gate.py` enforces both.
 
 ## [Unreleased]
 
